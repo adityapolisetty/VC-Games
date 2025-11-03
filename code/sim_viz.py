@@ -286,7 +286,7 @@ def value_of_info_plot(sig_grid, means, title, signal_cost=None, y_range=None):
 
     fig.update_layout(
         template="plotly_white",
-        legend=dict(orientation="h", y=1.12, x=0.5, xanchor="center", font=_DEF_FONT),
+        legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font=_DEF_FONT),
         margin=dict(l=10, r=10, t=68, b=56),
         font=_DEF_FONT,
         xaxis=dict(title=dict(text="Number of signals", font=_DEF_FONT),
