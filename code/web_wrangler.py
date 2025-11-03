@@ -1,0 +1,211 @@
+# web_wrangler.py
+import json
+import pathlib
+import threading
+import time
+import webbrowser
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+import pandas as pd
+
+HTTPServer.allow_reuse_address = True
+
+_ACTIONS = None
+_POSTED = threading.Event()
+_END_EVENT = threading.Event()
+
+_HTML = pathlib.Path(__file__).with_name("stage_actions.html")
+
+_FONT = pathlib.Path(__file__).with_name("imperial.woff2") 
+
+def _prev_signals_map(df: pd.DataFrame) -> dict[int, list[int]]:
+    out = {}
+    for _, r in df.iterrows():
+        sigs = []
+        for k in (1, 2, 3, 4):
+            v = r.get(f"s{k}")
+            if pd.notna(v) and v is not None and str(v) != "None":
+                sigs.append(k)
+        if sigs:
+            out[int(r["card_id"])] = sigs
+    return out
+
+
+def _prev_invest_map(df: pd.DataFrame) -> dict[int, float]:
+    out = {}
+    for _, r in df.iterrows():
+        tot = float(r.get("inv1", 0) or 0) + float(r.get("inv2", 0) or 0) + float(r.get("inv3", 0) or 0)
+        if tot > 0:
+            out[int(r["card_id"])] = tot
+    return out
+
+
+class _H(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/assets/imperial.woff2":
+            try:
+                data = _FONT.read_bytes()
+            except FileNotFoundError:
+                self.send_error(404); return
+            self.send_response(200)
+            self.send_header("Content-Type", "font/woff2")
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
+        if self.path == "/":
+            html = _HTML.read_text(encoding="utf-8")
+            seed = {
+                "stage": self.server.ctx["stage"],
+                "totalBudget": self.server.ctx["total_budget"],
+                "budgetRemaining": self.server.ctx["wallet"],
+                "cards": self.server.ctx["cards"],  # [{card_id,color,N}]
+                "prevSignals": self.server.ctx["prev_signals"],
+                "prevInvest": self.server.ctx["prev_invest"],
+            }
+            html = html.replace("</head>", f"<script>window.SEED={json.dumps(seed)};</script></head>")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(html.encode("utf-8"))
+            return
+
+        if self.path == "/results":
+            stats = self.server.ctx.get("results", {})
+            page = _results_page(stats)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(page.encode("utf-8"))
+            return
+
+        self.send_error(404)
+
+    def do_POST(self):
+        global _ACTIONS
+        if self.path == "/submit":
+            n = int(self.headers.get("Content-Length", "0"))
+            _ACTIONS = json.loads(self.rfile.read(n).decode("utf-8"))
+            _POSTED.set()
+            if isinstance(self.server.ctx.get("results"), dict):
+                self.server.ctx["results"]["player"] = _ACTIONS.get("player_name") or ""
+            self.send_response(200)
+            self.end_headers()
+            return
+
+        if self.path == "/end":
+            _END_EVENT.set()
+            self.send_response(200)
+            self.end_headers()
+            return
+
+        self.send_error(404)
+
+
+def _results_page(stats: dict) -> str:
+    # sys-wipe pretty label
+    sw = stats.get("sys_wipe", "none")
+    sw_label = {"none": "No", "blue": "Blue", "red": "Red", "both": "Blue & Red"}.get(sw, str(sw))
+
+    return f"""<!doctype html><html><head>
+<meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>Performance</title>
+<style>
+:root{{--bg:#0f172a;--panel:#0b1220;--b:#1f2937;--cta:#f59e0b;--ctat:#111827;--fg:#e5e7eb}}
+*{{box-sizing:border-box}} body{{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}}
+.brandbar{{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--b);background:#0a1020}}
+.brand-left{{position:absolute;left:12px;font-weight:900}}
+header{{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-bottom:1px solid var(--b);background:var(--panel)}}
+.hdr-right{{text-align:right}}
+.hdr-right .meta{{font-size:12px;opacity:.85;line-height:1.3}}
+.wrap{{max-width:960px;margin:20px auto;padding:0 20px}}
+.card{{background:var(--panel);border:1px solid var(--b);border-radius:12px;padding:16px;margin:10px 0}}
+.btn{{padding:14px 16px;font-weight:800;border-radius:12px;border:2px solid var(--cta);background:var(--cta);color:var(--ctat);cursor:pointer;transition:filter .15s,transform .15s,box-shadow .15s}}
+.btn:hover{{filter:brightness(1.07) saturate(1.06);transform:translateY(-1px);box-shadow:0 6px 16px rgba(0,0,0,.35)}}
+.grid2{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
+.stat{{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--b);border-radius:10px}}
+.stat div:first-child{{opacity:.8}}
+.overlay{{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}}
+.overlay .box{{background:var(--panel);border:1px solid var(--b);border-radius:12px;padding:20px 24px;font-weight:800}}
+</style></head><body>
+<div class='brandbar'><div class='brand-left'>Imperial</div><div>{stats.get('player','')}</div></div>
+
+<header>
+  <div style='font-weight:800'>Performance</div>
+  <div class='hdr-right'>
+    <div class='meta'>
+      Invested £{stats.get('invested',0):.2f} •
+      Signals £{stats.get('signals_spent',0):.2f} •
+      Remaining £{stats.get('wallet_left',0):.2f}
+    </div>
+  </div>
+</header>
+
+<div class='wrap'>
+  <div class='card'>
+    <h3>Summary</h3>
+    <div class='grid2'>
+      <div class='stat'><div>Total invested</div><div>£{stats.get('invested',0):.2f}</div></div>
+      <div class='stat'><div>Spent on signals</div><div>£{stats.get('signals_spent',0):.2f}</div></div>
+      <div class='stat'><div>Net return %</div><div>{stats.get('net_return_pct',0):.2f}%</div></div>
+      <div class='stat'><div>Cards invested</div><div>{stats.get('n_invested',0)}</div></div>
+      <div class='stat'><div>Invested cards wiped out</div><div>{stats.get('n_wiped',0)}</div></div>
+      <div class='stat'><div>Systemic wipe-out</div><div>{sw_label}</div></div>
+      <div class='stat'><div>Red cards invested</div><div>{stats.get('n_red_invested',0)}</div></div>
+      <div class='stat'><div>Avg signals per invested card</div><div>{stats.get('avg_signals',0):.2f}</div></div>
+    </div>
+  </div>
+
+  <button id='endBtn' class='btn' style='width:100%'>End Game</button>
+</div>
+
+<div id="ov" class="overlay"><div class="box">Hope you enjoyed the game</div></div>
+
+<script>
+document.getElementById('endBtn').onclick = () => {{
+  const btn = document.getElementById('endBtn');
+  btn.disabled = true;
+  document.getElementById('ov').style.display = 'flex';
+  fetch('/end', {{method:'POST'}}).catch(()=>{{}});
+  setTimeout(()=>{{ window.close(); }}, 3000);
+}};
+</script>
+</body></html>"""
+
+def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None = None,
+           port: int = 8765, open_browser: bool = False):
+    """Serve UI for a stage and return the posted decisions."""
+    global _ACTIONS
+    _ACTIONS = None
+    _POSTED.clear()
+    _END_EVENT.clear()
+
+    ctx = {
+        "stage": stage,
+        "total_budget": 100.0,  # UI label only
+        "wallet": float(wallet),
+        "cards": df.loc[df["alive"], ["card_id", "color", "N"]]
+                   .astype({"card_id": int, "N": int}).to_dict("records"),
+        "prev_signals": _prev_signals_map(df),
+        "prev_invest": _prev_invest_map(df),
+        "results": results or {},
+    }
+
+    srv = HTTPServer(("127.0.0.1", port), _H)
+    srv.ctx = ctx
+
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    if open_browser:
+        webbrowser.open(f"http://127.0.0.1:{port}/")
+
+    _POSTED.wait()  # wait for stage POST
+
+    if stage == 4:
+        _END_EVENT.wait(timeout=3600)
+        time.sleep(0.2)
+
+    srv.shutdown()
+    return _ACTIONS

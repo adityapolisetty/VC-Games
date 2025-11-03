@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>VC Card Games</title>
+<style>
+  :root { --blue:#2b6cb0; --red:#c53030; --green:#059669; --bg:#0f172a; --panel:#0b1220; --cta:#f59e0b; --ctatxt:#111827; --b:#1f2937; }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:#e5e7eb}
+
+  .brandbar{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--b);background:#0a1020;position:sticky;top:0;z-index:20;font-size:30px}
+  .brand-left{position:absolute;left:12px;font-weight:900;letter-spacing:.4px}
+  .brand-center{font-weight:900}
+
+  header.nav{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--b);background:var(--panel);position:sticky;top:40px;z-index:10}
+  .nav-left{display:flex;gap:14px}
+  .nav-left a{color:#cbd5e1;text-decoration:none;font-weight:600}
+  .nav-left a:hover{color:#fff}
+  .right{display:flex;gap:16px}
+  .budget{font-weight:700}
+
+  .wrap{display:grid;grid-template-columns:1fr 420px;gap:20px;padding:20px;margin-left:24px}
+  .grid{display:grid;grid-template-columns:repeat(8,88px);gap:18px;align-content:start}
+  .section-title{margin:6px 0 12px 0}
+
+  .card{width:88px;height:120px;border:8px solid #fff;border-radius:12px;cursor:pointer;position:relative;transition:border-color .15s, box-shadow .15s, filter .15s}
+  .card.blue{background:var(--blue)} .card.red{background:var(--red)}
+  .card.signaled{box-shadow:0 0 0 3px #36c51dff inset}
+  .card.invested{background:var(--green)!important}
+  .card.dead{filter:grayscale(40%);opacity:.6;cursor:default}
+  .label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#fff;font-weight:800;font-size:15px;white-space:pre-line;pointer-events:none}
+
+  aside{position:sticky;top:104px;height:fit-content;border:1px solid var(--b);border-radius:12px;padding:16px;background:var(--panel)}
+  .row{display:flex;gap:10px;align-items:center}
+  .space-between{display:flex;justify-content:space-between;align-items:center}
+  .muted{color:#9ca3af}
+
+  .btn, .btn-cta, .btn-cta-sm, .btn-ghost { cursor:pointer; }
+  .btn{padding:10px 14px;border-radius:10px;border:1px solid var(--b);background:#111827;color:#e5e7eb;transition:transform .15s, filter .15s, box-shadow .15s}
+  .btn[disabled]{opacity:.5;cursor:not-allowed}
+  .btn-cta{width:100%;padding:14px 16px;font-size:16px;font-weight:800;border-radius:12px;border:2px solid var(--cta);background:var(--cta);color:var(--ctatxt);transition:transform .15s, filter .15s, box-shadow .15s}
+  .btn-cta-sm{padding:10px 14px;font-size:15px;font-weight:800;border-radius:12px;border:2px solid var(--cta);background:var(--cta);color:#111827;transition:transform .15s, filter .15s, box-shadow .15s}
+  .btn-ghost{padding:8px 12px;border-radius:10px;border:1px solid var(--b);background:#0b1325;color:#93c5fd;transition:transform .15s, filter .15s, box-shadow .15s}
+  .btn:hover, .btn-cta:hover, .btn-cta-sm:hover, .btn-ghost:hover { transform:translateY(-1px); filter:brightness(1.1) saturate(1.1); box-shadow:0 6px 16px rgba(0,0,0,.35); }
+  .btn:active, .btn-cta:active, .btn-cta-sm:active, .btn-ghost:active { transform:none; filter:none; box-shadow:none; }
+
+  input,button{font-family:inherit}
+  input[type="number"]{width:170px;padding:12px;border-radius:10px;border:1px solid #374151;background:#111827;color:#e5e7eb;font-size:16px}
+  input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+
+  .sig-line{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--b);background:#111827;border-radius:14px;padding:10px 12px;margin:8px 0}
+  .sig-left{display:flex;align-items:center;gap:12px}
+  .sig-name{font-weight:800}
+  .sig-name .price { margin-left:14px; }
+  .reveal{font-weight:700;color:#e5e7eb;background:#0b1a2f;border:1px solid var(--b);padding:6px 10px;border-radius:10px}
+
+/* login */
+.hero-wrap{
+  max-width:1100px;
+  margin:12vh auto 0;
+  display:grid;
+  grid-template-columns:minmax(420px,1.2fr) minmax(380px,1fr);
+  gap:68px;
+  align-items:center;
+  min-height:calc(80vh - 250px);
+  padding:50px 24px;
+}
+.hero-title{ margin:0; line-height:1.12; font-weight:900; color:#e5e7eb; }
+.hero-welcome{ display:block; font-size:clamp(64px,9vw,96px); letter-spacing:.2px; }
+.hero-rest{
+  display:block;
+  font-size:clamp(22px,3vw,30px);
+  margin-top:9px;
+  margin-left:clamp(8px,1vw,16px);
+  font-weight:400; /* regular, not bold */
+}
+.login{ margin:0; padding:28px; border:1px solid var(--b); border-radius:16px; background:var(--panel); }
+.label-lg{ font-size:16px; }
+.small-lg{ font-size:15px; }
+.login input[type="text"]{
+  width:100%; padding:14px 12px; border-radius:10px;
+  border:1px solid #374151; background:#111827; color:#e5e7eb; font-size:16px;
+}
+.login input[type="text"]::placeholder{ color:#9ca3af; }
+.login .slider{ width:100%; }
+.btn.btn-lg{ font-size:16px; font-weight:700; padding:12px 16px; }
+
+
+  /* modals */
+  .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:20}
+  .modal .box{background:var(--panel);border:1px solid var(--b);border-radius:12px;padding:16px;max-width:90vw;max-height:80vh;overflow:auto}
+  .close{float:right;cursor:pointer;color:#94a3b8}
+  .close:hover{color:#fff}
+
+  /* overlay between stages */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:50}
+  .overlay .msg{background:var(--panel);border:1px solid var(--b);border-radius:14px;padding:24px 28px;font-weight:800}
+
+  .card.sig-owned { border-color:#22c55e; }
+  .card.selected  { border-color:#fbbf24; box-shadow:0 0 0 2px #fbbf24 inset, 0 0 0 3px rgba(251,191,36,.35); }
+
+  #pickInfo{ display:none; }
+  @media (max-width:900px){.hero-wrap{grid-template-columns:1fr;gap:24px;margin-top:8vh}.hero-title{font-size:44px}}
+</style>
+<!-- Python injects window.SEED -->
+</head>
+<body>
+<div id="brandbar" class="brandbar">
+  <div class="brand-left">Imperial</div>
+  <div class="brand-center" id="dashCenter"></div>
+</div>
+
+<!-- LOGIN -->
+<div id="loginSection" class="hero-wrap" style="display:none;">
+  <div class="hero">
+    <h1 class="hero-title">
+      <span class="hero-welcome">Welcome</span>
+      <span class="hero-rest">to Imperial's card game</span>
+      <span class="hero-rest">for VC enthusiasts</span>
+    </h1>
+  </div>
+
+  <div id="loginView" class="login">
+    <label for="nameInput" class="label-lg muted" style="display:block;margin:0 0 14px;">Name</label>
+    <input id="nameInput" type="text" placeholder="Jane Doe"
+           style="width:100%;padding:14px 12px;border-radius:10px;border:1px solid #374151;background:#111827;color:#e5e7eb;font-size:16px;margin:0 0 22px;" />
+
+    <div class="label-lg" style="color:#e5e7eb;margin:12px 0 6px;">How risk averse are you?</div>
+    <label for="riskSlider" class="label-lg muted" style="display:block;margin:0 0 8px;">
+      Risk aversion percentile (1 = risk loving, 100 = very risk averse)
+    </label>
+    <input id="riskSlider" type="range" min="1" max="100" value="50" class="slider" />
+    <div class="small-lg">Selected: <span id="riskVal">50</span></div>
+
+    <button id="enterBtn" class="btn btn-lg" style="width:100%;margin-top:16px;">Enter</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appView" style="display:none;">
+  <header class="nav">
+    <div class="nav-left">
+      <a href="#" id="rulesLink">Rules</a>
+      <a href="#" id="tipsLink">Tips</a>
+      <a href="#" id="wonkLink">Wonkish</a>
+    </div>
+    <div class="title"><span id="stageTitle">Stage</span> <span id="stageLab">?</span></div>
+    <div class="right"><div id="budget" class="budget">Budget £—</div></div>
+  </header>
+
+  <div class="wrap">
+    <section>
+      <h3 id="aliveTitle" class="section-title">Alive</h3>
+      <div id="grid" class="grid"></div>
+
+      <h3 id="wreckTitle" class="section-title" style="display:none;margin-top:24px;">Wreckage</h3>
+      <div id="wreckGrid" class="grid" style="display:none;"></div>
+    </section>
+
+    <aside>
+      <div class="space-between">
+        <h3 style="margin:0;">Decision board</h3>
+        <div id="pickInfo" class="muted"></div>
+      </div>
+
+      <div id="idle" class="muted" style="margin-top:8px;">Click a card.</div>
+
+      <div id="panel" style="display:none;margin-top:8px;">
+        <div class="space-between"><strong>Signals</strong><span id="sigNote"></span></div>
+        <div id="sigLines" style="margin-top:6px;"></div>
+
+        <div style="margin:12px 0 6px;"><strong>Invest</strong></div>
+        <div class="row">
+          <input id="amt" type="number" inputmode="decimal" placeholder="Amount">
+          <button id="add" class="btn-cta-sm">Invest</button>
+        </div>
+        <div id="invList" class="muted" style="margin-top:6px;">Invested: 0</div>
+        <div id="msg" class="muted" style="margin-top:10px;"></div>
+      </div>
+
+      <button id="finish" class="btn-cta" style="margin-top:12px;">Finish Stage</button>
+    </aside>
+  </div>
+</div>
+
+<!-- Overlays and Modals -->
+<div id="stageOverlay" class="overlay"><div class="msg" id="overlayMsg">Your investments are hard at work…</div></div>
+
+<div id="rulesModal" class="modal"><div class="box"><span class="close" data-x="rulesModal">✕</span><h3>Rules</h3><p class="muted">Buy signals and invest per card. Wallet £100 total. If a color wipes out, those cards vanish next stage.</p></div></div>
+<div id="tipsModal"  class="modal"><div class="box"><span class="close" data-x="tipsModal">✕</span><h3>Tips</h3><ul><li>Higher signal overwrites the reveal.</li><li>Card turns green after any investment.</li></ul></div></div>
+<div id="wonkModal"  class="modal"><div class="box"><span class="close" data-x="wonkModal">✕</span><h3>Wonkish</h3><p class="muted">S1 A–7/8–K; S2 A/2–5/6–9/10–K; S3 2–3/4–5/6–7/8–9/10–J/Q–K/A; S4 exact N.</p></div></div>
+
+<div id="sigModal" class="modal"><div class="box"><span class="close" data-x="sigModal">✕</span><h3 id="sigTitle">Signal</h3><p id="sigDesc" class="muted"></p></div></div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const SEED = window.SEED || {};
+  let STAGE  = Number(SEED.stage) || 1;
+  let BUDGET = Number(SEED.budgetRemaining) || 0;
+
+  // Refs
+  const brandbar=document.getElementById("brandbar");
+  const loginSection=document.getElementById("loginSection");
+  const appView=document.getElementById("appView");
+  const nameInput=document.getElementById("nameInput");
+  const riskSlider=document.getElementById("riskSlider");
+  const riskVal=document.getElementById("riskVal");
+  const enterBtn=document.getElementById("enterBtn");
+  const dashCenter=document.getElementById("dashCenter");
+  const stageLab=document.getElementById("stageLab");
+  const stageTitle=document.getElementById("stageTitle");
+  const aliveTitle=document.getElementById("aliveTitle");
+  const budgetEl=document.getElementById("budget");
+  const grid=document.getElementById("grid");
+  const wreckGrid=document.getElementById("wreckGrid");
+  const wreckTitle=document.getElementById("wreckTitle");
+  const idle=document.getElementById("idle");
+  const panel=document.getElementById("panel");
+  const pickInfo=document.getElementById("pickInfo");
+  const invList=document.getElementById("invList");
+  const msg=document.getElementById("msg");
+  const finishBtn=document.getElementById("finish");
+  const sigLines=document.getElementById("sigLines");
+  const rulesModal=document.getElementById("rulesModal");
+  const tipsModal=document.getElementById("tipsModal");
+  const wonkModal=document.getElementById("wonkModal");
+  const sigModal=document.getElementById("sigModal");
+  const sigTitle=document.getElementById("sigTitle");
+  const sigDesc=document.getElementById("sigDesc");
+  const overlay=document.getElementById("stageOverlay");
+  const overlayMsg=document.getElementById("overlayMsg");
+
+  riskSlider.oninput = () => { riskVal.textContent = riskSlider.value; };
+
+  const SIGNALS = [
+    {id:1, cost:1, name:"Signal 1", info:"A–7 or 8–K"},
+    {id:2, cost:2, name:"Signal 2", info:"A / 2–5 / 6–9 / 10–K"},
+    {id:3, cost:4, name:"Signal 3", info:"2–3 / 4–5 / 6–7 / 8–9 / 10–J / Q–K / A"},
+    {id:4, cost:8, name:"Signal 4", info:"Exact number (2–14)"}
+  ];
+
+  function revealText(N, sid){
+    if (sid===1) return (N===14 || (2<=N && N<=7)) ? "A–7" : "8–K";
+    if (sid===2){
+      if (N===14) return "A";
+      if (2<=N && N<=5) return "2–5";
+      if (6<=N && N<=9) return "6–9";
+      return "10–K";
+    }
+    if (sid===3){
+      if (2<=N && N<=3) return "2–3";
+      if (4<=N && N<=5) return "4–5";
+      if (6<=N && N<=7) return "6–7";
+      if (8<=N && N<=9) return "8–9";
+      if (10<=N && N<=11) return "10–J";
+      if (12<=N && N<=13) return "Q–K";
+      return "A";
+    }
+    if (sid===4) return String(N);
+    return "";
+  }
+  const bestReveal = (sids, N) => (!N || !sids?.length) ? null : revealText(N, Math.max(...sids));
+
+  /* state */
+  let budget=BUDGET, cards=[], currentIdx=null;
+
+  function applyHeaderName(){
+    const nm=(localStorage.getItem("player_name")||"").trim();
+    dashCenter.textContent = nm ? `${nm}'s dashboard` : "Player's dashboard";
+  }
+  function setBudget(){
+    budgetEl.textContent = `Budget £${budget.toFixed(2)} remaining`;
+    const addBtn=document.getElementById("add");
+    if (addBtn) addBtn.disabled = (budget<=0);
+    sigLines.querySelectorAll(".buy-sig").forEach(b=>{
+      const lock = b.dataset.locked==="1";
+      b.disabled = lock || (budget<=0);
+    });
+  }
+  function requireFunds(x){ if(budget<=0 || budget<x){ alert("Budget exhausted."); return false; } return true; }
+
+  function refreshLabels(){
+    const nodes=grid.querySelectorAll(".card");
+    cards.forEach((c,i)=>{
+      const el=nodes[i];
+      const hasSig = !!c.current_reveal;
+      const invested = c.invest_total > 0;
+      el.className = `card ${c.color}`
+        + (hasSig ? " signaled" : "")
+        + (invested ? " invested" : "")
+        + (c.current_sid != null ? " sig-owned" : "");
+      const lines = [];
+      if (c.current_reveal) lines.push(c.current_reveal);
+      if (c.invest_total > 0) lines.push(`Invested £${c.invest_total}`);
+      el.querySelector(".label").textContent = lines.join("\n");
+    });
+  }
+
+  function loadActivity(){ try{ return JSON.parse(localStorage.getItem("activity_v1")||"{}"); }catch{ return {}; } }
+  function saveActivity(map){ localStorage.setItem("activity_v1", JSON.stringify(map)); }
+
+  function updateActivityWithCurrentStage(){
+    const act = loadActivity();
+    cards.forEach(c=>{
+      const stageSum = c.stage_invests.reduce((a,b)=>a+b,0);
+      const newSids = [...c.owned_sids].filter(sid=>!c.prev_owned.has(sid));
+      if (stageSum>0 || newSids.length>0){
+        const prev = act[c.card_id] || {color:c.color, N:c.N, invested:0, signals:[]};
+        prev.color = c.color; prev.N = c.N;
+        prev.invested = Number(prev.invested||0) + stageSum;
+        prev.signals = Array.from(new Set([...(prev.signals||[]), ...newSids])).sort((a,b)=>a-b);
+        act[c.card_id] = prev;
+      }
+    });
+    saveActivity(act);
+  }
+
+  function buildWreckage(aliveIds){
+    const act = loadActivity();
+    const deadEntries = Object.entries(act).filter(([cid, _]) => !aliveIds.has(Number(cid)));
+    if (!deadEntries.length){ wreckTitle.style.display="none"; wreckGrid.style.display="none"; wreckGrid.innerHTML=""; return; }
+    wreckTitle.style.display="block"; wreckGrid.style.display="grid"; wreckGrid.innerHTML="";
+    deadEntries.forEach(([cid, rec])=>{
+      const N = Number(rec.N||0);
+      const currentReveal = bestReveal(rec.signals||[], N);
+      const invested = Number(rec.invested||0);
+      const div=document.createElement("div");
+      div.className=`card ${rec.color||'blue'} dead`;
+      const lab=document.createElement("span"); lab.className="label";
+      const lines=[]; if(currentReveal) lines.push(currentReveal); if(invested>0) lines.push(`Invested £${invested}`);
+      lab.textContent = lines.join("\n");
+      div.appendChild(lab);
+      wreckGrid.appendChild(div);
+    });
+  }
+
+  function buildGrid(){
+    grid.innerHTML=""; cards=[];
+    const list=Array.isArray(SEED.cards)?SEED.cards:[];
+    const prevS=SEED.prevSignals || {};
+    const prevI=SEED.prevInvest || {};
+    if(!list.length){ grid.innerHTML='<div class="muted">No cards this stage.</div>'; buildWreckage(new Set()); return; }
+
+    const aliveIds = new Set();
+    list.slice(0,24).forEach((c,i)=>{
+      aliveIds.add(Number(c.card_id));
+      const owned = (prevS[c.card_id]||[]).slice();
+      const invest0 = Number(prevI[c.card_id]||0);
+      const N = Number(c.N);
+      const obj={
+        card_id:Number(c.card_id),
+        color:c.color==="red"?"red":"blue",
+        N,
+        prev_owned:new Set(owned),
+        owned_sids:new Set(owned),
+        current_sid: owned.length ? Math.max(...owned) : null,
+        current_reveal: owned.length ? bestReveal(owned, N) : null,
+        invest_total: invest0,
+        stage_invests: []
+      };
+      cards.push(obj);
+
+      const b=document.createElement("button");
+      b.type="button"; b.className=`card ${obj.color}`; b.dataset.idx=i;
+      b.innerHTML=`<span class="label"></span>`;
+      b.addEventListener("click",()=>{ if(STAGE!==4) selectCard(i); });
+      grid.appendChild(b);
+    });
+    refreshLabels();
+    buildWreckage(aliveIds);
+  }
+
+  function selectCard(i){
+    currentIdx=i;
+    idle.style.display="none";
+    panel.style.display="block";
+
+    grid.querySelectorAll('.card.selected').forEach(el=>el.classList.remove('selected'));
+    const btn = grid.querySelector(`.card[data-idx="${i}"]`);
+    if (btn) btn.classList.add('selected');
+
+    const c=cards[i];
+    pickInfo.textContent=`Card • ${c.color}`;
+    renderSigLines();
+    renderInvList();
+    msg.textContent="";
+  }
+
+  function lockUpTo(currentSid){
+    sigLines.querySelectorAll(".buy-sig").forEach(b=>{
+      const sid = Number(b.dataset.sid);
+      if (sid <= currentSid) { b.disabled = true; b.dataset.locked = "1"; }
+    });
+  }
+
+  function renderSigLines(){
+    const c = cards[currentIdx];
+    sigLines.innerHTML="";
+    SIGNALS.forEach(s=>{
+      const owned = c.owned_sids.has(s.id);
+      const locked = owned || (c.current_sid!=null && s.id <= c.current_sid);
+      const isCurrent = c.current_sid === s.id;
+      const line=document.createElement("div");
+      line.className="sig-line";
+      line.innerHTML=
+        `<div class="sig-left">
+           <button type="button" class="btn-cta-sm buy-sig" data-sid="${s.id}" ${locked?'data-locked="1" disabled':''}>Buy</button>
+           <div class="sig-name">${s.name}<span class="price muted">£${s.cost}</span></div>
+         </div>
+         <div class="right-side">
+           <span class="reveal" id="rev-${s.id}" style="display:${isCurrent?'inline-flex':'none'}">${isCurrent ? c.current_reveal || "" : ""}</span>
+           <button type="button" class="btn-ghost sig-info" data-sid="${s.id}">Info</button>
+         </div>`;
+      sigLines.appendChild(line);
+    });
+    if (c.current_sid!=null) lockUpTo(c.current_sid);
+    setBudget();
+  }
+
+  sigLines.addEventListener("click",(e)=>{
+    const buy=e.target.closest(".buy-sig");
+    if(buy){
+      if(currentIdx==null || buy.disabled) return;
+      const sid=Number(buy.dataset.sid);
+      const c=cards[currentIdx];
+      if (c.owned_sids.has(sid)) return;
+      const s=SIGNALS.find(x=>x.id===sid);
+      if(!requireFunds(s.cost)) return;
+
+      budget -= s.cost;
+      c.owned_sids.add(sid);
+      c.current_sid = sid;
+      c.current_reveal = revealText(c.N, sid);
+
+      const btnNow = grid.querySelector(`.card[data-idx="${currentIdx}"]`);
+      if (btnNow) btnNow.classList.add('sig-owned');
+
+      lockUpTo(sid);
+      sigLines.querySelectorAll(".reveal").forEach(r=>r.style.display="none");
+      const pill = document.getElementById(`rev-${sid}`);
+      if (pill){ pill.textContent = c.current_reveal; pill.style.display = "inline-flex"; }
+
+      setBudget(); refreshLabels();
+      return;
+    }
+    const info=e.target.closest(".sig-info");
+    if(info){
+      const sid=Number(info.dataset.sid); const s=SIGNALS.find(x=>x.id===sid);
+      sigTitle.textContent=`${s.name} — £${s.cost}`; sigDesc.textContent=s.info; sigModal.style.display="flex";
+    }
+  });
+  sigModal.addEventListener("click",(e)=>{ if(e.target===sigModal) sigModal.style.display="none"; });
+
+  function renderInvList(){
+    const c=cards[currentIdx];
+    const tot = c.stage_invests.reduce((a,b)=>a+b,0);
+    invList.textContent = `Invested: ${tot > 0 ? '£'+tot : '0'}`;
+  }
+  document.getElementById("add").addEventListener("click",()=>{
+    if(currentIdx==null || STAGE===4) return;
+    const v=parseFloat(document.getElementById("amt").value);
+    if(!isFinite(v)||v<=0){ msg.textContent="Enter a positive amount."; return; }
+    const vv=Math.round(v*2)/2; if(!requireFunds(vv)) return;
+    const c=cards[currentIdx];
+    c.stage_invests.push(vv);
+    c.invest_total = (c.invest_total||0) + vv;
+    budget -= vv;
+    document.getElementById("amt").value="";
+    setBudget(); renderInvList(); refreshLabels();
+  });
+
+  // Finish / Show performance
+  finishBtn.addEventListener("click",()=>{
+    const purchases={}, invest={}; let ss=0, si=0;
+
+    if (STAGE !== 4) {
+      (function updateActivity(){
+        const act = (function load(){ try{ return JSON.parse(localStorage.getItem("activity_v1")||"{}"); }catch{ return {}; } })();
+        cards.forEach(c=>{
+          const stageSum = c.stage_invests.reduce((a,b)=>a+b,0);
+          const newS = [...c.owned_sids].filter(x=>!c.prev_owned.has(x));
+          if (stageSum>0 || newS.length>0){
+            const prev = act[c.card_id] || {color:c.color, N:c.N, invested:0, signals:[]};
+            prev.color=c.color; prev.N=c.N;
+            prev.invested = Number(prev.invested||0) + stageSum;
+            prev.signals = Array.from(new Set([...(prev.signals||[]), ...newS])).sort((a,b)=>a-b);
+            act[c.card_id] = prev;
+          }
+        });
+        localStorage.setItem("activity_v1", JSON.stringify(act));
+      })();
+
+      cards.forEach(c=>{
+        const prev = c.prev_owned;
+        const newS = [...c.owned_sids].filter(x=>!prev.has(x));
+        if(newS.length){ purchases[c.card_id] = newS.sort((a,b)=>a-b); newS.forEach(id=>{ const s=SIGNALS.find(x=>x.id===id); if(s) ss+=s.cost; }); }
+        const stageSum = c.stage_invests.reduce((a,b)=>a+b,0);
+        if(stageSum>0){ invest[c.card_id]=Number(stageSum); si+=stageSum; }
+      });
+    }
+
+    const payload={ stage:STAGE, player_name:localStorage.getItem("player_name")||"",
+      risk_percentile:Number(localStorage.getItem("risk_pct")||""), purchases, invest,
+      client_spent_signals:ss, client_spent_invest:si, client_budget_remaining:budget };
+
+    fetch("/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
+      .then(()=>{
+        if (STAGE === 4) {
+          overlayMsg.textContent = "Preparing results…";
+          overlay.style.display = "flex";
+          setTimeout(()=>{ location.href = "/results"; }, 600);
+        } else {
+          overlayMsg.textContent = "Your investments are hard at work…";
+          overlay.style.display = "flex";
+          setTimeout(()=>{ location.href = "/"; }, 5000);
+        }
+      })
+      .catch(()=>alert("POST failed. Is Python running?"));
+  });
+
+  // modals
+  document.querySelectorAll(".close").forEach(x=>x.onclick=()=>{ document.getElementById(x.dataset.x).style.display="none"; });
+  document.getElementById("rulesLink").onclick=(e)=>{e.preventDefault();rulesModal.style.display="flex";};
+  document.getElementById("tipsLink").onclick =(e)=>{e.preventDefault();tipsModal.style.display="flex";};
+  document.getElementById("wonkLink").onclick =(e)=>{e.preventDefault();wonkModal.style.display="flex";};
+  [rulesModal,tipsModal,wonkModal].forEach(m=>m.addEventListener("click",(e)=>{ if(e.target===m) m.style.display="none"; }));
+
+  // view toggles
+  function showLogin(){ brandbar.style.display="none"; loginSection.style.display="grid"; appView.style.display="none"; dashCenter.textContent=""; }
+  function showApp(){
+  brandbar.style.display = "flex";
+  loginSection.style.display = "none";
+  appView.style.display = "block";
+  applyHeaderName();
+
+  if (STAGE === 4){
+    stageTitle.textContent = "End of Game";
+    stageLab.textContent = "";
+    stageLab.style.display = "none";
+    aliveTitle.textContent = "Survivors";
+    finishBtn.textContent = "Show performance";
+    panel.style.display = "none";
+    idle.textContent = "End of game.";
+  } else {
+    stageTitle.textContent = "Stage";
+    stageLab.textContent = String(STAGE);
+    stageLab.style.display = "inline";
+    aliveTitle.textContent = "Alive";
+    finishBtn.textContent = "Finish Stage";
+  }
+
+  buildGrid();
+  budget = BUDGET;
+  setBudget();
+}
+  if (STAGE===1){ localStorage.removeItem("player_name"); localStorage.removeItem("risk_pct"); localStorage.removeItem("activity_v1"); showLogin(); }
+  else { const n=localStorage.getItem("player_name"), r=localStorage.getItem("risk_pct"); if(n&&r) showApp(); else showLogin(); }
+
+  enterBtn.addEventListener("click", ()=>{ const nm=(nameInput.value||"Player").trim(); const rp=String(riskSlider.value||"50"); localStorage.setItem("player_name", nm); localStorage.setItem("risk_pct", rp); showApp(); });
+});
+</script>
+</body>
+</html>
