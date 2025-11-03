@@ -266,10 +266,10 @@ def value_of_info_plot(sig_grid, means, title, signal_cost=None, y_range=None):
     mu_max, mu_lin, mu_sq = means
 
     fig = go.Figure()
-    # Legend order: E(payoff), Top‑5 E(payoff), Highest expected payoff, with consistent alpha
-    fig.add_trace(go.Scatter(x=sig_grid, y=mu_lin, mode="lines+markers", name="E[payoff] weighted",      line=dict(color=GREY), opacity=ALPHA))
-    fig.add_trace(go.Scatter(x=sig_grid, y=mu_sq,  mode="lines+markers", name="Top‑5 E[payoff] weighted", line=dict(color=RED),  opacity=ALPHA))
-    fig.add_trace(go.Scatter(x=sig_grid, y=mu_max, mode="lines+markers", name="Highest E[payoff]",        line=dict(color=BLUE), opacity=ALPHA))
+    # Grouped bars: E(payoff), Top‑5 E(payoff), Highest expected payoff
+    fig.add_trace(go.Bar(x=sig_grid, y=mu_lin, name="E[payoff] weighted", marker_color=GREY, opacity=ALPHA))
+    fig.add_trace(go.Bar(x=sig_grid, y=mu_sq,  name="Top‑5 E[payoff] weighted", marker_color=RED,  opacity=ALPHA))
+    fig.add_trace(go.Bar(x=sig_grid, y=mu_max, name="Highest E[payoff]", marker_color=BLUE, opacity=ALPHA))
 
     subtitle = f" — Signal cost £{signal_cost:g}" if signal_cost is not None else ""
 
@@ -286,6 +286,7 @@ def value_of_info_plot(sig_grid, means, title, signal_cost=None, y_range=None):
 
     fig.update_layout(
         template="plotly_white",
+        barmode="group",
         legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font=_DEF_FONT),
         margin=dict(l=10, r=10, t=68, b=56),
         font=_DEF_FONT,
