@@ -1,0 +1,9 @@
+[theme]
+# Force light mode regardless of system setting
+base = "light"
+
+# Optionally keep colors aligned with the app's styling
+primaryColor = "#141450"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#000000"
