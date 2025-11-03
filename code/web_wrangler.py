@@ -240,12 +240,22 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
     _POSTED.clear()
     _END_EVENT.clear()
 
+    # Build lightweight cards with optional median/top2 fields
+    cards_df = df.loc[df["alive"], :].copy()
+    cols = [c for c in ("card_id", "color", "N", "med", "sum2") if c in cards_df.columns]
+    cards = []
+    for _, r in cards_df[cols].iterrows():
+        rec = {"card_id": int(r.get("card_id")), "color": str(r.get("color", "blue"))}
+        if "med" in cols: rec["med"] = int(r.get("med"))
+        if "sum2" in cols: rec["sum2"] = int(r.get("sum2"))
+        if "N" in cols: rec["N"] = int(r.get("N"))
+        cards.append(rec)
+
     ctx = {
         "stage": stage,
         "total_budget": 100.0,  # UI label only
         "wallet": float(wallet),
-        "cards": df.loc[df["alive"], ["card_id", "color", "N"]]
-                   .astype({"card_id": int, "N": int}).to_dict("records"),
+        "cards": cards,
         "prev_signals": _prev_signals_map(df),
         "prev_invest": _prev_invest_map(df),
         "results": results or {},

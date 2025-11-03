@@ -60,6 +60,8 @@ ACE_PAYOUTS    = [10, 20, 30, 40]
 
 
 POST_NPZ_DEFAULT = "../output/post_mc.npz"
+# Joint posterior (Stage‑1 bucket + R2) from precomp_joint.py
+POST_NPZ_JOINT_DEFAULT = "../output/post_joint.npz"
 
 # Histogram spec for net-return distributions (percent)
 HIST_START = -100.0   # inclusive lower bound
@@ -228,6 +230,131 @@ def realize_payout(hands, w, scale_pay, scale_param, ace_payout,
     # express net as % of original BUDGET for consistent scaling
     net_return = 100.0 * ((gross - BUDGET) / BUDGET) if BUDGET > 0 else 0.0
     return net_return
+
+# ===============================
+# Dynamic two‑stage implementation
+# ===============================
+
+def _second_highest_rank(pile: np.ndarray) -> int:
+    arr = np.sort(np.asarray(pile, int))
+    return int(arr[-2]) if arr.size >= 2 else int(arr[-1])
+
+def _weights_max(sc: np.ndarray) -> np.ndarray:
+    p = np.array(sc, float); mx = np.max(p)
+    winners = np.where(p == mx)[0]
+    w = np.zeros_like(p, float); w[winners] = 1.0 / max(1, winners.size)
+    return w
+
+def _weights_linear(sc: np.ndarray) -> np.ndarray:
+    p = np.array(sc, float); s = float(np.sum(p))
+    return (p / s) if s > 0 else (np.ones_like(p)/len(p))
+
+def _weights_top5(sc: np.ndarray) -> np.ndarray:
+    p = np.array(sc, float)
+    idx = np.argsort(p)[-5:]
+    w = np.zeros_like(p, float); sm = float(np.sum(p[idx]))
+    w[idx] = (p[idx] / sm) if sm > 0 else (1.0 / 5.0)
+    return w
+
+def _load_joint_posteriors(npz_path: str):
+    p = pathlib.Path(npz_path)
+    if not p.exists():
+        raise FileNotFoundError(f"joint post_npz not found: {p}")
+    with np.load(p, allow_pickle=False) as z:
+        req = {"joint_median_keys","joint_median_mat","joint_top2_keys","joint_top2_mat","joint_max_keys","joint_max_mat","joint_min_keys","joint_min_mat","prior_rmax"}
+        missing = [k for k in req if k not in z.files]
+        if missing:
+            raise ValueError(f"joint NPZ missing arrays: {missing}")
+        jm_keys = np.asarray(z["joint_median_keys"], int); jm_mat = np.asarray(z["joint_median_mat"], float)
+        jt_keys = np.asarray(z["joint_top2_keys"],  int); jt_mat = np.asarray(z["joint_top2_mat"],  float)
+        jx_keys = np.asarray(z["joint_max_keys"],   int); jx_mat = np.asarray(z["joint_max_mat"],   float)
+        jn_keys = np.asarray(z["joint_min_keys"],   int); jn_mat = np.asarray(z["joint_min_mat"],   float)
+        prior   = np.asarray(z["prior_rmax"], float)
+    def _rowmap(keys: np.ndarray):
+        return {int(k): int(i) for i, k in enumerate(keys.tolist())}
+    return {
+        "median": (jm_keys, jm_mat, _rowmap(jm_keys)),
+        "top2":   (jt_keys, jt_mat, _rowmap(jt_keys)),
+        "max":    (jx_keys, jx_mat, _rowmap(jx_keys)),
+        "min":    (jn_keys, jn_mat, _rowmap(jn_keys)),
+    }, prior
+
+def run_single_round_dynamic(
+    rmax_tables, joint_tables, prior_rmax,
+    chosen_idx, signal_type,
+    hands, medians, top2sum, max_rank, min_rank,
+    scale_pay, scale_param, ace_payout, signal_cost,
+    stage1_alloc,
+):
+    ranks_all = np.arange(2, 15, dtype=int)
+    if scale_pay == 0:
+        h_vals = np.array([float(ace_payout) if r == ACE_RANK else 0.0 for r in ranks_all], float)
+        h_vals2 = np.array([0.5*float(ace_payout) if r == ACE_RANK else 0.0 for r in ranks_all], float)
+    else:
+        h_vals = np.array([float(ace_payout) * (float(scale_param) ** max(0, ACE_RANK - r)) for r in ranks_all], float)
+        h_vals2 = np.array([0.5*float(ace_payout) * (float(scale_param) ** max(0, ACE_RANK - r)) for r in ranks_all], float)
+
+    # Stage‑1 buckets
+    if signal_type == "median": buckets = np.asarray(medians, int)
+    elif signal_type == "top2": buckets = np.asarray(top2sum, int)
+    elif signal_type == "max":  buckets = np.asarray(max_rank, int)
+    else:                         buckets = np.asarray(min_rank, int)
+
+    post_table = rmax_tables[signal_type]
+    prior_vec = np.asarray(prior_rmax, float)
+    chosen_set = set(int(x) for x in np.asarray(chosen_idx, int))
+    scores1 = np.zeros(NUM_PILES, float)
+    for i in range(NUM_PILES):
+        vec = np.asarray(post_table.get(int(buckets[i]), prior_vec), float) if (i in chosen_set) else prior_vec
+        scores1[i] = float(np.dot(h_vals, vec))
+
+    # Weights
+    w1_max  = _weights_max(scores1)
+    w1_lin  = _weights_linear(scores1)
+    w1_top5 = _weights_top5(scores1)
+
+    # Budgets: signals only from Budget1
+    alpha = min(1.0, max(0.0, float(stage1_alloc)))
+    budget1 = alpha * float(BUDGET)
+    info_cost = len(chosen_idx) * float(signal_cost)
+    investable1 = max(0.0, budget1 - info_cost)
+    budget2 = max(0.0, float(BUDGET) - budget1)
+
+    # Stage‑2 scores on invested piles using joint(T_bucket, R2)
+    keys, mat3d, rowmap = joint_tables[signal_type]
+    R2 = np.array([_second_highest_rank(h) for h in hands], int)
+    def scores2_from(w1):
+        sc = np.zeros(NUM_PILES, float)
+        if investable1 <= 0:
+            return sc
+        idxs = np.where(w1 > 0)[0]
+        for i in idxs:
+            b = int(buckets[i]); r2k = int(R2[i]) - 2
+            if (b in rowmap) and (0 <= r2k < 13):
+                vec = np.asarray(mat3d[rowmap[b], r2k, :], float)
+            else:
+                vec = prior_vec
+            sc[i] = float(np.dot(h_vals2, vec))
+        return sc
+
+    sc2_max  = scores2_from(w1_max)
+    sc2_lin  = scores2_from(w1_lin)
+    sc2_top5 = scores2_from(w1_top5)
+
+    w2_max  = _weights_max(sc2_max)
+    w2_lin  = _weights_linear(sc2_lin)
+    w2_top5 = _weights_top5(sc2_top5)
+
+    # Realize at end: Stage‑1 + Stage‑2
+    n_max = realize_payout(hands, w1_max,  scale_pay, scale_param, ace_payout,      investable1) \
+          + realize_payout(hands, w2_max,  scale_pay, scale_param, 0.5*ace_payout, budget2)
+    n_lin = realize_payout(hands, w1_lin,  scale_pay, scale_param, ace_payout,      investable1) \
+          + realize_payout(hands, w2_lin,  scale_pay, scale_param, 0.5*ace_payout, budget2)
+    n_top = realize_payout(hands, w1_top5, scale_pay, scale_param, ace_payout,      investable1) \
+          + realize_payout(hands, w2_top5, scale_pay, scale_param, 0.5*ace_payout, budget2)
+
+    return dict(net_return_max=float(n_max), net_return_linear=float(n_lin), net_return_top5=float(n_top))
+
 
 # -----------------------
 # One round

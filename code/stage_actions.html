@@ -7,7 +7,7 @@
 <style>
   @font-face{font-family:'Source Sans Pro'; font-style:normal; font-weight:400; font-display:swap; src: local('Source Sans Pro Regular'), local('SourceSansPro-Regular'), url('/assets/SourceSansPro-Regular.woff2') format('woff2'), url('/assets/SourceSansPro-Regular.ttf.woff2') format('woff2');}
   @font-face{font-family:'Source Sans Pro'; font-style:normal; font-weight:600; font-display:swap; src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url('/assets/SourceSansPro-Semibold.woff2') format('woff2'), url('/assets/SourceSansPro-Semibold.ttf.woff2') format('woff2');}
-  :root { --blue:#2b6cb0; --red:#c53030; --green:#059669; --bg:#ffffff; --panel:#ffffff; --cta:#f59e0b; --ctatxt:#111827; --b:#e5e7eb; }
+  :root { --blue:#2b6cb0; --red:#c53030; --green:#059669; --bg:#ffffff; --panel:#ffffff; --cta:#f59e0b; --ctatxt:#111827; --b:#e5e7eb; --infoW:72px; }
   *{box-sizing:border-box}
   /* Prefer Source Sans Pro to match Streamlit page */
   body{margin:0;font-family:"Source Sans Pro", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif; background:var(--bg); color:#111827; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale}
@@ -23,21 +23,32 @@
   .right{display:flex;gap:16px}
   .budget{font-weight:700}
 
-  .wrap{display:grid;grid-template-columns:1fr 420px;gap:20px;padding:40px 20px 20px;margin-left:72px}
+  /* Decision board width = 420 - invest(170) + 0.5*info button width */
+  .wrap{display:grid;grid-template-columns:1fr calc(420px - 170px + (var(--infoW)/2));gap:20px;padding:40px 20px 20px;margin-left:72px}
   /* Card sizing variables */
-  :root{ --cardW:110px; --cardH:150px; --cardBorder:10px; --cardRadius:14px; }
+  :root{ --cardW:120px; --cardH:165px; --cardBorder:11px; --cardRadius:15px; --pileLift:14px; }
   .grid{display:grid;grid-template-columns:repeat(5,var(--cardW));gap:48px 72px;align-content:start;overflow:visible}
-  .pile{position:relative;width:var(--cardW);height:var(--cardH);overflow:visible}
-  .pile.raised{ transform: translateY(-8px); }
-  .pile.raised::after{ content:""; position:absolute; left:calc(var(--cardW)/2 - 4px); bottom:-10px; width:8px; height:8px; background:#000; border-radius:50%; }
+  .pile{position:relative;width:var(--cardW);height:var(--cardH);overflow:visible;transition:transform .15s ease, box-shadow .15s ease}
+  .pile.raised{ transform: translateY(calc(-1 * var(--pileLift))); }
+  .pile.raised::after{ content:""; position:absolute; left:calc(var(--cardW)/2 - 7px); bottom:-10px; width:14px; height:14px; background:#000; border-radius:50%; }
+  /* Raised pile adds a stronger drop shadow like button hover (no colour overlays) */
+  .pile.raised .card.top{ box-shadow:0 12px 28px rgba(0,0,0,.28), 0 0 0 0.5px #000; }
   .section-title{margin:6px 0 12px 0}
 
   .card{width:var(--cardW);height:var(--cardH);border:var(--cardBorder) solid #fff;border-radius:var(--cardRadius);cursor:pointer;position:relative;transition:border-color .15s, box-shadow .15s, filter .15s;box-shadow:0 0 0 0.5px #000}
   .card.blue{background:#111318} .card.red{background:var(--red)}
-  .card.signaled{box-shadow:0 0 0 3px #36c51dff inset}
-  .card.invested{background:var(--green)!important}
+  /* Ensure invested state does not change fill color */
+  .card.blue.invested{ background:#111318 !important }
+  .card.red.invested{ background:var(--red) !important }
+  /* Remove coloured overlays for signalled/invested states */
+  .card.signaled{ box-shadow:none }
+  /* Also raise the selected top card itself as an extra safeguard */
+  .card.top.selected{ transform: translateY(calc(-1 * var(--pileLift))); box-shadow:0 12px 28px rgba(0,0,0,.28), 0 0 0 0.5px #000 }
+  .card.invested{ box-shadow:none }
+  .med-reveal{ font-weight:500; color:#6b7280 }
   .card.dead{filter:grayscale(40%);opacity:.6;cursor:default}
-  .label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#fff;font-weight:800;font-size:15px;white-space:pre-line;pointer-events:none}
+  /* Overlay text on top card; padded down to avoid pile tag */
+  .label{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:flex-start;text-align:left;color:#fff;font-weight:600;font-size:12px;line-height:1.2;white-space:pre-line;pointer-events:none;padding:28px 12px 10px}
   /* Full under-cards (non-interactive), positioned to the left */
   .underCard{position:absolute;left:0;top:0;width:var(--cardW);height:var(--cardH);background:#111318;
     border:var(--cardBorder) solid #fff;border-radius:var(--cardRadius);box-shadow:0 0 0 0.5px #000; pointer-events:none; z-index:0}
@@ -54,6 +65,7 @@
   .btn[disabled]{opacity:.5;cursor:not-allowed}
   /* Make all buttons match Enter button styling and be narrower */
   .btn-cta, .btn-cta-sm, .btn-ghost{ padding:10px 14px; border-radius:10px; border:1px solid var(--b); background:#111827; color:#e5e7eb; width:auto; font-weight:700 }
+  .btn-ghost{ min-width:var(--infoW); text-align:center }
   .btn:hover, .btn-cta:hover, .btn-cta-sm:hover, .btn-ghost:hover { transform:translateY(-1px); filter:brightness(1.1) saturate(1.1); box-shadow:0 6px 16px rgba(0,0,0,.18); }
   .btn:active, .btn-cta:active, .btn-cta-sm:active, .btn-ghost:active { transform:none; filter:none; box-shadow:none; }
 
@@ -114,8 +126,9 @@
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:50}
   .overlay .msg{background:var(--panel);border:1px solid var(--b);border-radius:14px;padding:24px 28px;font-weight:800}
 
-  .card.sig-owned { border-color:#22c55e; }
-  .card.selected  { border-color:#fbbf24; box-shadow:0 0 0 2px #fbbf24 inset, 0 0 0 3px rgba(251,191,36,.35); }
+  .card.sig-owned { border-color:#fff; }
+  /* Selection: keep subtle border only, let pile shadow show */
+  .card.selected  { border-color:#fff; box-shadow:none; }
 
   #pickInfo{ display:none; }
   /* Hide the Alive heading */
@@ -170,7 +183,13 @@ window.__enterClick = function(){
     <input id="riskSlider" type="range" min="1" max="5" value="3" class="slider" />
     <div class="small-lg">Selected: <span id="riskVal">3</span> — <span id="riskPhrase">Balanced 🤝</span></div>
 
-    <button id="enterBtn" class="btn btn-lg" style="width:auto;min-width:160px;margin-top:16px;" onclick="window.__enterClick && window.__enterClick()">Enter</button>
+    <div class="label-lg" style="color:#111827;margin:18px 0 6px;">Game type</div>
+    <div class="row" style="gap:16px; margin-bottom:10px;">
+      <label><input type="radio" name="gameType" value="g1" checked style="margin-right:6px;">Game 1</label>
+      <label><input type="radio" name="gameType" value="g2" style="margin-right:6px;">Game 2</label>
+    </div>
+
+    <button id="enterBtn" class="btn btn-lg" style="width:auto;min-width:160px;margin-top:16px;">Enter</button>
   </div>
 </div>
 
@@ -192,8 +211,7 @@ window.__enterClick = function(){
       <h3 id="aliveTitle" class="section-title">Alive</h3>
       <div id="grid" class="grid"></div>
 
-      <h3 id="wreckTitle" class="section-title" style="display:none;margin-top:24px;">Wreckage</h3>
-      <div id="wreckGrid" class="grid" style="display:none;"></div>
+      
     </section>
 
     <aside>
@@ -252,8 +270,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const aliveTitle=document.getElementById("aliveTitle");
   const budgetEl=document.getElementById("budget");
   const grid=document.getElementById("grid");
-  const wreckGrid=document.getElementById("wreckGrid");
-  const wreckTitle=document.getElementById("wreckTitle");
+  // Wreckage removed for streamlined UI
   const idle=document.getElementById("idle");
   const panel=document.getElementById("panel");
   const pickInfo=document.getElementById("pickInfo");
@@ -282,35 +299,40 @@ document.addEventListener("DOMContentLoaded", () => {
   riskSlider.oninput = updateRisk;
   updateRisk();
 
-  // Original multi-signal catalog (no single-signal mode)
-  const SIGNALS = [
-    {id:1, cost:1, name:"Signal 1", info:"A–7 or 8–K"},
-    {id:2, cost:2, name:"Signal 2", info:"A / 2–5 / 6–9 / 10–K"},
-    {id:3, cost:4, name:"Signal 3", info:"2–3 / 4–5 / 6–7 / 8–9 / 10–J / Q–K / A"},
-    {id:4, cost:8, name:"Signal 4", info:"Exact number (2–14)"}
-  ];
-
-  function revealText(N, sid){
-    if (sid===1) return (N===14 || (2<=N && N<=7)) ? "A–7" : "8–K";
-    if (sid===2){
-      if (N===14) return "A";
-      if (2<=N && N<=5) return "2–5";
-      if (6<=N && N<=9) return "6–9";
-      return "10–K";
+  // Game mode (set from localStorage by Enter). Default g1 (median)
+  let SINGLE_SIGNAL_MODE = true;
+  let SIGNAL_MODE = 'median';
+  let SIGNAL_COST = 5;
+  let SIGNALS = [];
+  function initSignalsFromGame(){
+    const GAME = (localStorage.getItem('game_type') || 'g1');
+    if (GAME === 'g2'){
+      SINGLE_SIGNAL_MODE = true;
+      SIGNAL_MODE = 'top2';
+      SIGNAL_COST = 5;
+      const SIGNAL_INFO = 'This signal will tell you the sum of the top two ranks in the pile. A pile can have duplicate ranks.';
+      SIGNALS = [ { id:1, cost:SIGNAL_COST, name:'Sum of top 2 rank', info: SIGNAL_INFO } ];
+    } else {
+      SINGLE_SIGNAL_MODE = true;
+      SIGNAL_MODE = 'median';
+      SIGNAL_COST = 5;
+      const SIGNAL_INFO = 'This signal will tell you the median of the pile. A pile can have duplicate ranks. E.g. the median of a pile [2,5,7,9,11] is 7 and the median of the pile [3,4,4,4,5] is 4.';
+      SIGNALS = [ { id:1, cost:SIGNAL_COST, name:'Median', info: SIGNAL_INFO } ];
     }
-    if (sid===3){
-      if (2<=N && N<=3) return "2–3";
-      if (4<=N && N<=5) return "4–5";
-      if (6<=N && N<=7) return "6–7";
-      if (8<=N && N<=9) return "8–9";
-      if (10<=N && N<=11) return "10–J";
-      if (12<=N && N<=13) return "Q–K";
-      return "A";
-    }
-    if (sid===4) return String(N);
-    return "";
   }
-  const bestReveal = (sids, N) => (!N || !sids?.length) ? null : revealText(N, Math.max(...sids));
+  initSignalsFromGame();
+
+  function revealText(N, _sid){
+    // Single-signal games only: return simple category for speed
+    if (SIGNAL_MODE==='top2'){
+      if (N>=12) return 'High';
+      if (N>=8) return 'Mid';
+      return 'Low';
+    }
+    // median-like split
+    return (N>=8) ? 'High median' : 'Low median';
+  }
+  const bestReveal = (sids, val) => (!val || !sids?.length) ? null : String(val);
 
   /* state */
   let budget=BUDGET, cards=[], currentIdx=null;
@@ -336,12 +358,21 @@ document.addEventListener("DOMContentLoaded", () => {
       const el=nodes[i];
       const hasSig = !!c.current_reveal;
       const invested = c.invest_total > 0;
-      el.className = `card ${c.color}`
+      const wasSelected = el.classList.contains('selected');
+      el.className = `card top ${c.color}`
         + (hasSig ? " signaled" : "")
         + (invested ? " invested" : "")
-        + (c.current_sid != null ? " sig-owned" : "");
+        + (c.current_sid != null ? " sig-owned" : "")
+        + (wasSelected ? " selected" : "");
       const lines = [];
-      if (c.current_reveal) lines.push(c.current_reveal);
+      if (c.current_reveal){
+        if (typeof SINGLE_SIGNAL_MODE !== 'undefined' && SINGLE_SIGNAL_MODE){
+          const lab = (typeof SIGNAL_MODE!== 'undefined' && SIGNAL_MODE==='top2') ? 'Sum of top 2' : 'Median';
+          lines.push(`${lab} = ${c.current_reveal}`);
+        } else {
+          lines.push(String(c.current_reveal));
+        }
+      }
       if (c.invest_total > 0) lines.push(`Invested £${c.invest_total}`);
       el.querySelector(".label").textContent = lines.join("\n");
     });
@@ -366,58 +397,30 @@ document.addEventListener("DOMContentLoaded", () => {
     saveActivity(act);
   }
 
-  function buildWreckage(aliveIds){
-    const act = loadActivity();
-    const deadEntries = Object.entries(act).filter(([cid, _]) => !aliveIds.has(Number(cid)));
-    if (!deadEntries.length){ wreckTitle.style.display="none"; wreckGrid.style.display="none"; wreckGrid.innerHTML=""; return; }
-    wreckTitle.style.display="block"; wreckGrid.style.display="grid"; wreckGrid.innerHTML="";
-    deadEntries.forEach(([cid, rec])=>{
-      const N = Number(rec.N||0);
-      const currentReveal = bestReveal(rec.signals||[], N);
-      const invested = Number(rec.invested||0);
-      const pile=document.createElement("div");
-      pile.className="pile"; pile.dataset.idx=i;
-      const offsets=[48,36,24,12];
-      offsets.forEach(off=>{
-        const u=document.createElement("div");
-        u.className="underCard blue";
-        u.style.left = (-off)+"px";
-        pile.appendChild(u);
-      });
-      const div=document.createElement("div");
-      div.className=`card top blue dead`;
-      const lab=document.createElement("span"); lab.className="label";
-      const lines=[]; if(currentReveal) lines.push(currentReveal); if(invested>0) lines.push(`Invested £${invested}`);
-      lab.textContent = lines.join("\n");
-      div.appendChild(lab);
-      pile.appendChild(div);
-      wreckGrid.appendChild(pile);
-    });
-  }
+  // Wreckage rendering removed
 
   function buildGrid(){
     grid.innerHTML=""; cards=[];
-    const list=Array.isArray(SEED.cards)?SEED.cards:[];
+    const list=Array.isArray(SEED.cards)?SEED.cards.slice(0,9):[];
     const prevS=SEED.prevSignals || {};
     const prevI=SEED.prevInvest || {};
-    if(!list.length){ grid.innerHTML='<div class="muted">No cards this stage.</div>'; buildWreckage(new Set()); return; }
+    if(!list.length){ grid.innerHTML='<div class="muted">No cards this stage.</div>'; return; }
 
-    const aliveIds = new Set();
-    list.slice(0,9).forEach((c,i)=>{
-      aliveIds.add(Number(c.card_id));
+    function renderOne(i){
+      if (i>=list.length){ refreshLabels(); return; }
+      const c=list[i];
       const owned = (prevS[c.card_id]||[]).slice();
       const invest0 = Number(prevI[c.card_id]||0);
-      const N = Number(c.N);
+      // Use server-provided med/sum2 if present; fallback to N
+      const Nmed = (c.med!=null) ? Number(c.med) : Number(c.N);
+      const Nsum = (c.sum2!=null)? Number(c.sum2): Number(c.N);
       const obj={
-        card_id:Number(c.card_id),
-        color:"blue",
-        N,
-        prev_owned:new Set(owned),
-        owned_sids:new Set(owned),
+        card_id:Number(c.card_id), color:"blue", N,
+        prev_owned:new Set(owned), owned_sids:new Set(owned),
         current_sid: owned.length ? Math.max(...owned) : null,
-        current_reveal: owned.length ? bestReveal(owned, N) : null,
-        invest_total: invest0,
-        stage_invests: []
+        med_val: Nmed, sum2_val: Nsum,
+        current_reveal: owned.length ? ((SIGNAL_MODE==='top2')? String(Nsum) : String(Nmed)) : null,
+        invest_total: invest0, stage_invests: []
       };
       cards.push(obj);
 
@@ -436,9 +439,11 @@ document.addEventListener("DOMContentLoaded", () => {
       b.addEventListener("click",()=>{ if(STAGE!==4) selectCard(i); });
       pile.appendChild(b);
       grid.appendChild(pile);
-    });
-    refreshLabels();
-    buildWreckage(aliveIds);
+
+      requestAnimationFrame(()=>renderOne(i+1));
+    }
+
+    requestAnimationFrame(()=>renderOne(0));
   }
 
   function selectCard(i){
@@ -474,18 +479,18 @@ document.addEventListener("DOMContentLoaded", () => {
     SIGNALS.forEach(s=>{
       const owned = c.owned_sids.has(s.id);
       const locked = owned || (c.current_sid!=null && s.id <= c.current_sid);
-      const isCurrent = c.current_sid === s.id;
       const line=document.createElement("div");
       line.className="sig-line";
-      line.innerHTML=
-        `<div class="sig-left">
-           <button type="button" class="btn-cta-sm buy-sig" data-sid="${s.id}" ${locked?'data-locked="1" disabled':''}>Buy</button>
-           <div class="sig-name">${s.name}<span class="price muted">£${s.cost}</span></div>
-         </div>
-         <div class="right-side">
-           <span class="reveal" id="rev-${s.id}" style="display:${isCurrent?'inline-flex':'none'}">${isCurrent ? c.current_reveal || "" : ""}</span>
-           <button type="button" class="btn-ghost sig-info" data-sid="${s.id}">Info</button>
-         </div>`;
+      if (owned) {
+        const val = c.current_reveal || '';
+        const lab = (SIGNAL_MODE==='top2') ? 'Sum of top 2' : 'Median';
+        line.innerHTML = `<span class="med-reveal">${lab} = ${val}</span>`;
+      } else {
+        line.innerHTML = `
+          <button type="button" class="btn-cta-sm buy-sig" data-sid="${s.id}" ${locked?'data-locked="1" disabled':''}>Buy signal</button>
+          <span class="muted">£${s.cost}</span>
+          <button type="button" class="btn-ghost sig-info" data-sid="${s.id}">Info</button>`;
+      }
       sigLines.appendChild(line);
     });
     if (c.current_sid!=null) lockUpTo(c.current_sid);
@@ -505,17 +510,14 @@ document.addEventListener("DOMContentLoaded", () => {
       budget -= s.cost;
       c.owned_sids.add(sid);
       c.current_sid = sid;
-      c.current_reveal = revealText(c.N, sid);
+      // Use actual server-provided value for current mode
+      c.current_reveal = (SIGNAL_MODE==='top2') ? String(c.sum2_val) : String(c.med_val);
 
       const btnNow = grid.querySelector(`.card[data-idx="${currentIdx}"]`);
-      if (btnNow) btnNow.classList.add('sig-owned');
+      if (btnNow) { btnNow.classList.add('sig-owned'); btnNow.classList.add('signaled'); }
 
       lockUpTo(sid);
-      sigLines.querySelectorAll(".reveal").forEach(r=>r.style.display="none");
-      const pill = document.getElementById(`rev-${sid}`);
-      if (pill){ pill.textContent = c.current_reveal; pill.style.display = "inline-flex"; }
-
-      setBudget(); refreshLabels();
+      setBudget(); refreshLabels(); renderSigLines();
       return;
     }
     const info=e.target.closest(".sig-info");
@@ -633,8 +635,18 @@ document.addEventListener("DOMContentLoaded", () => {
   if (STAGE===1){ localStorage.removeItem("player_name"); localStorage.removeItem("risk_pct"); localStorage.removeItem("activity_v1"); showLogin(); }
   else { const n=localStorage.getItem("player_name"), r=localStorage.getItem("risk_pct"); if(n&&r) showApp(); else showLogin(); }
 
-  function doEnter(){ const nm=(nameInput.value||"Team Alpha").trim(); const rp=String(riskSlider.value||"3"); localStorage.setItem("player_name", nm); localStorage.setItem("risk_pct", rp); showApp(); }
-  window.__enterClick = doEnter; // fallback for inline onclick
+  function doEnter(){
+    if (enterBtn) enterBtn.disabled = true; // guard against double-click
+    const nm=(nameInput.value||"Team Alpha").trim();
+    const rp=String(riskSlider.value||"3");
+    const gt = (document.querySelector('input[name="gameType"]:checked')||{value:'g1'}).value;
+    localStorage.setItem("player_name", nm);
+    localStorage.setItem("risk_pct", rp);
+    localStorage.setItem("game_type", gt);
+    try { initSignalsFromGame(); } catch(_){ }
+    showApp();
+  }
+  // No inline onclick; rely on single listener
   if (enterBtn) enterBtn.addEventListener("click", doEnter);
 });
 </script>
