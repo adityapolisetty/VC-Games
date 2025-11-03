@@ -1,5 +1,6 @@
 # card_game.py
 import numpy as np
+import argparse
 import pandas as pd
 
 from web_wrangler import run_ui  # UI server only
@@ -7,6 +8,9 @@ from web_wrangler import run_ui  # UI server only
 # ------- game parameters -------
 MIN_INV = {1: 1.0, 2: 5.0, 3: 10.0}
 WALLET0 = 100.0
+# Flags: restrict to a single signal type and cost
+SIGNAL_MODE = "median"  # or "top2"
+SIGNAL_COST = 5.0
 CARD_VALUES = np.arange(2, 15)  # 2..10, J=11, Q=12, K=13, A=14
 
 
@@ -163,6 +167,15 @@ def stage_buy_signals(
 # Demo loop (UI in web_wrangler)
 # ===============================
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run VC card web game")
+    parser.add_argument("--signal-mode", dest="signal_mode", choices=["median", "top2"], default=SIGNAL_MODE, help="Which single signal to offer")
+    parser.add_argument("--signal-cost", dest="signal_cost", type=float, default=SIGNAL_COST, help="Cost of the signal in pounds")
+    parser.add_argument("--no-open", dest="open_browser", action="store_false", help="Do not auto-open browser on stage 1")
+    args = parser.parse_args()
+
+    mode = args.signal_mode
+    cost = float(args.signal_cost)
+    open_first = args.open_browser
     # 9 piles, all blue
     df = draw_deck(n_blue=9, n_red=0, seed=42)
     for c in ("inv1", "inv2", "inv3"):
@@ -174,7 +187,7 @@ if __name__ == "__main__":
     sys_red = False
 
     # ---- Stage 1 ----
-    act = run_ui(1, df, wallet, open_browser=True)
+    act = run_ui(1, df, wallet, open_browser=open_first, signal_mode=mode, signal_cost=cost)
     df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
     wallet = max(0.0, wallet - float(s_spent))
 
@@ -200,7 +213,7 @@ if __name__ == "__main__":
     sys_red  |= r1
 
     # ---- Stage 2 ----
-    act = run_ui(2, df, wallet)
+    act = run_ui(2, df, wallet, signal_mode=mode, signal_cost=cost)
     df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
     wallet = max(0.0, wallet - float(s_spent))
 
@@ -226,7 +239,7 @@ if __name__ == "__main__":
     sys_red  |= r2
 
     # ---- Stage 3 ----
-    act = run_ui(3, df, wallet)
+    act = run_ui(3, df, wallet, signal_mode=mode, signal_cost=cost)
     df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
     wallet = max(0.0, wallet - float(s_spent))
 
@@ -294,7 +307,7 @@ if __name__ == "__main__":
     }
 
     # ---- Stage 4: End of Game (results + explicit End Game shutdown) ----
-    _ = run_ui(4, df, wallet, results=stats)
+    _ = run_ui(4, df, wallet, results=stats, signal_mode=mode, signal_cost=cost)
 
 
     # Optional console dump

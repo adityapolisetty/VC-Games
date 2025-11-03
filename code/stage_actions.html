@@ -28,6 +28,8 @@
   :root{ --cardW:110px; --cardH:150px; --cardBorder:10px; --cardRadius:14px; }
   .grid{display:grid;grid-template-columns:repeat(5,var(--cardW));gap:48px 72px;align-content:start;overflow:visible}
   .pile{position:relative;width:var(--cardW);height:var(--cardH);overflow:visible}
+  .pile.raised{ transform: translateY(-8px); }
+  .pile.raised::after{ content:""; position:absolute; left:calc(var(--cardW)/2 - 4px); bottom:-10px; width:8px; height:8px; background:#000; border-radius:50%; }
   .section-title{margin:6px 0 12px 0}
 
   .card{width:var(--cardW);height:var(--cardH);border:var(--cardBorder) solid #fff;border-radius:var(--cardRadius);cursor:pointer;position:relative;transition:border-color .15s, box-shadow .15s, filter .15s;box-shadow:0 0 0 0.5px #000}
@@ -60,7 +62,7 @@
   input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
   input[type=number]{-moz-appearance:textfield}
 
-  .sig-line{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--b);background:#111827;border-radius:14px;padding:10px 12px;margin:8px 0}
+  .sig-line{display:flex;align-items:center;gap:10px;border:0;background:transparent;border-radius:0;padding:0;margin:8px 0}
   .sig-left{display:flex;align-items:center;gap:12px}
   .sig-name{font-weight:800}
   .sig-name .price { margin-left:14px; }
@@ -184,15 +186,9 @@
       <div id="idle" class="muted" style="margin-top:8px;">Click a card.</div>
 
       <div id="panel" style="display:none;margin-top:8px;">
-        <div class="space-between"><strong>Signals</strong><span id="sigNote"></span></div>
+        <div class="space-between"><strong>Signal</strong><span id="sigNote"></span></div>
         <div id="sigLines" style="margin-top:6px;"></div>
-
-        <div style="margin:12px 0 6px;"><strong>Invest</strong></div>
-        <div class="row">
-          <input id="amt" type="number" inputmode="decimal" placeholder="Amount">
-          <button id="add" class="btn-cta-sm">Invest</button>
-        </div>
-        <div id="invList" class="muted" style="margin-top:6px;">Invested: 0</div>
+        <div id="invList" class="muted" style="display:none;margin-top:6px;"></div>
         <div id="msg" class="muted" style="margin-top:10px;"></div>
       </div>
 
@@ -261,32 +257,23 @@ document.addEventListener("DOMContentLoaded", () => {
   riskSlider.oninput = updateRisk;
   updateRisk();
 
-  const SIGNALS = [
-    {id:1, cost:1, name:"Signal 1", info:"A–7 or 8–K"},
-    {id:2, cost:2, name:"Signal 2", info:"A / 2–5 / 6–9 / 10–K"},
-    {id:3, cost:4, name:"Signal 3", info:"2–3 / 4–5 / 6–7 / 8–9 / 10–J / Q–K / A"},
-    {id:4, cost:8, name:"Signal 4", info:"Exact number (2–14)"}
-  ];
+  const SIGNAL_MODE = (SEED.signalMode || SEED.signal_mode || 'median');
+  const SIGNAL_COST = Number(SEED.signalCost || SEED.signal_cost || 5);
+  const SIGNAL_INFO = (SIGNAL_MODE==='top2')
+    ? 'This signal will tell you the sum of the top two ranks in the pile. A pile can have duplicate ranks.'
+    : 'This signal will tell you the median of the pile. A pile can have duplicate ranks. E.g. the median of a pile [2,5,7,9,11] is 7 and the median of the pile [3,4,4,4,5] is 4.';
+  const SIGNALS = [ { id:1, cost:SIGNAL_COST, name: (SIGNAL_MODE==='top2' ? 'Top-2 rank sum' : 'Median'), info: SIGNAL_INFO } ];
 
   function revealText(N, sid){
-    if (sid===1) return (N===14 || (2<=N && N<=7)) ? "A–7" : "8–K";
-    if (sid===2){
-      if (N===14) return "A";
-      if (2<=N && N<=5) return "2–5";
-      if (6<=N && N<=9) return "6–9";
-      return "10–K";
+    if (sid!==1) return '';
+    if (SIGNAL_MODE==='top2'){
+      if (N>=12) return 'High';
+      if (N>=8) return 'Mid';
+      return 'Low';
+    } else {
+      // median-like split
+      return (N>=8) ? 'High median' : 'Low median';
     }
-    if (sid===3){
-      if (2<=N && N<=3) return "2–3";
-      if (4<=N && N<=5) return "4–5";
-      if (6<=N && N<=7) return "6–7";
-      if (8<=N && N<=9) return "8–9";
-      if (10<=N && N<=11) return "10–J";
-      if (12<=N && N<=13) return "Q–K";
-      return "A";
-    }
-    if (sid===4) return String(N);
-    return "";
   }
   const bestReveal = (sids, N) => (!N || !sids?.length) ? null : revealText(N, Math.max(...sids));
 
@@ -354,7 +341,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const currentReveal = bestReveal(rec.signals||[], N);
       const invested = Number(rec.invested||0);
       const pile=document.createElement("div");
-      pile.className="pile";
+      pile.className="pile"; pile.dataset.idx=i;
       const offsets=[48,36,24,12];
       offsets.forEach(off=>{
         const u=document.createElement("div");
@@ -404,7 +391,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const offsets=[48,36,24,12];
       offsets.forEach(off=>{
         const u=document.createElement("div");
-        u.className="underCard blue dead";
+        u.className="underCard blue";
         u.style.left = (-off)+"px";
         pile.appendChild(u);
       });
@@ -424,6 +411,10 @@ document.addEventListener("DOMContentLoaded", () => {
     idle.style.display="none";
     panel.style.display="block";
 
+    // Visual emphasis: raise selected pile and mark below
+    grid.querySelectorAll('.pile.raised').forEach(el=>el.classList.remove('raised'));
+    const pileEl = grid.querySelector(`.pile[data-idx="${i}"]`);
+    if (pileEl) pileEl.classList.add('raised');
     grid.querySelectorAll('.card.top.selected').forEach(el=>el.classList.remove('selected'));
     const btn = grid.querySelector(`.card.top[data-idx="${i}"]`);
     if (btn) btn.classList.add('selected');
@@ -452,14 +443,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const line=document.createElement("div");
       line.className="sig-line";
       line.innerHTML=
-        `<div class="sig-left">
-           <button type="button" class="btn-cta-sm buy-sig" data-sid="${s.id}" ${locked?'data-locked="1" disabled':''}>Buy</button>
-           <div class="sig-name">${s.name}<span class="price muted">£${s.cost}</span></div>
-         </div>
-         <div class="right-side">
-           <span class="reveal" id="rev-${s.id}" style="display:${isCurrent?'inline-flex':'none'}">${isCurrent ? c.current_reveal || "" : ""}</span>
-           <button type="button" class="btn-ghost sig-info" data-sid="${s.id}">Info</button>
-         </div>`;
+        `<button type="button" class="btn-cta-sm buy-sig" data-sid="${s.id}" ${locked?'data-locked="1" disabled':''}>Buy signal</button>
+         <span class="muted">£${s.cost}</span>
+         <button type="button" class="btn-ghost sig-info" data-sid="${s.id}">Info</button>`;
       sigLines.appendChild(line);
     });
     if (c.current_sid!=null) lockUpTo(c.current_sid);

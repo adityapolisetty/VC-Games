@@ -232,7 +232,8 @@ document.getElementById('endBtn').onclick = () => {{
 </body></html>"""
 
 def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None = None,
-           port: int = 8765, open_browser: bool = False):
+           port: int = 8765, open_browser: bool = False,
+           signal_mode: str = "median", signal_cost: float = 5.0):
     """Serve UI for a stage and return the posted decisions."""
     global _ACTIONS
     _ACTIONS = None
@@ -248,6 +249,8 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
         "prev_signals": _prev_signals_map(df),
         "prev_invest": _prev_invest_map(df),
         "results": results or {},
+        "signal_mode": str(signal_mode),
+        "signal_cost": float(signal_cost),
     }
 
     # Bind server; if requested port is busy, fall back to an ephemeral port
