@@ -476,7 +476,7 @@ sigB, meanB, sdB, pnB, budB = _extract_summary(dataB, regimeB, pct_key)
 meanA_u = meanA; sdA_u = sdA
 meanB_u = meanB; sdB_u = sdB
 
-tabs = st.tabs(["Frontier", "Value of Info", "Distributions", "Posteriors", "One-Off"])
+tabs = st.tabs(["Frontier", "Value of Info", "Posteriors"])
 
 # ========== Frontier ==========
 with tabs[0]:
@@ -557,7 +557,7 @@ with tabs[1]:
 # marginal tab removed
 
 # ========== Posteriors ==========
-with tabs[3]:
+with tabs[2]:
     # Use default posterior NPZ without extra UI
     post = load_post_npz(POST_NPZ_DEFAULT)
     c = st.columns(2)
@@ -588,58 +588,58 @@ with tabs[3]:
             else:
                 st.plotly_chart(posterior_line(post["mn_x"], post["mn_y"], "P(Ace | Min rank = k)", "Min rank"), width="stretch", key="post_B")
 
-# ========== Distributions ==========
-with tabs[2]:
-    st.markdown(
-        "<div style='font-size:0.9rem; font-style:italic;'>"
-        "Stacked histogram of net returns — composition by strategy"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-    # Choose which panel's config to use
-    col = st.columns([1,1,1,1])
-    with col[0]:
-        panel_pick = st.radio("Panel", ["A", "B"], horizontal=True, key="dist_panel")
-    # Derive context for chosen panel
-    if panel_pick == "A":
-        path, regime, sig_grid_local = pathA, regimeA, sigA
-    else:
-        path, regime, sig_grid_local = pathB, regimeB, sigB
-    # Controls
-    with col[1]:
-        n_sig = st.select_slider("#signals", options=list(map(int, sig_grid_local.tolist())), value=int(sig_grid_local.max()), key="dist_nsig")
-    with col[2]:
-        normalize = st.toggle("Normalize to share", value=True, key="dist_norm")
-    with col[3]:
-        trim_zeros = st.toggle("Hide empty bins", value=True, key="dist_trim")
-
-    # Load hist arrays just-in-time for selected regime
-    keys = (
-        f"hist_counts_{regime}_max",
-        f"hist_counts_{regime}_linear",
-        f"hist_counts_{regime}_top5",
-        "hist_start", "hist_step", "hist_n",
-    )
-    try:
-        hk = load_keys(str(path), keys)
-    except Exception as e:
-        st.error(str(e))
-        hk = None
-    if hk is None or hk.get(f"hist_counts_{regime}_max") is None:
-        st.info("This NPZ does not include distribution histograms. Re-run simulation that saves hists.")
-    else:
-        h_max = np.asarray(hk[f"hist_counts_{regime}_max"], int)[int(n_sig)]
-        h_lin = np.asarray(hk[f"hist_counts_{regime}_linear"], int)[int(n_sig)]
-        h_top = np.asarray(hk[f"hist_counts_{regime}_top5"], int)[int(n_sig)]
-        hist_start = float(hk["hist_start"]) if hk.get("hist_start") is not None else -100.0
-        hist_step  = float(hk["hist_step"])  if hk.get("hist_step")  is not None else 1.0
-        hist_n     = int(hk["hist_n"])      if hk.get("hist_n")      is not None else len(h_max)
-        xs = hist_start + hist_step * (np.arange(hist_n) + 0.5)
-        if trim_zeros:
-            mask = (h_max + h_lin + h_top) > 0
-            xs = xs[mask]; h_max = h_max[mask]; h_lin = h_lin[mask]; h_top = h_top[mask]
-        title = f"Stacked histogram — {('Panel ' + panel_pick)} — {_label_for_regime_key(regime)} — n={int(n_sig)}"
-        st.plotly_chart(stacked_histogram(xs, (h_max, h_lin, h_top), title, normalize=normalize), use_container_width=True, key=f"hist_{panel_pick}")
+## ========== Distributions (Disabled) ==========
+# with tabs[2]:
+#     st.markdown(
+#         "<div style='font-size:0.9rem; font-style:italic;'>"
+#         "Stacked histogram of net returns — composition by strategy"
+#         "</div>",
+#         unsafe_allow_html=True,
+#     )
+#     # Choose which panel's config to use
+#     col = st.columns([1,1,1,1])
+#     with col[0]:
+#         panel_pick = st.radio("Panel", ["A", "B"], horizontal=True, key="dist_panel")
+#     # Derive context for chosen panel
+#     if panel_pick == "A":
+#         path, regime, sig_grid_local = pathA, regimeA, sigA
+#     else:
+#         path, regime, sig_grid_local = pathB, regimeB, sigB
+#     # Controls
+#     with col[1]:
+#         n_sig = st.select_slider("#signals", options=list(map(int, sig_grid_local.tolist())), value=int(sig_grid_local.max()), key="dist_nsig")
+#     with col[2]:
+#         normalize = st.toggle("Normalize to share", value=True, key="dist_norm")
+#     with col[3]:
+#         trim_zeros = st.toggle("Hide empty bins", value=True, key="dist_trim")
+#
+#     # Load hist arrays just-in-time for selected regime
+#     keys = (
+#         f"hist_counts_{regime}_max",
+#         f"hist_counts_{regime}_linear",
+#         f"hist_counts_{regime}_top5",
+#         "hist_start", "hist_step", "hist_n",
+#     )
+#     try:
+#         hk = load_keys(str(path), keys)
+#     except Exception as e:
+#         st.error(str(e))
+#         hk = None
+#     if hk is None or hk.get(f"hist_counts_{regime}_max") is None:
+#         st.info("This NPZ does not include distribution histograms. Re-run simulation that saves hists.")
+#     else:
+#         h_max = np.asarray(hk[f"hist_counts_{regime}_max"], int)[int(n_sig)]
+#         h_lin = np.asarray(hk[f"hist_counts_{regime}_linear"], int)[int(n_sig)]
+#         h_top = np.asarray(hk[f"hist_counts_{regime}_top5"], int)[int(n_sig)]
+#         hist_start = float(hk["hist_start"]) if hk.get("hist_start") is not None else -100.0
+#         hist_step  = float(hk["hist_step"])  if hk.get("hist_step")  is not None else 1.0
+#         hist_n     = int(hk["hist_n"])      if hk.get("hist_n")      is not None else len(h_max)
+#         xs = hist_start + hist_step * (np.arange(hist_n) + 0.5)
+#         if trim_zeros:
+#             mask = (h_max + h_lin + h_top) > 0
+#             xs = xs[mask]; h_max = h_max[mask]; h_lin = h_lin[mask]; h_top = h_top[mask]
+#         title = f"Stacked histogram — {('Panel ' + panel_pick)} — {_label_for_regime_key(regime)} — n={int(n_sig)}"
+#         st.plotly_chart(stacked_histogram(xs, (h_max, h_lin, h_top), title, normalize=normalize), use_container_width=True, key=f"hist_{panel_pick}")
 
 # ========== One-Off (single board) ==========
 # # with tabs[4]:
