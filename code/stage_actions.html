@@ -5,48 +5,58 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>VC Card Games</title>
 <style>
-  :root { --blue:#2b6cb0; --red:#c53030; --green:#059669; --bg:#0f172a; --panel:#0b1220; --cta:#f59e0b; --ctatxt:#111827; --b:#1f2937; }
+  @font-face{font-family:'Source Sans Pro'; font-style:normal; font-weight:400; font-display:swap; src: local('Source Sans Pro Regular'), local('SourceSansPro-Regular'), url('/assets/SourceSansPro-Regular.woff2') format('woff2'), url('/assets/SourceSansPro-Regular.ttf.woff2') format('woff2');}
+  @font-face{font-family:'Source Sans Pro'; font-style:normal; font-weight:600; font-display:swap; src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url('/assets/SourceSansPro-Semibold.woff2') format('woff2'), url('/assets/SourceSansPro-Semibold.ttf.woff2') format('woff2');}
+  :root { --blue:#2b6cb0; --red:#c53030; --green:#059669; --bg:#ffffff; --panel:#ffffff; --cta:#f59e0b; --ctatxt:#111827; --b:#e5e7eb; }
   *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:#e5e7eb}
+  /* Prefer Source Sans Pro to match Streamlit page */
+  body{margin:0;font-family:"Source Sans Pro", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif; background:var(--bg); color:#111827; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale}
 
-  .brandbar{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--b);background:#0a1020;position:sticky;top:0;z-index:20;font-size:30px}
-  .brand-left{position:absolute;left:12px;font-weight:900;letter-spacing:.4px}
+  .brandbar{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--b);background:var(--panel);position:sticky;top:0;z-index:20;font-size:22px}
+  .brand-left{display:none}
   .brand-center{font-weight:900}
 
   header.nav{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--b);background:var(--panel);position:sticky;top:40px;z-index:10}
   .nav-left{display:flex;gap:14px}
-  .nav-left a{color:#cbd5e1;text-decoration:none;font-weight:600}
-  .nav-left a:hover{color:#fff}
+  .nav-left a{color:#334155;text-decoration:none;font-weight:600}
+  .nav-left a:hover{color:#0f172a}
   .right{display:flex;gap:16px}
   .budget{font-weight:700}
 
-  .wrap{display:grid;grid-template-columns:1fr 420px;gap:20px;padding:20px;margin-left:24px}
-  .grid{display:grid;grid-template-columns:repeat(8,88px);gap:18px;align-content:start}
+  .wrap{display:grid;grid-template-columns:1fr 420px;gap:20px;padding:40px 20px 20px;margin-left:72px}
+  /* Card sizing variables */
+  :root{ --cardW:110px; --cardH:150px; --cardBorder:10px; --cardRadius:14px; }
+  .grid{display:grid;grid-template-columns:repeat(5,var(--cardW));gap:48px 72px;align-content:start;overflow:visible}
+  .pile{position:relative;width:var(--cardW);height:var(--cardH);overflow:visible}
   .section-title{margin:6px 0 12px 0}
 
-  .card{width:88px;height:120px;border:8px solid #fff;border-radius:12px;cursor:pointer;position:relative;transition:border-color .15s, box-shadow .15s, filter .15s}
-  .card.blue{background:var(--blue)} .card.red{background:var(--red)}
+  .card{width:var(--cardW);height:var(--cardH);border:var(--cardBorder) solid #fff;border-radius:var(--cardRadius);cursor:pointer;position:relative;transition:border-color .15s, box-shadow .15s, filter .15s;box-shadow:0 0 0 0.5px #000}
+  .card.blue{background:#111318} .card.red{background:var(--red)}
   .card.signaled{box-shadow:0 0 0 3px #36c51dff inset}
   .card.invested{background:var(--green)!important}
   .card.dead{filter:grayscale(40%);opacity:.6;cursor:default}
   .label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#fff;font-weight:800;font-size:15px;white-space:pre-line;pointer-events:none}
+  /* Full under-cards (non-interactive), positioned to the left */
+  .underCard{position:absolute;left:0;top:0;width:var(--cardW);height:var(--cardH);background:#111318;
+    border:var(--cardBorder) solid #fff;border-radius:var(--cardRadius);box-shadow:0 0 0 0.5px #000; pointer-events:none; z-index:0}
+  .pile-tag{position:absolute;left:8px;top:8px;font-size:12px;color:#ffffff;background:transparent;font-weight:700;pointer-events:none;z-index:2}
+  .card.top{position:absolute;left:0;top:0;z-index:1}
 
   aside{position:sticky;top:104px;height:fit-content;border:1px solid var(--b);border-radius:12px;padding:16px;background:var(--panel)}
   .row{display:flex;gap:10px;align-items:center}
   .space-between{display:flex;justify-content:space-between;align-items:center}
-  .muted{color:#9ca3af}
+  .muted{color:#4b5563}
 
   .btn, .btn-cta, .btn-cta-sm, .btn-ghost { cursor:pointer; }
-  .btn{padding:10px 14px;border-radius:10px;border:1px solid var(--b);background:#111827;color:#e5e7eb;transition:transform .15s, filter .15s, box-shadow .15s}
+  .btn{padding:10px 14px;border-radius:10px;border:1px solid var(--b);background:#111827;color:#e5e7eb;transition:transform .15s, filter .15s, box-shadow .15s;font-weight:700}
   .btn[disabled]{opacity:.5;cursor:not-allowed}
-  .btn-cta{width:100%;padding:14px 16px;font-size:16px;font-weight:800;border-radius:12px;border:2px solid var(--cta);background:var(--cta);color:var(--ctatxt);transition:transform .15s, filter .15s, box-shadow .15s}
-  .btn-cta-sm{padding:10px 14px;font-size:15px;font-weight:800;border-radius:12px;border:2px solid var(--cta);background:var(--cta);color:#111827;transition:transform .15s, filter .15s, box-shadow .15s}
-  .btn-ghost{padding:8px 12px;border-radius:10px;border:1px solid var(--b);background:#0b1325;color:#93c5fd;transition:transform .15s, filter .15s, box-shadow .15s}
-  .btn:hover, .btn-cta:hover, .btn-cta-sm:hover, .btn-ghost:hover { transform:translateY(-1px); filter:brightness(1.1) saturate(1.1); box-shadow:0 6px 16px rgba(0,0,0,.35); }
+  /* Make all buttons match Enter button styling and be narrower */
+  .btn-cta, .btn-cta-sm, .btn-ghost{ padding:10px 14px; border-radius:10px; border:1px solid var(--b); background:#111827; color:#e5e7eb; width:auto; font-weight:700 }
+  .btn:hover, .btn-cta:hover, .btn-cta-sm:hover, .btn-ghost:hover { transform:translateY(-1px); filter:brightness(1.1) saturate(1.1); box-shadow:0 6px 16px rgba(0,0,0,.18); }
   .btn:active, .btn-cta:active, .btn-cta-sm:active, .btn-ghost:active { transform:none; filter:none; box-shadow:none; }
 
   input,button{font-family:inherit}
-  input[type="number"]{width:170px;padding:12px;border-radius:10px;border:1px solid #374151;background:#111827;color:#e5e7eb;font-size:16px}
+  input[type="number"]{width:170px;padding:12px;border-radius:10px;border:1px solid #cbd5e1;background:#ffffff;color:#111827;font-size:16px}
   input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
   input[type=number]{-moz-appearance:textfield}
 
@@ -67,11 +77,11 @@
   min-height:calc(80vh - 250px);
   padding:50px 24px;
 }
-.hero-title{ margin:0; line-height:1.12; font-weight:900; color:#e5e7eb; }
-.hero-welcome{ display:block; font-size:clamp(64px,9vw,96px); letter-spacing:.2px; }
-.hero-rest{
+  .hero-title{ margin:0; line-height:1.12; font-weight:900; color:#111827; }
+  .hero-welcome{ display:block; font-size:clamp(40px,6vw,64px); letter-spacing:.2px; }
+  .hero-rest{
   display:block;
-  font-size:clamp(22px,3vw,30px);
+  font-size:clamp(16px,2vw,22px);
   margin-top:9px;
   margin-left:clamp(8px,1vw,16px);
   font-weight:400; /* regular, not bold */
@@ -84,7 +94,11 @@
   border:1px solid #374151; background:#111827; color:#e5e7eb; font-size:16px;
 }
 .login input[type="text"]::placeholder{ color:#9ca3af; }
-.login .slider{ width:100%; }
+  .login .slider{ width:100%; -webkit-appearance:none; height:4px; background:#111827; border-radius:2px; outline:none }
+  .login .slider::-webkit-slider-runnable-track{ height:4px; background:#111827; border-radius:2px }
+  .login .slider::-webkit-slider-thumb{ -webkit-appearance:none; width:16px; height:16px; background:#111827; border:2px solid #111827; border-radius:50%; margin-top:-6px }
+  .login .slider::-moz-range-track{ height:4px; background:#111827; border-radius:2px }
+  .login .slider::-moz-range-thumb{ width:16px; height:16px; background:#111827; border:2px solid #111827; border-radius:50% }
 .btn.btn-lg{ font-size:16px; font-weight:700; padding:12px 16px; }
 
 
@@ -102,13 +116,15 @@
   .card.selected  { border-color:#fbbf24; box-shadow:0 0 0 2px #fbbf24 inset, 0 0 0 3px rgba(251,191,36,.35); }
 
   #pickInfo{ display:none; }
+  /* Hide the Alive heading */
+  #aliveTitle{ display:none; }
   @media (max-width:900px){.hero-wrap{grid-template-columns:1fr;gap:24px;margin-top:8vh}.hero-title{font-size:44px}}
 </style>
 <!-- Python injects window.SEED -->
 </head>
 <body>
 <div id="brandbar" class="brandbar">
-  <div class="brand-left">Imperial</div>
+  <div class="brand-left">VC Card Game</div>
   <div class="brand-center" id="dashCenter"></div>
 </div>
 
@@ -117,24 +133,23 @@
   <div class="hero">
     <h1 class="hero-title">
       <span class="hero-welcome">Welcome</span>
-      <span class="hero-rest">to Imperial's card game</span>
-      <span class="hero-rest">for VC enthusiasts</span>
+      <span class="hero-rest">&lt;enter caption&gt;</span>
     </h1>
   </div>
 
   <div id="loginView" class="login">
-    <label for="nameInput" class="label-lg muted" style="display:block;margin:0 0 14px;">Name</label>
-    <input id="nameInput" type="text" placeholder="Jane Doe"
-           style="width:100%;padding:14px 12px;border-radius:10px;border:1px solid #374151;background:#111827;color:#e5e7eb;font-size:16px;margin:0 0 22px;" />
+    <label for="nameInput" class="label-lg" style="display:block;margin:0 0 14px;color:#111827;">Team Name</label>
+    <input id="nameInput" type="text" placeholder="Team Alpha"
+           style="width:100%;padding:14px 12px;border-radius:10px;border:1px solid #cbd5e1;background:#ffffff;color:#111827;font-size:16px;margin:0 0 22px;" />
 
-    <div class="label-lg" style="color:#e5e7eb;margin:12px 0 6px;">How risk averse are you?</div>
+    <div class="label-lg" style="color:#111827;margin:12px 0 6px;">How risk averse are you?</div>
     <label for="riskSlider" class="label-lg muted" style="display:block;margin:0 0 8px;">
-      Risk aversion percentile (1 = risk loving, 100 = very risk averse)
+      1 = Let's gooo!<br>5 = Very risk averse
     </label>
-    <input id="riskSlider" type="range" min="1" max="100" value="50" class="slider" />
-    <div class="small-lg">Selected: <span id="riskVal">50</span></div>
+    <input id="riskSlider" type="range" min="1" max="5" value="3" class="slider" />
+    <div class="small-lg">Selected: <span id="riskVal">3</span> — <span id="riskPhrase">Balanced 🤝</span></div>
 
-    <button id="enterBtn" class="btn btn-lg" style="width:100%;margin-top:16px;">Enter</button>
+    <button id="enterBtn" class="btn btn-lg" style="width:auto;min-width:160px;margin-top:16px;">Enter</button>
   </div>
 </div>
 
@@ -146,12 +161,13 @@
       <a href="#" id="tipsLink">Tips</a>
       <a href="#" id="wonkLink">Wonkish</a>
     </div>
-    <div class="title"><span id="stageTitle">Stage</span> <span id="stageLab">?</span></div>
+    <div class="title" style="display:none"><span id="stageTitle">Stage</span> <span id="stageLab">?</span></div>
     <div class="right"><div id="budget" class="budget">Budget £—</div></div>
   </header>
 
   <div class="wrap">
     <section>
+      <h2 id="stageBanner" class="section-title" style="font-weight:800;margin-top:-8px;margin-bottom:36px;margin-left:-48px;"></h2>
       <h3 id="aliveTitle" class="section-title">Alive</h3>
       <div id="grid" class="grid"></div>
 
@@ -210,6 +226,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const enterBtn=document.getElementById("enterBtn");
   const dashCenter=document.getElementById("dashCenter");
   const stageLab=document.getElementById("stageLab");
+  const stageBanner=document.getElementById("stageBanner");
   const stageTitle=document.getElementById("stageTitle");
   const aliveTitle=document.getElementById("aliveTitle");
   const budgetEl=document.getElementById("budget");
@@ -232,7 +249,17 @@ document.addEventListener("DOMContentLoaded", () => {
   const overlay=document.getElementById("stageOverlay");
   const overlayMsg=document.getElementById("overlayMsg");
 
-  riskSlider.oninput = () => { riskVal.textContent = riskSlider.value; };
+  const RISK_TAGS = {
+    1: "Let's gooo! 🚀😎",
+    2: "Risk is nice 🙂",
+    3: "Balanced 🤝",
+    4: "Cautious 🤔🛡️",
+    5: "Very risk averse 🐢⚠️"
+  };
+  const riskPhrase = document.getElementById("riskPhrase");
+  function updateRisk(){ const v = String(riskSlider.value||"3"); riskVal.textContent = v; riskPhrase.textContent = RISK_TAGS[Number(v)] || ""; }
+  riskSlider.oninput = updateRisk;
+  updateRisk();
 
   const SIGNALS = [
     {id:1, cost:1, name:"Signal 1", info:"A–7 or 8–K"},
@@ -268,7 +295,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function applyHeaderName(){
     const nm=(localStorage.getItem("player_name")||"").trim();
-    dashCenter.textContent = nm ? `${nm}'s dashboard` : "Player's dashboard";
+    dashCenter.textContent = nm ? `${nm}'s dashboard` : "Team dashboard";
   }
   function setBudget(){
     budgetEl.textContent = `Budget £${budget.toFixed(2)} remaining`;
@@ -282,7 +309,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function requireFunds(x){ if(budget<=0 || budget<x){ alert("Budget exhausted."); return false; } return true; }
 
   function refreshLabels(){
-    const nodes=grid.querySelectorAll(".card");
+    const nodes=grid.querySelectorAll(".card.top");
     cards.forEach((c,i)=>{
       const el=nodes[i];
       const hasSig = !!c.current_reveal;
@@ -307,8 +334,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const stageSum = c.stage_invests.reduce((a,b)=>a+b,0);
       const newSids = [...c.owned_sids].filter(sid=>!c.prev_owned.has(sid));
       if (stageSum>0 || newSids.length>0){
-        const prev = act[c.card_id] || {color:c.color, N:c.N, invested:0, signals:[]};
-        prev.color = c.color; prev.N = c.N;
+      const prev = act[c.card_id] || {color:'blue', N:c.N, invested:0, signals:[]};
+      prev.color = 'blue'; prev.N = c.N;
         prev.invested = Number(prev.invested||0) + stageSum;
         prev.signals = Array.from(new Set([...(prev.signals||[]), ...newSids])).sort((a,b)=>a-b);
         act[c.card_id] = prev;
@@ -326,13 +353,23 @@ document.addEventListener("DOMContentLoaded", () => {
       const N = Number(rec.N||0);
       const currentReveal = bestReveal(rec.signals||[], N);
       const invested = Number(rec.invested||0);
+      const pile=document.createElement("div");
+      pile.className="pile";
+      const offsets=[48,36,24,12];
+      offsets.forEach(off=>{
+        const u=document.createElement("div");
+        u.className="underCard blue";
+        u.style.left = (-off)+"px";
+        pile.appendChild(u);
+      });
       const div=document.createElement("div");
-      div.className=`card ${rec.color||'blue'} dead`;
+      div.className=`card top blue dead`;
       const lab=document.createElement("span"); lab.className="label";
       const lines=[]; if(currentReveal) lines.push(currentReveal); if(invested>0) lines.push(`Invested £${invested}`);
       lab.textContent = lines.join("\n");
       div.appendChild(lab);
-      wreckGrid.appendChild(div);
+      pile.appendChild(div);
+      wreckGrid.appendChild(pile);
     });
   }
 
@@ -344,14 +381,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if(!list.length){ grid.innerHTML='<div class="muted">No cards this stage.</div>'; buildWreckage(new Set()); return; }
 
     const aliveIds = new Set();
-    list.slice(0,24).forEach((c,i)=>{
+    list.slice(0,9).forEach((c,i)=>{
       aliveIds.add(Number(c.card_id));
       const owned = (prevS[c.card_id]||[]).slice();
       const invest0 = Number(prevI[c.card_id]||0);
       const N = Number(c.N);
       const obj={
         card_id:Number(c.card_id),
-        color:c.color==="red"?"red":"blue",
+        color:"blue",
         N,
         prev_owned:new Set(owned),
         owned_sids:new Set(owned),
@@ -362,11 +399,21 @@ document.addEventListener("DOMContentLoaded", () => {
       };
       cards.push(obj);
 
+      const pile=document.createElement("div");
+      pile.className="pile";
+      const offsets=[48,36,24,12];
+      offsets.forEach(off=>{
+        const u=document.createElement("div");
+        u.className="underCard blue dead";
+        u.style.left = (-off)+"px";
+        pile.appendChild(u);
+      });
       const b=document.createElement("button");
-      b.type="button"; b.className=`card ${obj.color}`; b.dataset.idx=i;
-      b.innerHTML=`<span class="label"></span>`;
+      b.type="button"; b.className=`card top blue`; b.dataset.idx=i;
+      b.innerHTML=`<span class=\"pile-tag\">Pile ${i+1}</span><span class=\"label\"></span>`;
       b.addEventListener("click",()=>{ if(STAGE!==4) selectCard(i); });
-      grid.appendChild(b);
+      pile.appendChild(b);
+      grid.appendChild(pile);
     });
     refreshLabels();
     buildWreckage(aliveIds);
@@ -377,12 +424,12 @@ document.addEventListener("DOMContentLoaded", () => {
     idle.style.display="none";
     panel.style.display="block";
 
-    grid.querySelectorAll('.card.selected').forEach(el=>el.classList.remove('selected'));
-    const btn = grid.querySelector(`.card[data-idx="${i}"]`);
+    grid.querySelectorAll('.card.top.selected').forEach(el=>el.classList.remove('selected'));
+    const btn = grid.querySelector(`.card.top[data-idx="${i}"]`);
     if (btn) btn.classList.add('selected');
 
     const c=cards[i];
-    pickInfo.textContent=`Card • ${c.color}`;
+    pickInfo.textContent=`Card`;
     renderSigLines();
     renderInvList();
     msg.textContent="";
@@ -539,6 +586,7 @@ document.addEventListener("DOMContentLoaded", () => {
     stageTitle.textContent = "End of Game";
     stageLab.textContent = "";
     stageLab.style.display = "none";
+    if (stageBanner) { stageBanner.textContent = "End of Game"; stageBanner.style.display = "block"; }
     aliveTitle.textContent = "Survivors";
     finishBtn.textContent = "Show performance";
     panel.style.display = "none";
@@ -547,6 +595,7 @@ document.addEventListener("DOMContentLoaded", () => {
     stageTitle.textContent = "Stage";
     stageLab.textContent = String(STAGE);
     stageLab.style.display = "inline";
+    if (stageBanner) { stageBanner.textContent = `Stage ${STAGE}`; stageBanner.style.display = "block"; }
     aliveTitle.textContent = "Alive";
     finishBtn.textContent = "Finish Stage";
   }
@@ -558,7 +607,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (STAGE===1){ localStorage.removeItem("player_name"); localStorage.removeItem("risk_pct"); localStorage.removeItem("activity_v1"); showLogin(); }
   else { const n=localStorage.getItem("player_name"), r=localStorage.getItem("risk_pct"); if(n&&r) showApp(); else showLogin(); }
 
-  enterBtn.addEventListener("click", ()=>{ const nm=(nameInput.value||"Player").trim(); const rp=String(riskSlider.value||"50"); localStorage.setItem("player_name", nm); localStorage.setItem("risk_pct", rp); showApp(); });
+  enterBtn.addEventListener("click", ()=>{ const nm=(nameInput.value||"Team Alpha").trim(); const rp=String(riskSlider.value||"3"); localStorage.setItem("player_name", nm); localStorage.setItem("risk_pct", rp); showApp(); });
 });
 </script>
 </body>

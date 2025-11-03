@@ -163,7 +163,8 @@ def stage_buy_signals(
 # Demo loop (UI in web_wrangler)
 # ===============================
 if __name__ == "__main__":
-    df = draw_deck(n_blue=12, n_red=12, seed=42)
+    # 9 piles, all blue
+    df = draw_deck(n_blue=9, n_red=0, seed=42)
     for c in ("inv1", "inv2", "inv3"):
         if c not in df.columns:
             df[c] = 0.0
