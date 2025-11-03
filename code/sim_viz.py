@@ -222,19 +222,19 @@ def frontier_plot(sig_grid, sd_triplet, mean_triplet, title, y_range=None):
         x=sd_lin, y=mu_lin, mode="markers+text",
         marker=dict(size=msize, color=GREY, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
-        textfont=dict(color="black", size=11), name="E[payoff] weighted", opacity=ALPHA
+        textfont=dict(color="black", size=11), name="$E[\\text{payoff}]$ weighted", opacity=ALPHA
     ))
     fig.add_trace(go.Scatter(
         x=sd_sq, y=mu_sq, mode="markers+text",
         marker=dict(size=msize, color=RED, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
-        textfont=dict(color="white", size=11), name="Top‑5 E[payoff] weighted", opacity=ALPHA
+        textfont=dict(color="white", size=11), name="Top‑5 $E[\\text{payoff}]$ weighted", opacity=ALPHA
     ))
     fig.add_trace(go.Scatter(
         x=sd_max, y=mu_max, mode="markers+text",
         marker=dict(size=msize, color=BLUE, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
-        textfont=dict(color="white", size=11), name="Highest E[payoff]", opacity=ALPHA
+        textfont=dict(color="white", size=11), name="Highest $E[\\text{payoff}]$", opacity=ALPHA
     ))
 
     # Build y-axis config with optional fixed range
@@ -267,9 +267,9 @@ def value_of_info_plot(sig_grid, means, title, signal_cost=None, y_range=None):
 
     fig = go.Figure()
     # Grouped bars: E(payoff), Top‑5 E(payoff), Highest expected payoff
-    fig.add_trace(go.Bar(x=sig_grid, y=mu_lin, name="E[payoff] weighted", marker_color=GREY, opacity=ALPHA))
-    fig.add_trace(go.Bar(x=sig_grid, y=mu_sq,  name="Top‑5 E[payoff] weighted", marker_color=RED,  opacity=ALPHA))
-    fig.add_trace(go.Bar(x=sig_grid, y=mu_max, name="Highest E[payoff]", marker_color=BLUE, opacity=ALPHA))
+    fig.add_trace(go.Bar(x=sig_grid, y=mu_lin, name="$E[\\text{payoff}]$ weighted", marker_color=GREY, opacity=ALPHA))
+    fig.add_trace(go.Bar(x=sig_grid, y=mu_sq,  name="Top‑5 $E[\\text{payoff}]$ weighted", marker_color=RED,  opacity=ALPHA))
+    fig.add_trace(go.Bar(x=sig_grid, y=mu_max, name="Highest $E[\\text{payoff}]$", marker_color=BLUE, opacity=ALPHA))
 
     subtitle = f" — Signal cost £{signal_cost:g}" if signal_cost is not None else ""
 
@@ -335,9 +335,9 @@ def stacked_histogram(bin_centers, counts_triplet, title, normalize=True):
         barnorm = None
 
     fig = go.Figure()
-    fig.add_bar(x=bin_centers, y=lin_y, name="E[payoff] weighted", marker_color=GREY)
-    fig.add_bar(x=bin_centers, y=top5_y, name="Top‑5 E[payoff] weighted", marker_color=RED)
-    fig.add_bar(x=bin_centers, y=max_y, name="Highest E[payoff]", marker_color=BLUE)
+    fig.add_bar(x=bin_centers, y=lin_y, name="$E[\\text{payoff}]$ weighted", marker_color=GREY)
+    fig.add_bar(x=bin_centers, y=top5_y, name="Top‑5 $E[\\text{payoff}]$ weighted", marker_color=RED)
+    fig.add_bar(x=bin_centers, y=max_y, name="Highest $E[\\text{payoff}]$", marker_color=BLUE)
     fig.update_layout(
         template="plotly_white",
         barmode="stack",
@@ -491,7 +491,7 @@ with tabs[0]:
             unsafe_allow_html=True,
         )
     with row[1]:
-        fix_y_frontier = st.toggle("Fix Y axis range across panels", value=False, key="fix_y_frontier")
+        fix_y_frontier = st.toggle("Fix Y axis range across panels", value=True, key="fix_y_frontier")
     # Compute shared y-range if requested
     if fix_y_frontier:
         yvals_frontier = [*meanA_u, *meanB_u]
@@ -528,7 +528,7 @@ with tabs[1]:
             unsafe_allow_html=True,
         )
     with row[1]:
-        fix_y_voinfo = st.toggle("Fix Y axis range across panels", value=False, key="fix_y_voinfo")
+        fix_y_voinfo = st.toggle("Fix Y axis range across panels", value=True, key="fix_y_voinfo")
     # Compute shared y-range if requested
     if fix_y_voinfo:
         yvals_vo = [*meanA_u, *meanB_u]
