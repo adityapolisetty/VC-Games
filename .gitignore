@@ -1,0 +1,12 @@
+# Ignore everything
+/*
+
+# Keep this .gitignore itself
+!/.gitignore
+
+# Keep code and output folders and all their contents
+!/code/
+!/code/**
+
+!/output/
+!/output/**
