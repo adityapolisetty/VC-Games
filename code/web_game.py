@@ -4,6 +4,7 @@ import argparse
 import pandas as pd
 
 from web_wrangler import run_ui  # UI server only
+from card_game import _deal_cards_global_deck, round_seed
 
 # ------- game parameters -------
 MIN_INV = {1: 1.0, 2: 5.0, 3: 10.0}
@@ -18,17 +19,26 @@ CARD_VALUES = np.arange(2, 15)  # 2..10, J=11, Q=12, K=13, A=14
 # Deck and risks
 # ===============================
 def draw_deck(n_blue: int, n_red: int, seed: int | None = None) -> pd.DataFrame:
+    """Compatibility wrapper returning a 9-pile blue-only board using global deck.
+
+    Populates per-pile stats so the web UI can show actual signal values.
+    """
     rng = np.random.default_rng(seed)
-
-    def sample(n, color):
-        full = np.repeat(CARD_VALUES, 4)
-        rng.shuffle(full)
-        take = full[:min(n, full.size)].astype(int)
-        return pd.DataFrame({"color": color, "N": take, "alive": True, "round": 0})
-
-    df = pd.concat([sample(n_blue, "blue"), sample(n_red, "red")], ignore_index=True)
-    df["card_id"] = np.arange(len(df), dtype=int)
-    return df
+    has_ace, hands, medians, top2sum, max_rank, min_rank = _deal_cards_global_deck(rng)
+    rows = []
+    for i in range(len(hands)):
+        rows.append({
+            "card_id": int(i),
+            "color": "blue",
+            "alive": True,
+            "round": 0,
+            # legacy field; keep for fallback
+            "N": int(medians[i]),
+            # explicit fields consumed by UI
+            "med": int(medians[i]),
+            "sum2": int(top2sum[i]),
+        })
+    return pd.DataFrame(rows)
 
 
 def apply_systemic_risk(df: pd.DataFrame, rng=None):
