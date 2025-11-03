@@ -125,9 +125,25 @@
 <!-- Python injects window.SEED -->
 </head>
 <body>
-<noscript style="display:block;padding:12px 16px;color:#b91c1c;background:#fee2e2;border-bottom:1px solid #fecaca;">
-  This page requires JavaScript to run. Please enable JavaScript.
-</noscript>
+<script>
+// Minimal fail-safe so Enter works even if later JS fails to bind
+window.__enterClick = function(){
+  try{
+    var nmEl=document.getElementById('nameInput');
+    var rsEl=document.getElementById('riskSlider');
+    var nm=(nmEl&&nmEl.value?nmEl.value:'Team Alpha').trim();
+    var rp=rsEl?String(rsEl.value):'3';
+    try{ localStorage.setItem('player_name', nm); localStorage.setItem('risk_pct', rp); }catch(_){ }
+    if (typeof window.showApp === 'function') { window.showApp(); return; }
+    // Fallback: toggle views now and try to call showApp shortly (to build grid)
+    var login=document.getElementById('loginSection');
+    var app=document.getElementById('appView');
+    if(login) login.style.display='none';
+    if(app) app.style.display='block';
+    setTimeout(function(){ try{ if (typeof window.showApp==='function') window.showApp(); }catch(_){ } }, 50);
+  }catch(e){ /* swallow */ }
+};
+</script>
 <div id="brandbar" class="brandbar">
   <div class="brand-left">VC Card Game</div>
   <div class="brand-center" id="dashCenter"></div>
@@ -154,7 +170,7 @@
     <input id="riskSlider" type="range" min="1" max="5" value="3" class="slider" />
     <div class="small-lg">Selected: <span id="riskVal">3</span> — <span id="riskPhrase">Balanced 🤝</span></div>
 
-    <button id="enterBtn" class="btn btn-lg" style="width:auto;min-width:160px;margin-top:16px;">Enter</button>
+    <button id="enterBtn" class="btn btn-lg" style="width:auto;min-width:160px;margin-top:16px;" onclick="window.__enterClick && window.__enterClick()">Enter</button>
   </div>
 </div>
 
@@ -189,9 +205,15 @@
       <div id="idle" class="muted" style="margin-top:8px;">Click a card.</div>
 
       <div id="panel" style="display:none;margin-top:8px;">
-        <div class="space-between"><strong>Signal</strong><span id="sigNote"></span></div>
+        <div class="space-between"><strong>Signals</strong><span id="sigNote"></span></div>
         <div id="sigLines" style="margin-top:6px;"></div>
-        <div id="invList" class="muted" style="display:none;margin-top:6px;"></div>
+
+        <div style="margin:12px 0 6px;"><strong>Invest</strong></div>
+        <div class="row">
+          <input id="amt" type="number" inputmode="decimal" placeholder="Amount">
+          <button id="add" class="btn-cta-sm">Invest</button>
+        </div>
+        <div id="invList" class="muted" style="margin-top:6px;">Invested: 0</div>
         <div id="msg" class="muted" style="margin-top:10px;"></div>
       </div>
 
@@ -260,23 +282,33 @@ document.addEventListener("DOMContentLoaded", () => {
   riskSlider.oninput = updateRisk;
   updateRisk();
 
-  const SIGNAL_MODE = (SEED.signalMode || SEED.signal_mode || 'median');
-  const SIGNAL_COST = Number(SEED.signalCost || SEED.signal_cost || 5);
-  const SIGNAL_INFO = (SIGNAL_MODE==='top2')
-    ? 'This signal will tell you the sum of the top two ranks in the pile. A pile can have duplicate ranks.'
-    : 'This signal will tell you the median of the pile. A pile can have duplicate ranks. E.g. the median of a pile [2,5,7,9,11] is 7 and the median of the pile [3,4,4,4,5] is 4.';
-  const SIGNALS = [ { id:1, cost:SIGNAL_COST, name: (SIGNAL_MODE==='top2' ? 'Top-2 rank sum' : 'Median'), info: SIGNAL_INFO } ];
+  // Original multi-signal catalog (no single-signal mode)
+  const SIGNALS = [
+    {id:1, cost:1, name:"Signal 1", info:"A–7 or 8–K"},
+    {id:2, cost:2, name:"Signal 2", info:"A / 2–5 / 6–9 / 10–K"},
+    {id:3, cost:4, name:"Signal 3", info:"2–3 / 4–5 / 6–7 / 8–9 / 10–J / Q–K / A"},
+    {id:4, cost:8, name:"Signal 4", info:"Exact number (2–14)"}
+  ];
 
   function revealText(N, sid){
-    if (sid!==1) return '';
-    if (SIGNAL_MODE==='top2'){
-      if (N>=12) return 'High';
-      if (N>=8) return 'Mid';
-      return 'Low';
-    } else {
-      // median-like split
-      return (N>=8) ? 'High median' : 'Low median';
+    if (sid===1) return (N===14 || (2<=N && N<=7)) ? "A–7" : "8–K";
+    if (sid===2){
+      if (N===14) return "A";
+      if (2<=N && N<=5) return "2–5";
+      if (6<=N && N<=9) return "6–9";
+      return "10–K";
     }
+    if (sid===3){
+      if (2<=N && N<=3) return "2–3";
+      if (4<=N && N<=5) return "4–5";
+      if (6<=N && N<=7) return "6–7";
+      if (8<=N && N<=9) return "8–9";
+      if (10<=N && N<=11) return "10–J";
+      if (12<=N && N<=13) return "Q–K";
+      return "A";
+    }
+    if (sid===4) return String(N);
+    return "";
   }
   const bestReveal = (sids, N) => (!N || !sids?.length) ? null : revealText(N, Math.max(...sids));
 
@@ -446,9 +478,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const line=document.createElement("div");
       line.className="sig-line";
       line.innerHTML=
-        `<button type="button" class="btn-cta-sm buy-sig" data-sid="${s.id}" ${locked?'data-locked="1" disabled':''}>Buy signal</button>
-         <span class="muted">£${s.cost}</span>
-         <button type="button" class="btn-ghost sig-info" data-sid="${s.id}">Info</button>`;
+        `<div class="sig-left">
+           <button type="button" class="btn-cta-sm buy-sig" data-sid="${s.id}" ${locked?'data-locked="1" disabled':''}>Buy</button>
+           <div class="sig-name">${s.name}<span class="price muted">£${s.cost}</span></div>
+         </div>
+         <div class="right-side">
+           <span class="reveal" id="rev-${s.id}" style="display:${isCurrent?'inline-flex':'none'}">${isCurrent ? c.current_reveal || "" : ""}</span>
+           <button type="button" class="btn-ghost sig-info" data-sid="${s.id}">Info</button>
+         </div>`;
       sigLines.appendChild(line);
     });
     if (c.current_sid!=null) lockUpTo(c.current_sid);
@@ -596,7 +633,9 @@ document.addEventListener("DOMContentLoaded", () => {
   if (STAGE===1){ localStorage.removeItem("player_name"); localStorage.removeItem("risk_pct"); localStorage.removeItem("activity_v1"); showLogin(); }
   else { const n=localStorage.getItem("player_name"), r=localStorage.getItem("risk_pct"); if(n&&r) showApp(); else showLogin(); }
 
-  enterBtn.addEventListener("click", ()=>{ const nm=(nameInput.value||"Team Alpha").trim(); const rp=String(riskSlider.value||"3"); localStorage.setItem("player_name", nm); localStorage.setItem("risk_pct", rp); showApp(); });
+  function doEnter(){ const nm=(nameInput.value||"Team Alpha").trim(); const rp=String(riskSlider.value||"3"); localStorage.setItem("player_name", nm); localStorage.setItem("risk_pct", rp); showApp(); }
+  window.__enterClick = doEnter; // fallback for inline onclick
+  if (enterBtn) enterBtn.addEventListener("click", doEnter);
 });
 </script>
 </body>
