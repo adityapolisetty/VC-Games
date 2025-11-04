@@ -106,74 +106,49 @@ def save_npz(out_path: pathlib.Path, args, dist, summary, meta, norm_params, raw
     def pack_summary(key, stat_key):
         return np.array([summary[key][s][stat_key] for s in sig_grid], float)
 
-    # Net returns only
-    mean_net_return_median_max    = pack_summary("median","mean_net_return_max")
-    mean_net_return_median_linear = pack_summary("median","mean_net_return_linear")
-    mean_net_return_median_top5   = pack_summary("median","mean_net_return_top5")
-    sd_net_return_median_max      = pack_summary("median","sd_net_return_max")
-    sd_net_return_median_linear   = pack_summary("median","sd_net_return_linear")
-    sd_net_return_median_top5     = pack_summary("median","sd_net_return_top5")
+    payload = dict(
+        mode=str(meta.get("mode", "dup")), id=key_id, key_tuple=np.array(key_tuple, dtype=object),
+        params_raw=json.dumps(raw_params), params_norm=json.dumps(norm_params),
+        rounds=int(args.rounds), budget=float(BUDGET), p0_single_pile=float(P0_SINGLE_PILE),
+        sig_grid=sig_grid,
+    )
+    if "stage1_alloc" in meta:
+        payload["stage1_alloc"] = float(meta.get("stage1_alloc"))
 
-    mean_net_return_top2_max      = pack_summary("top2","mean_net_return_max")
-    mean_net_return_top2_linear   = pack_summary("top2","mean_net_return_linear")
-    mean_net_return_top2_top5     = pack_summary("top2","mean_net_return_top5")
-    sd_net_return_top2_max        = pack_summary("top2","sd_net_return_max")
-    sd_net_return_top2_linear     = pack_summary("top2","sd_net_return_linear")
-    sd_net_return_top2_top5       = pack_summary("top2","sd_net_return_top5")
+    # Add per-regime stats for whatever regimes are present in summary
+    regimes = list(summary.keys())
+    for reg in regimes:
+        try:
+            payload[f"mean_net_return_{reg}_max"]    = pack_summary(reg, "mean_net_return_max")
+            payload[f"mean_net_return_{reg}_linear"] = pack_summary(reg, "mean_net_return_linear")
+            payload[f"mean_net_return_{reg}_top5"]   = pack_summary(reg, "mean_net_return_top5")
+            payload[f"sd_net_return_{reg}_max"]      = pack_summary(reg, "sd_net_return_max")
+            payload[f"sd_net_return_{reg}_linear"]   = pack_summary(reg, "sd_net_return_linear")
+            payload[f"sd_net_return_{reg}_top5"]     = pack_summary(reg, "sd_net_return_top5")
+        except KeyError:
+            # Skip incomplete regimes gracefully
+            pass
 
-    # New signals: max rank and min rank
-    mean_net_return_max_max       = pack_summary("max","mean_net_return_max")
-    mean_net_return_max_linear    = pack_summary("max","mean_net_return_linear")
-    mean_net_return_max_top5      = pack_summary("max","mean_net_return_top5")
-    sd_net_return_max_max         = pack_summary("max","sd_net_return_max")
-    sd_net_return_max_linear      = pack_summary("max","sd_net_return_linear")
-    sd_net_return_max_top5        = pack_summary("max","sd_net_return_top5")
+    # Add posterior meta curves if provided
+    for k in ("post_median_x","post_median_y","post_top2_x","post_top2_y","post_max_x","post_max_y","post_min_x","post_min_y"):
+        if k in meta:
+            payload[k] = meta[k]
 
-    mean_net_return_min_max       = pack_summary("min","mean_net_return_max")
-    mean_net_return_min_linear    = pack_summary("min","mean_net_return_linear")
-    mean_net_return_min_top5      = pack_summary("min","mean_net_return_top5")
-    sd_net_return_min_max         = pack_summary("min","sd_net_return_max")
-    sd_net_return_min_linear      = pack_summary("min","sd_net_return_linear")
-    sd_net_return_min_top5        = pack_summary("min","sd_net_return_top5")
+    # Histogram meta
+    payload["hist_start"] = float(meta.get("hist_start", -100.0))
+    payload["hist_step"]  = float(meta.get("hist_step", 1.0))
+    payload["hist_n"]     = int(meta.get("hist_n", 0))
+
+    # Add hist counts if present
+    if isinstance(hists, dict):
+        for reg, rules in hists.items():
+            for rule_name, arr in rules.items():
+                payload[f"hist_counts_{reg}_{rule_name}"] = arr
 
     fd, tmp_path = tempfile.mkstemp(prefix=out_path.stem + '.', suffix='.npz', dir=str(out_path.parent))
     os.close(fd)
     try:
-        np.savez_compressed(
-            tmp_path,
-            mode="dup", id=key_id, key_tuple=np.array(key_tuple, dtype=object),
-            params_raw=json.dumps(raw_params), params_norm=json.dumps(norm_params),
-            rounds=int(args.rounds), budget=float(BUDGET), p0_single_pile=float(P0_SINGLE_PILE),
-            sig_grid=sig_grid,
-            mean_net_return_median_max=mean_net_return_median_max, mean_net_return_median_linear=mean_net_return_median_linear, mean_net_return_median_top5=mean_net_return_median_top5,
-            sd_net_return_median_max=sd_net_return_median_max, sd_net_return_median_linear=sd_net_return_median_linear, sd_net_return_median_top5=sd_net_return_median_top5,
-            mean_net_return_top2_max=mean_net_return_top2_max, mean_net_return_top2_linear=mean_net_return_top2_linear, mean_net_return_top2_top5=mean_net_return_top2_top5,
-            sd_net_return_top2_max=sd_net_return_top2_max, sd_net_return_top2_linear=sd_net_return_top2_linear, sd_net_return_top2_top5=sd_net_return_top2_top5,
-            mean_net_return_max_max=mean_net_return_max_max, mean_net_return_max_linear=mean_net_return_max_linear, mean_net_return_max_top5=mean_net_return_max_top5,
-            sd_net_return_max_max=sd_net_return_max_max, sd_net_return_max_linear=sd_net_return_max_linear, sd_net_return_max_top5=sd_net_return_max_top5,
-            mean_net_return_min_max=mean_net_return_min_max, mean_net_return_min_linear=mean_net_return_min_linear, mean_net_return_min_top5=mean_net_return_min_top5,
-            sd_net_return_min_max=sd_net_return_min_max, sd_net_return_min_linear=sd_net_return_min_linear, sd_net_return_min_top5=sd_net_return_min_top5,
-            post_median_x=meta["post_median_x"], post_median_y=meta["post_median_y"],
-            post_top2_x=meta["post_top2_x"], post_top2_y=meta["post_top2_y"],
-            post_max_x=meta["post_max_x"], post_max_y=meta["post_max_y"],
-            post_min_x=meta["post_min_x"], post_min_y=meta["post_min_y"],
-            hist_start=meta.get("hist_start", -100.0), hist_step=meta.get("hist_step", 1.0), hist_n=meta.get("hist_n", 0),
-            # Optional: binned distributions (counts)
-            **({
-                'hist_counts_median_max':   hists['median']['max'],
-                'hist_counts_median_linear':hists['median']['linear'],
-                'hist_counts_median_top5': hists['median']['top5'],
-                'hist_counts_top2_max':    hists['top2']['max'],
-                'hist_counts_top2_linear': hists['top2']['linear'],
-                'hist_counts_top2_top5':   hists['top2']['top5'],
-                'hist_counts_max_max':     hists['max']['max'],
-                'hist_counts_max_linear':  hists['max']['linear'],
-                'hist_counts_max_top5':    hists['max']['top5'],
-                'hist_counts_min_max':     hists['min']['max'],
-                'hist_counts_min_linear':  hists['min']['linear'],
-                'hist_counts_min_top5':    hists['min']['top5'],
-            } if isinstance(hists, dict) else {})
-        )
+        np.savez_compressed(tmp_path, **payload)
         os.replace(tmp_path, str(out_path))
     except Exception:
         try: os.remove(tmp_path)

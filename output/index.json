@@ -1,6 +1,6 @@
 {
-  "sc0p0000_sp0_s0_ap20p0000": "../output/sc0p0000_sp0_s0_ap20p0000.npz",
-  "sc3p0000_sp1_s0p1667_ap40p0000": "../output/sc3p0000_sp1_s0p1667_ap40p0000.npz",
-  "sc7p0000_sp1_s0p1667_ap20p0000": "../output/sc7p0000_sp1_s0p1667_ap20p0000.npz",
-  "sc11p0000_sp1_s0p2000_ap40p0000": "../output/sc11p0000_sp1_s0p2000_ap40p0000.npz"
+  "sc0p0000_sp0_s0_ap40p0000": "../output/sc0p0000_sp0_s0_ap40p0000.npz",
+  "sc5p0000_sp0_s0_ap20p0000": "../output/sc5p0000_sp0_s0_ap20p0000.npz",
+  "sc7p0000_sp1_s0p1667_ap40p0000": "../output/sc7p0000_sp1_s0p1667_ap40p0000.npz",
+  "sc11p0000_sp1_s0p1667_ap20p0000": "../output/sc11p0000_sp1_s0p1667_ap20p0000.npz"
 }
