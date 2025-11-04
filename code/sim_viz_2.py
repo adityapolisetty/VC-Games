@@ -334,7 +334,7 @@ def _panel_controls(tag: str):
     with c02:
         if mode == "2-Stage":
             alpha = st.select_slider(
-                "Stage allocation (%)",
+                "Budget allocation (%) - Stage 1 : 2",
                 options=STAGE1_ALLOC,
                 value=0.5,
                 key=f"alpha_{tag}",
