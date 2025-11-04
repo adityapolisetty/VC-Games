@@ -10,3 +10,6 @@
 
 !/output/
 !/output/**
+
+!/output_joint/
+!/output_joint/**
