@@ -338,7 +338,7 @@ def _panel_controls(tag: str):
                 options=STAGE1_ALLOC,
                 value=0.5,
                 key=f"alpha_{tag}",
-                format_func=lambda v: f"{int(v*100)}% Stage 1 / {int((1-v)*100)}% Stage 2"
+                format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)} split"
             )
         else:
             alpha = None
