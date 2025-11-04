@@ -314,32 +314,6 @@ def posterior_line(x, y, title, xlab):
 # ==============================
 st.title("Simulation Visualiser")
 
-# Row 1: Mode toggle + Stage-1 allocation (if 2-Stage)
-if True:  # Always show mode selector
-    cols = st.columns([1, 2])
-    with cols[0]:
-        mode = st.radio("Simulation Type", ["One-off", "2-Stage"], horizontal=True, key="mode")
-
-    # Set output directory based on mode
-    if mode == "One-off":
-        OUTPUT_DIR = Path("output/").resolve()
-        POST_NPZ_DEFAULT = str((Path("output") / "post_mc.npz").resolve())
-        alpha = None
-    else:  # 2-Stage
-        OUTPUT_DIR = Path("output_joint/").resolve()
-        POST_NPZ_DEFAULT = str((Path("output_joint") / "post_joint.npz").resolve())
-        # Show Stage-1 allocation slider in the same row
-        with cols[1]:
-            alpha = st.select_slider(
-                "Stage-1 allocation (α)",
-                options=STAGE1_ALLOC,
-                value=0.5,
-                key="stage1_alloc",
-                format_func=lambda v: f"{v:.1f} — {int(v*100)}% Stage-1 / {int((1-v)*100)}% Stage-2"
-            )
-
-st.markdown("---")
-
 # Only net returns are shown in percentages
 pct_key = "net_return"
 
@@ -353,7 +327,23 @@ def _fmt_ratio(x: float) -> str:
 def _panel_controls(tag: str):
     st.markdown(f"### Panel {tag}")
 
-    # Row 1: Ace payoff, Signal type, Signal cost
+    # Row 1: Mode toggle + Stage allocation
+    c01, c02 = st.columns([1, 1])
+    with c01:
+        mode = st.radio("Simulation Type", ["One-off", "2-Stage"], horizontal=True, key=f"mode_{tag}")
+    with c02:
+        if mode == "2-Stage":
+            alpha = st.select_slider(
+                "Stage allocation (%)",
+                options=STAGE1_ALLOC,
+                value=0.5,
+                key=f"alpha_{tag}",
+                format_func=lambda v: f"{int(v*100)}% Stage 1 / {int((1-v)*100)}% Stage 2"
+            )
+        else:
+            alpha = None
+
+    # Row 2: Ace payoff, Signal type, Signal cost
     c11, c12, c13 = st.columns([1, 1, 1])
     with c11:
         ap = st.select_slider(
@@ -391,23 +381,30 @@ def _panel_controls(tag: str):
 
     regime_key = SIG_KEY[sig_label]
     cfg = dict(signal_cost=sc, scale_pay=sp, scale_param=s, ace_payout=ap)
-    return cfg, regime_key
+
+    # Determine output directory based on mode
+    if mode == "One-off":
+        output_dir = Path("output/").resolve()
+    else:  # 2-Stage
+        output_dir = Path("output_joint/").resolve()
+
+    return cfg, regime_key, mode, alpha, output_dir
 
 # Collect panel configurations (must come before path resolution)
 left, right = st.columns(2)
 with left:
-    cfgA, regimeA = _panel_controls("A")
+    cfgA, regimeA, modeA, alphaA, outputA = _panel_controls("A")
 with right:
-    cfgB, regimeB = _panel_controls("B")
+    cfgB, regimeB, modeB, alphaB, outputB = _panel_controls("B")
 
 # Build and check paths
-def _resolve_npz(cfg):
-    p, norm, kid = _file_for_params(cfg, OUTPUT_DIR, mode, alpha)
+def _resolve_npz(cfg, output_dir, mode, alpha):
+    p, norm, kid = _file_for_params(cfg, output_dir, mode, alpha)
     return p, norm, kid
 
 try:
-    pathA, normA, _ = _resolve_npz(cfgA)
-    pathB, normB, _ = _resolve_npz(cfgB)
+    pathA, normA, _ = _resolve_npz(cfgA, outputA, modeA, alphaA)
+    pathB, normB, _ = _resolve_npz(cfgB, outputB, modeB, alphaB)
 except Exception as e:
     st.error(str(e))
     st.stop()
@@ -432,8 +429,8 @@ def _summary_keys_for(regime, pct_key):
         "params_norm", "params_raw"
     )
 
-dataA = load_keys(str(pathA), _summary_keys_for(regimeA, pct_key), str(OUTPUT_DIR))
-dataB = load_keys(str(pathB), _summary_keys_for(regimeB, pct_key), str(OUTPUT_DIR))
+dataA = load_keys(str(pathA), _summary_keys_for(regimeA, pct_key), str(outputA))
+dataB = load_keys(str(pathB), _summary_keys_for(regimeB, pct_key), str(outputB))
 
 def _extract_summary(data, regime, pct_key):
     sig_grid = np.asarray(data["sig_grid"], int)
@@ -541,32 +538,37 @@ with tabs[1]:
 
 # ========== Posteriors ==========
 with tabs[2]:
-    # Use posterior NPZ from appropriate directory
-    post = load_post_npz(POST_NPZ_DEFAULT)
+    # Use posterior NPZ from appropriate directory based on panel mode
+    postA_path = str((outputA / "post_joint.npz" if modeA == "2-Stage" else outputA / "post_mc.npz"))
+    postB_path = str((outputB / "post_joint.npz" if modeB == "2-Stage" else outputB / "post_mc.npz"))
+
+    postA = load_post_npz(postA_path)
+    postB = load_post_npz(postB_path)
+
     c = st.columns(2)
     with c[0]:
         st.subheader("A")
-        if post is None:
+        if postA is None:
             st.info("Load a valid posterior NPZ to see curves.")
         else:
             if regimeA == "median":
-                st.plotly_chart(posterior_line(post["med_x"], post["med_y"], "Posterior P(Ace | Median = x)", "Median"), width="stretch", key="post_A")
+                st.plotly_chart(posterior_line(postA["med_x"], postA["med_y"], "Posterior P(Ace | Median = x)", "Median"), width="stretch", key="post_A")
             elif regimeA == "top2":
-                st.plotly_chart(posterior_line(post["t2_x"], post["t2_y"], "Posterior P(Ace | Top-2 sum = x)", "Top-2 sum"), width="stretch", key="post_A")
+                st.plotly_chart(posterior_line(postA["t2_x"], postA["t2_y"], "Posterior P(Ace | Top-2 sum = x)", "Top-2 sum"), width="stretch", key="post_A")
             elif regimeA == "max":
-                st.plotly_chart(posterior_line(post["mx_x"], post["mx_y"], "P(Ace | Max rank = k)", "Max rank"), width="stretch", key="post_A")
+                st.plotly_chart(posterior_line(postA["mx_x"], postA["mx_y"], "P(Ace | Max rank = k)", "Max rank"), width="stretch", key="post_A")
             else:
-                st.plotly_chart(posterior_line(post["mn_x"], post["mn_y"], "P(Ace | Min rank = k)", "Min rank"), width="stretch", key="post_A")
+                st.plotly_chart(posterior_line(postA["mn_x"], postA["mn_y"], "P(Ace | Min rank = k)", "Min rank"), width="stretch", key="post_A")
     with c[1]:
         st.subheader("B")
-        if post is None:
+        if postB is None:
             st.info("Load a valid posterior NPZ to see curves.")
         else:
             if regimeB == "median":
-                st.plotly_chart(posterior_line(post["med_x"], post["med_y"], "Posterior P(Ace | Median = x)", "Median"), width="stretch", key="post_B")
+                st.plotly_chart(posterior_line(postB["med_x"], postB["med_y"], "Posterior P(Ace | Median = x)", "Median"), width="stretch", key="post_B")
             elif regimeB == "top2":
-                st.plotly_chart(posterior_line(post["t2_x"], post["t2_y"], "Posterior P(Ace | Top-2 sum = x)", "Top-2 sum"), width="stretch", key="post_B")
+                st.plotly_chart(posterior_line(postB["t2_x"], postB["t2_y"], "Posterior P(Ace | Top-2 sum = x)", "Top-2 sum"), width="stretch", key="post_B")
             elif regimeB == "max":
-                st.plotly_chart(posterior_line(post["mx_x"], post["mx_y"], "P(Ace | Max rank = k)", "Max rank"), width="stretch", key="post_B")
+                st.plotly_chart(posterior_line(postB["mx_x"], postB["mx_y"], "P(Ace | Max rank = k)", "Max rank"), width="stretch", key="post_B")
             else:
-                st.plotly_chart(posterior_line(post["mn_x"], post["mn_y"], "P(Ace | Min rank = k)", "Min rank"), width="stretch", key="post_B")
+                st.plotly_chart(posterior_line(postB["mn_x"], postB["mn_y"], "P(Ace | Min rank = k)", "Min rank"), width="stretch", key="post_B")

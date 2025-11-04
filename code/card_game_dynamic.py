@@ -194,13 +194,10 @@ def _deal_cards_global_deck(rng):
 # Realized payout
 # -----------------------
 
-def realize_payout(hands, w, scale_pay, scale_param, ace_payout,
-                   investable_budget):
+def _compute_gross_payout(hands, w, scale_pay, scale_param, ace_payout, investable_budget):
     """
-    Invest only the remaining budget after paying for signals.
-    - investable_budget = max(0, BUDGET - info_cost)
-    - gross is computed on that remaining stake.
-    - Returns net_return (%) relative to the original BUDGET for comparability.
+    Compute gross payout without subtracting BUDGET.
+    Helper for dynamic model where multiple stages are summed before computing net return.
     """
     w = np.array(w, float)
     gross = 0.0
@@ -220,6 +217,17 @@ def realize_payout(hands, w, scale_pay, scale_param, ace_payout,
             payoff_per_pound = float(ace_payout) * (float(scale_param) ** steps_down)
         gross += investable_budget * w[i] * payoff_per_pound
 
+    return gross
+
+def realize_payout(hands, w, scale_pay, scale_param, ace_payout,
+                   investable_budget):
+    """
+    Invest only the remaining budget after paying for signals.
+    - investable_budget = max(0, BUDGET - info_cost)
+    - gross is computed on that remaining stake.
+    - Returns net_return (%) relative to the original BUDGET for comparability.
+    """
+    gross = _compute_gross_payout(hands, w, scale_pay, scale_param, ace_payout, investable_budget)
     # express net as % of original BUDGET for consistent scaling
     net_return = 100.0 * ((gross - BUDGET) / BUDGET) if BUDGET > 0 else 0.0
     return net_return
@@ -337,13 +345,18 @@ def run_single_round_dynamic(
     w2_lin  = _weights_linear(sc2_lin)
     w2_top5 = _weights_top5(sc2_top5)
 
-    # Realize at end: Stage‑1 + Stage‑2
-    n_max = realize_payout(hands, w1_max,  scale_pay, scale_param, ace_payout,      investable1) \
-          + realize_payout(hands, w2_max,  scale_pay, scale_param, 0.5*ace_payout, budget2)
-    n_lin = realize_payout(hands, w1_lin,  scale_pay, scale_param, ace_payout,      investable1) \
-          + realize_payout(hands, w2_lin,  scale_pay, scale_param, 0.5*ace_payout, budget2)
-    n_top = realize_payout(hands, w1_top5, scale_pay, scale_param, ace_payout,      investable1) \
-          + realize_payout(hands, w2_top5, scale_pay, scale_param, 0.5*ace_payout, budget2)
+    # Realize at end: Stage-1 + Stage-2 (compute gross first, then subtract BUDGET once)
+    gross_max = _compute_gross_payout(hands, w1_max,  scale_pay, scale_param, ace_payout,      investable1) \
+              + _compute_gross_payout(hands, w2_max,  scale_pay, scale_param, 0.5*ace_payout, budget2)
+    gross_lin = _compute_gross_payout(hands, w1_lin,  scale_pay, scale_param, ace_payout,      investable1) \
+              + _compute_gross_payout(hands, w2_lin,  scale_pay, scale_param, 0.5*ace_payout, budget2)
+    gross_top = _compute_gross_payout(hands, w1_top5, scale_pay, scale_param, ace_payout,      investable1) \
+              + _compute_gross_payout(hands, w2_top5, scale_pay, scale_param, 0.5*ace_payout, budget2)
+
+    # Subtract BUDGET only once to get net return (%)
+    n_max = 100.0 * ((gross_max - BUDGET) / BUDGET) if BUDGET > 0 else 0.0
+    n_lin = 100.0 * ((gross_lin - BUDGET) / BUDGET) if BUDGET > 0 else 0.0
+    n_top = 100.0 * ((gross_top - BUDGET) / BUDGET) if BUDGET > 0 else 0.0
 
     return dict(net_return_max=float(n_max), net_return_linear=float(n_lin), net_return_top5=float(n_top))
 
