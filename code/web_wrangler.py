@@ -294,7 +294,7 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
 
     _POSTED.wait()  # wait for stage POST
 
-    if stage == 4:
+    if stage == 3:  # Results stage (was stage 4, now stage 3 in 2-stage model)
         _END_EVENT.wait(timeout=3600)
         time.sleep(0.2)
 

@@ -30,14 +30,12 @@ st.markdown(
     <style>
       :root { color-scheme: light; }
       .stApp, .block-container { background: #ffffff !important; }
-      .block-container { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+      .block-container { padding-top: 1.25rem; padding-bottom: 1.0rem; }
       .stSelectbox label, .stNumberInput label { font-size: 0.92rem; margin-bottom: .18rem; }
       .stSelectbox > div[data-baseweb="select"] { min-height: 36px; }
       .stTabs [data-baseweb="tab-list"] { gap: .25rem; }
       .stTabs [data-baseweb="tab"] { padding: .35rem .7rem; }
       .js-plotly-plot .plotly .main-svg { overflow: visible !important; }
-      h1 { margin-top: 0; padding-top: 0; font-size: 1.8rem; }
-      h3 { margin-top: 0.3rem; margin-bottom: 0.3rem; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -277,15 +275,15 @@ def frontier_plot(sig_grid, sd_triplet, mean_triplet, title, y_range=None):
 
     fig.update_layout(
         template="plotly_white",
-        legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center", font=_DEF_FONT),
-        margin=dict(l=10, r=10, t=40, b=30),
+        legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font=_DEF_FONT),
+        margin=dict(l=10, r=10, t=56, b=40),
         font=_DEF_FONT,
         xaxis=dict(title=dict(text="S.D. of return (%)", font=_DEF_FONT),
                    autorange=True, tickmode="auto",
                    tickfont=_DEF_FONT),
         yaxis=yaxis_cfg,
-        height=350,
-        title=dict(text=title, y=0.99, x=0.0, xanchor="left", font=_DEF_FONT),
+        height=440,
+        title=dict(text=title, y=0.995, x=0.0, xanchor="left", font=_DEF_FONT),
     )
     return fig
 
@@ -314,14 +312,14 @@ def value_of_info_plot(sig_grid, means, title, signal_cost=None, y_range=None):
     fig.update_layout(
         template="plotly_white",
         barmode="group",
-        legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center", font=_DEF_FONT),
-        margin=dict(l=10, r=10, t=50, b=40),
+        legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font=_DEF_FONT),
+        margin=dict(l=10, r=10, t=68, b=56),
         font=_DEF_FONT,
         xaxis=dict(title=dict(text="Number of signals", font=_DEF_FONT),
                    autorange=True, tickmode="linear", dtick=1,
                    tickfont=_DEF_FONT),
         yaxis=yaxis_cfg,
-        height=350,
+        height=420,
         title=dict(text=title + subtitle, x=0.0, xanchor="left", y=0.98, yanchor="top", font=_DEF_FONT),
     )
     return fig

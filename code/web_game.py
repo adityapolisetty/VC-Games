@@ -223,6 +223,8 @@ if __name__ == "__main__":
 
     # ---- Stage 1 ----
     act = run_ui(1, df, wallet, open_browser=open_first, signal_mode=mode, signal_cost=cost)
+    if act is None:
+        raise RuntimeError("Stage 1 UI returned None - did the server fail?")
     df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
     wallet = max(0.0, wallet - float(s_spent))
 
@@ -253,6 +255,8 @@ if __name__ == "__main__":
     # ---- Stage 2 ----
     # Only allow investing in piles that were invested in Stage 1
     act = run_ui(2, df, wallet, signal_mode=mode, signal_cost=cost, stage1_invested=stage1_invested_ids)
+    if act is None:
+        raise RuntimeError("Stage 2 UI returned None - did the server fail?")
     df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
     wallet = max(0.0, wallet - float(s_spent))
 

@@ -130,8 +130,24 @@
   .card.sig-owned { border-color:#000; }
   /* Selection: keep black border and white edge */
   .card.selected  { border-color:#000; box-shadow:0 0 0 1.5px #fff; }
-  /* Stage 2: uninvested piles are dimmed and not clickable */
-  .card.uninvested-stage2 { opacity: 0.4; cursor: not-allowed; filter: grayscale(80%); }
+  /* Stage 2: uninvested piles are translucent with overlay message */
+  .pile.uninvested-stage2 { position: relative; }
+  .pile.uninvested-stage2 .card { opacity: 0.3; cursor: not-allowed; }
+  .pile.uninvested-stage2::after {
+    content: "Too late to invest";
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    color: #111827;
+    pointer-events: none;
+    z-index: 10;
+    text-align: center;
+    padding: 8px;
+  }
 
   #pickInfo{ display:none; }
   /* Hide the Alive heading */
@@ -212,16 +228,7 @@ window.__enterClick = function(){
   <div class="wrap">
     <section>
       <h3 id="aliveTitle" class="section-title">Alive</h3>
-      <div id="investedSection" style="display:none;">
-        <h4 style="margin:0 0 12px 0; font-weight:600;">Invested Piles</h4>
-        <div id="gridInvested" class="grid"></div>
-        <div style="height:48px; border-bottom:1px solid var(--b); margin:24px 0;"></div>
-        <h4 style="margin:0 0 12px 0; font-weight:600; opacity:0.5;">Not Invested</h4>
-        <div id="gridUninvested" class="grid"></div>
-      </div>
       <div id="grid" class="grid"></div>
-
-
     </section>
 
     <aside>
@@ -296,9 +303,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const aliveTitle=document.getElementById("aliveTitle");
   const budgetEl=document.getElementById("budget");
   const grid=document.getElementById("grid");
-  const gridInvested=document.getElementById("gridInvested");
-  const gridUninvested=document.getElementById("gridUninvested");
-  const investedSection=document.getElementById("investedSection");
   // Wreckage removed for streamlined UI
   const idle=document.getElementById("idle");
   const panel=document.getElementById("panel");
@@ -427,19 +431,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function refreshLabels(){
-    // In Stage 2, query from both grids
-    let nodes;
-    if(STAGE === 2) {
-      const investedNodes = gridInvested ? Array.from(gridInvested.querySelectorAll(".card.top")) : [];
-      const uninvestedNodes = gridUninvested ? Array.from(gridUninvested.querySelectorAll(".card.top")) : [];
-      nodes = [...investedNodes, ...uninvestedNodes];
-    } else {
-      nodes = Array.from(grid.querySelectorAll(".card.top"));
-    }
-
+    const nodes = grid.querySelectorAll(".card.top");
     cards.forEach((c,i)=>{
       const el=nodes[i];
-      if(!el) return;
       const hasSig = !!c.current_reveal;
       const invested = c.invest_total > 0;
       const wasSelected = el.classList.contains('selected');
@@ -447,8 +441,7 @@ document.addEventListener("DOMContentLoaded", () => {
         + (hasSig ? " signaled" : "")
         + (invested ? " invested" : "")
         + (c.current_sid != null ? " sig-owned" : "")
-        + (wasSelected ? " selected" : "")
-        + (STAGE === 2 && !c.invested_stage1 ? " uninvested-stage2" : "");
+        + (wasSelected ? " selected" : "");
       const lines = [];
 
       // Add smaller space after pile number
@@ -512,29 +505,16 @@ document.addEventListener("DOMContentLoaded", () => {
   // Wreckage rendering removed
 
   function buildGrid(){
-    const mainGrid = grid;
-    const investedGrid = gridInvested;
-    const uninvestedGrid = gridUninvested;
-    const invSection = investedSection;
-
-    mainGrid.innerHTML=""; cards=[];
-    if(investedGrid) investedGrid.innerHTML="";
-    if(uninvestedGrid) uninvestedGrid.innerHTML="";
-
-    // In Stage 2, use separate grids
-    const useSeparateGrids = (STAGE === 2);
-    if(useSeparateGrids && invSection) {
-      invSection.style.display = "block";
-      mainGrid.style.display = "none";
-    } else {
-      if(invSection) invSection.style.display = "none";
-      mainGrid.style.display = "grid";
-    }
+    grid.innerHTML=""; cards=[];
 
     const list=Array.isArray(SEED.cards)?SEED.cards.slice(0,9):[];
     const prevS=SEED.prevSignals || {};
     const prevI=SEED.prevInvest || {};
-    if(!list.length){ mainGrid.innerHTML='<div class="muted">No cards this stage.</div>'; return; }
+    if(!list.length){ grid.innerHTML='<div class="muted">No cards this stage.</div>'; return; }
+
+    console.log("Stage:", STAGE);
+    console.log("STAGE1_INVESTED:", Array.from(STAGE1_INVESTED));
+    console.log("prevInvest:", prevI);
 
     function renderOne(i){
       if (i>=list.length){ refreshLabels(); return; }
@@ -552,12 +532,18 @@ document.addEventListener("DOMContentLoaded", () => {
         current_reveal: owned.length ? ((SIGNAL_MODE==='top2')? String(Nsum) : String(Nmed)) : null,
         invest_total: invest0, stage_invests: [],
         second_rank: Number(c.second_rank || 0),  // R2 for Stage 2 reveal
-        invested_stage1: STAGE1_INVESTED.has(Number(c.card_id))  // was invested in Stage 1
+        invested_stage1: STAGE1_INVESTED.has(Number(c.card_id)) || invest0 > 0  // was invested in Stage 1
       };
+      console.log(`Card ${c.card_id}: invested_stage1=${obj.invested_stage1}, in STAGE1_INVESTED=${STAGE1_INVESTED.has(Number(c.card_id))}, invest0=${invest0}`);
       cards.push(obj);
 
       const pile=document.createElement("div");
       pile.className="pile";
+
+      // In Stage 2, mark uninvested piles
+      if(STAGE === 2 && !cards[i].invested_stage1) {
+        pile.classList.add("uninvested-stage2");
+      }
       const offsets=[48,36,24,12];
       offsets.forEach(off=>{
         const u=document.createElement("div");
@@ -575,14 +561,7 @@ document.addEventListener("DOMContentLoaded", () => {
         selectCard(i);
       });
       pile.appendChild(b);
-
-      // In Stage 2, append to appropriate grid
-      if(STAGE === 2) {
-        const targetGrid = cards[i].invested_stage1 ? investedGrid : uninvestedGrid;
-        if(targetGrid) targetGrid.appendChild(pile);
-      } else {
-        mainGrid.appendChild(pile);
-      }
+      grid.appendChild(pile);
 
       requestAnimationFrame(()=>renderOne(i+1));
     }
