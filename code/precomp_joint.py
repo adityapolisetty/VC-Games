@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-Precompute joint empirical posteriors for the dynamic model:
-P(Rmax | Stage‑1 bucket, R2) for bucket in {median, top2} and
-second‑highest rank R2 in {2..14}.
+Precompute joint and marginal empirical posteriors for the dynamic model:
+- P(Rmax | Stage‑1 bucket, R2) for bucket in {median, top2} and
+  second‑highest rank R2 in {2..14}.
+- P(Rmax | R2) marginal across all buckets
 
 Outputs (NPZ)
 - joint_median_keys: int[K]
 - joint_median_mat:  float[K, 13(R2), 13(Rmax)]
 - joint_top2_keys:   int[T]
 - joint_top2_mat:    float[T, 13, 13]
+- r2_marginal_mat:   float[13(R2), 13(Rmax)]
 - prior_rmax:        float[13]
 
 Usage
@@ -43,6 +45,8 @@ def _acc_chunk(seed: int, start: int, rounds_chunk: int):
     med = {}
     top2 = {}
     prior = np.zeros((RMAX_DIM,), dtype=np.int64)
+    # Marginal P(Rmax | R2) - aggregate across all buckets
+    r2_marginal = np.zeros((RMAX_DIM, RMAX_DIM), dtype=np.int64)  # [R2, Rmax]
     piles = 0
     for i in range(int(rounds_chunk)):
         r = int(start) + int(i)
@@ -54,11 +58,13 @@ def _acc_chunk(seed: int, start: int, rounds_chunk: int):
             rmax = int(max_rank[j]) - 2
             piles += 1
             prior[rmax] += 1
+            # Marginal P(Rmax | R2)
+            r2_marginal[r2k, rmax] += 1
             # median
             m = int(medians[j]); med.setdefault(m, _new())[r2k, rmax] += 1
             # top2
             t = int(top2sum[j]); top2.setdefault(t, _new())[r2k, rmax] += 1
-    return med, top2, prior, piles
+    return med, top2, prior, r2_marginal, piles
 
 def _merge(dlist):
     out = {}
@@ -74,23 +80,26 @@ def _accumulate(seed: int, rounds: int, procs: int):
         W = int(procs); base, rem = divmod(int(rounds), W)
         chunks = [(sum([base + (1 if i < rem else 0) for i in range(j)]), base + (1 if j < rem else 0)) for j in range(W)]
         chunks = [(s, c) for (s, c) in chunks if c > 0]
-        med_parts, t2_parts, prior_parts, piles_total = [], [], [], 0
+        med_parts, t2_parts, prior_parts, r2_marg_parts, piles_total = [], [], [], [], 0
         with ProcessPoolExecutor(max_workers=len(chunks)) as ex:
             futs = [ex.submit(_acc_chunk, int(seed), int(s), int(c)) for (s, c) in chunks]
             for (s, c), fut in zip(chunks, futs):
-                m, t2, prior, piles = fut.result()
-                med_parts.append(m); t2_parts.append(t2); prior_parts.append(prior); piles_total += int(piles)
+                m, t2, prior, r2_marg, piles = fut.result()
+                med_parts.append(m); t2_parts.append(t2); prior_parts.append(prior)
+                r2_marg_parts.append(r2_marg); piles_total += int(piles)
                 processed += int(c); _print_bar(processed, rounds)
         med = _merge(med_parts); top2 = _merge(t2_parts)
         prior_counts = np.sum(np.stack(prior_parts, axis=0), axis=0) if prior_parts else np.zeros(RMAX_DIM, np.int64)
+        r2_marg_counts = np.sum(np.stack(r2_marg_parts, axis=0), axis=0) if r2_marg_parts else np.zeros((RMAX_DIM, RMAX_DIM), np.int64)
         total_piles = piles_total
     else:
-        med = {}; top2 = {}; prior_counts = np.zeros(RMAX_DIM, np.int64); total_piles = 0
+        med = {}; top2 = {}; prior_counts = np.zeros(RMAX_DIM, np.int64)
+        r2_marg_counts = np.zeros((RMAX_DIM, RMAX_DIM), np.int64); total_piles = 0
         for r in range(int(rounds)):
-            m, t2, prior, piles = _acc_chunk(int(seed), int(r), 1)
+            m, t2, prior, r2_marg, piles = _acc_chunk(int(seed), int(r), 1)
             for s, dst in ((m, med), (t2, top2)):
                 for k, v in s.items(): dst.setdefault(k, np.zeros((RMAX_DIM,RMAX_DIM), np.int64)); dst[k] += v
-            prior_counts += prior; total_piles += piles
+            prior_counts += prior; r2_marg_counts += r2_marg; total_piles += piles
             processed += 1
             if (processed % step_overall == 0) or (processed == int(rounds)):
                 _print_bar(processed, rounds)
@@ -118,7 +127,14 @@ def _accumulate(seed: int, rounds: int, procs: int):
     t2_prob  = _row_norm_3d(t2_counts)
     prior_rmax = (prior_counts / float(prior_counts.sum())) if prior_counts.sum() > 0 else np.zeros(RMAX_DIM, float)
 
-    return (med_keys, med_prob, t2_keys, t2_prob, prior_rmax,
+    # Normalize P(Rmax | R2) marginals: row-wise normalization
+    r2_marg_prob = np.zeros_like(r2_marg_counts, dtype=float)
+    for r2_idx in range(RMAX_DIM):
+        row_sum = r2_marg_counts[r2_idx].sum()
+        if row_sum > 0:
+            r2_marg_prob[r2_idx] = r2_marg_counts[r2_idx] / float(row_sum)
+
+    return (med_keys, med_prob, t2_keys, t2_prob, prior_rmax, r2_marg_prob,
             dict(seed=int(seed), rounds=int(rounds), piles=int(total_piles), procs=int(procs)))
 
 def main():
@@ -129,8 +145,8 @@ def main():
     ap.add_argument("--procs", type=int, default=8)
     args = ap.parse_args()
 
-    print(f"\nRunning {args.rounds:,} rounds to compute P(Rmax | Stage‑1 bucket, R2)")
-    med_keys, med_prob, t2_keys, t2_prob, prior_rmax, stats = _accumulate(args.seed, args.rounds, args.procs)
+    print(f"\nRunning {args.rounds:,} rounds to compute P(Rmax | Stage‑1 bucket, R2) and P(Rmax | R2)")
+    med_keys, med_prob, t2_keys, t2_prob, prior_rmax, r2_marg_prob, stats = _accumulate(args.seed, args.rounds, args.procs)
     print()
 
     out_path = Path(args.out); out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -138,8 +154,9 @@ def main():
              joint_median_keys=med_keys, joint_median_mat=med_prob,
              joint_top2_keys=t2_keys,  joint_top2_mat=t2_prob,
              prior_rmax=prior_rmax,
+             r2_marginal_mat=r2_marg_prob,
              meta=stats)
-    print(f"\nWrote joint posteriors to {out_path} | rounds={args.rounds}, piles={stats['piles']}")
+    print(f"\nWrote joint and marginal posteriors to {out_path} | rounds={args.rounds}, piles={stats['piles']}")
 
 if __name__ == "__main__":
     main()

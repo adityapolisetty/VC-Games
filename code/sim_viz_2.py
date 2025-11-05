@@ -80,10 +80,11 @@ def load_post_npz(npz_path: str, is_joint: bool = False):
             zset = set(z.files)
 
             if is_joint:
-                # 2-Stage: joint posteriors P(Rmax | bucket, R2)
+                # 2-Stage: joint posteriors P(Rmax | bucket, R2) and marginal P(Rmax | R2)
                 req = {
                     "joint_median_keys", "joint_median_mat",
                     "joint_top2_keys", "joint_top2_mat",
+                    "r2_marginal_mat",
                     "prior_rmax",
                 }
                 missing = sorted(list(req - zset))
@@ -97,6 +98,7 @@ def load_post_npz(npz_path: str, is_joint: bool = False):
                     "med_mat": np.asarray(z["joint_median_mat"], float),  # [K, 13(R2), 13(Rmax)]
                     "t2_keys": np.asarray(z["joint_top2_keys"], int),
                     "t2_mat": np.asarray(z["joint_top2_mat"], float),  # [T, 13, 13]
+                    "r2_marginal_mat": np.asarray(z["r2_marginal_mat"], float),  # [13(R2), 13(Rmax)]
                     "prior_rmax": np.asarray(z["prior_rmax"], float),
                 }
             else:

@@ -258,27 +258,28 @@ def _weights_top5(sc: np.ndarray) -> np.ndarray:
     return w
 
 def _load_joint_posteriors(npz_path: str):
-    """Load joint posteriors P(Rmax | Stage‑1 bucket, R2) for median/top2 only."""
+    """Load joint posteriors P(Rmax | Stage‑1 bucket, R2) and marginal P(Rmax | R2)."""
     p = pathlib.Path(npz_path)
     if not p.exists():
         raise FileNotFoundError(f"joint post_npz not found: {p}")
     with np.load(p, allow_pickle=False) as z:
-        req = {"joint_median_keys","joint_median_mat","joint_top2_keys","joint_top2_mat","prior_rmax"}
+        req = {"joint_median_keys","joint_median_mat","joint_top2_keys","joint_top2_mat","prior_rmax","r2_marginal_mat"}
         missing = [k for k in req if k not in z.files]
         if missing:
             raise ValueError(f"joint NPZ missing arrays: {missing}")
         jm_keys = np.asarray(z["joint_median_keys"], int); jm_mat = np.asarray(z["joint_median_mat"], float)
         jt_keys = np.asarray(z["joint_top2_keys"],  int); jt_mat = np.asarray(z["joint_top2_mat"],  float)
         prior   = np.asarray(z["prior_rmax"], float)
+        r2_marg = np.asarray(z["r2_marginal_mat"], float)
     def _rowmap(keys: np.ndarray):
         return {int(k): int(i) for i, k in enumerate(keys.tolist())}
     return {
         "median": (jm_keys, jm_mat, _rowmap(jm_keys)),
         "top2":   (jt_keys, jt_mat, _rowmap(jt_keys)),
-    }, prior
+    }, prior, r2_marg
 
 def run_single_round_dynamic(
-    rmax_tables, joint_tables, prior_rmax,
+    rmax_tables, joint_tables, prior_rmax, r2_marginal,
     chosen_idx, signal_type,
     hands, medians, top2sum, max_rank, min_rank,
     scale_pay, scale_param, ace_payout, signal_cost,
@@ -320,20 +321,31 @@ def run_single_round_dynamic(
     investable1 = max(0.0, budget1 - info_cost)
     budget2 = max(0.0, float(BUDGET) - budget1)
 
-    # Stage‑2 scores on invested piles using joint(T_bucket, R2)
+    # Stage‑2 scores on invested piles
+    # Use joint P(Rmax | bucket, R2) for observed piles, marginal P(Rmax | R2) for unobserved
     keys, mat3d, rowmap = joint_tables[signal_type]
     R2 = np.array([_second_highest_rank(h) for h in hands], int)
+    r2_marg = np.asarray(r2_marginal, float)
     def scores2_from(w1):
         sc = np.zeros(NUM_PILES, float)
         if investable1 <= 0:
             return sc
         idxs = np.where(w1 > 0)[0]
         for i in idxs:
-            b = int(buckets[i]); r2k = int(R2[i]) - 2
-            if (b in rowmap) and (0 <= r2k < 13):
-                vec = np.asarray(mat3d[rowmap[b], r2k, :], float)
+            r2k = int(R2[i]) - 2
+            if i in chosen_set:
+                # Invested AND observed: use joint posterior P(Rmax | bucket, R2)
+                b = int(buckets[i])
+                if (b in rowmap) and (0 <= r2k < 13):
+                    vec = np.asarray(mat3d[rowmap[b], r2k, :], float)
+                else:
+                    vec = prior_vec
             else:
-                vec = prior_vec
+                # Invested but NOT observed: use marginal posterior P(Rmax | R2)
+                if 0 <= r2k < 13:
+                    vec = np.asarray(r2_marg[r2k, :], float)
+                else:
+                    vec = prior_vec
             sc[i] = float(np.dot(h_vals2, vec))
         return sc
 
@@ -365,7 +377,7 @@ def run_single_round_dynamic(
 # Dynamic worker (two-stage)
 # -----------------------
 def _worker_chunk_dynamic(base_seed, round_start, rounds_chunk, signal_type, n_sig,
-                          rmax_tables, joint_tables, prior_rmax, params, stage1_alloc):
+                          rmax_tables, joint_tables, prior_rmax, r2_marginal, params, stage1_alloc):
     """
     Evaluate a contiguous chunk of rounds for a fixed (signal_type, n_sig) using
     the dynamic two-stage model with Stage-1 allocation stage1_alloc.
@@ -384,6 +396,7 @@ def _worker_chunk_dynamic(base_seed, round_start, rounds_chunk, signal_type, n_s
             rmax_tables=rmax_tables,
             joint_tables=joint_tables,
             prior_rmax=prior_rmax,
+            r2_marginal=r2_marginal,
             chosen_idx=chosen_idx, signal_type=signal_type,
             hands=hands, medians=medians, top2sum=top2sum, max_rank=max_rank, min_rank=min_rank,
             scale_pay=params["scale_pay"], scale_param=params["scale_param"],
@@ -411,8 +424,8 @@ def simulate_experiment_dynamic(seed_int, rounds, max_signals, procs, params, st
     # Load P(Rmax|signal) for median/top2 and prior
     rmax_median, rmax_top2, _rmax_max_unused, _rmax_min_unused, prior_mc, (pm_x, pm_y, pt2_x, pt2_y, pmax_x, pmax_y, pmin_x, pmin_y) = _load_mc_posteriors(POST_NPZ_DEFAULT)
 
-    # Load joint posteriors and prior
-    joint_tables, prior_joint = _load_joint_posteriors(POST_NPZ_JOINT_DEFAULT)
+    # Load joint posteriors, marginal posteriors, and prior
+    joint_tables, prior_joint, r2_marginal = _load_joint_posteriors(POST_NPZ_JOINT_DEFAULT)
     prior_rmax = prior_joint if isinstance(prior_joint, np.ndarray) else prior_mc
 
     # Tables used by dynamic model
@@ -471,7 +484,7 @@ def simulate_experiment_dynamic(seed_int, rounds, max_signals, procs, params, st
                         ex.submit(
                             _worker_chunk_dynamic,
                             int(seed_int), int(start), int(sz), st, int(n_sig),
-                            rmax_tables, joint_tables, prior_rmax, params, float(stage1_alloc)
+                            rmax_tables, joint_tables, prior_rmax, r2_marginal, params, float(stage1_alloc)
                         )
                         for (start, sz) in starts
                     ]
@@ -493,6 +506,7 @@ def simulate_experiment_dynamic(seed_int, rounds, max_signals, procs, params, st
                         rmax_tables=rmax_tables,
                         joint_tables=joint_tables,
                         prior_rmax=prior_rmax,
+                        r2_marginal=r2_marginal,
                         chosen_idx=chosen_idx, signal_type=st,
                         hands=hands, medians=medians, top2sum=top2sum, max_rank=max_rank, min_rank=min_rank,
                         scale_pay=params["scale_pay"], scale_param=params["scale_param"],
