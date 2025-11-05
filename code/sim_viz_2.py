@@ -247,19 +247,22 @@ def frontier_plot(sig_grid, sd_triplet, mean_triplet, title, y_range=None):
         x=sd_lin, y=mu_lin, mode="markers+text",
         marker=dict(size=msize, color=GREY, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
-        textfont=dict(color="black", size=11), name="𝔼[payoff] weighted", opacity=ALPHA
+        textfont=dict(color="black", size=11), name="𝔼[payoff] weighted", opacity=ALPHA,
+        hovertemplate="<b>𝔼[payoff] weighted</b><br>Signals: %{text}<br>SD: %{x:.2f}%<br>Mean: %{y:.2f}%<extra></extra>"
     ))
     fig.add_trace(go.Scatter(
         x=sd_sq, y=mu_sq, mode="markers+text",
         marker=dict(size=msize, color=RED, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
-        textfont=dict(color="white", size=11), name="Top-5 𝔼[payoff] weighted", opacity=ALPHA
+        textfont=dict(color="white", size=11), name="Top-5 𝔼[payoff] weighted", opacity=ALPHA,
+        hovertemplate="<b>Top-5 𝔼[payoff] weighted</b><br>Signals: %{text}<br>SD: %{x:.2f}%<br>Mean: %{y:.2f}%<extra></extra>"
     ))
     fig.add_trace(go.Scatter(
         x=sd_max, y=mu_max, mode="markers+text",
         marker=dict(size=msize, color=BLUE, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
-        textfont=dict(color="white", size=11), name="Highest 𝔼[payoff]", opacity=ALPHA
+        textfont=dict(color="white", size=11), name="Highest 𝔼[payoff]", opacity=ALPHA,
+        hovertemplate="<b>Highest 𝔼[payoff]</b><br>Signals: %{text}<br>SD: %{x:.2f}%<br>Mean: %{y:.2f}%<extra></extra>"
     ))
 
     # Build y-axis config with optional fixed range
@@ -284,6 +287,8 @@ def frontier_plot(sig_grid, sd_triplet, mean_triplet, title, y_range=None):
         yaxis=yaxis_cfg,
         height=440,
         title=dict(text=title, y=0.995, x=0.0, xanchor="left", font=_DEF_FONT),
+        hovermode="closest",
+        hoverdistance=20,
     )
     return fig
 
