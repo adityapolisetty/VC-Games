@@ -368,7 +368,7 @@ def _panel_controls(tag: str):
                 options=STAGE1_ALLOC,
                 value=0.5,
                 key=f"alpha_{tag}",
-                format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)} split"
+                format_func=lambda v: f"{round(v*100)}:{round((1-v)*100)} split"
             )
         else:
             alpha = None
@@ -588,6 +588,7 @@ with tabs[2]:
 
             # X-axis selector
             c_r2_1, c_r2_2 = st.columns([1, 2])
+            c_r2_1, c_r2_2 = st.columns([1, 1])
             with c_r2_1:
                 x_axis_opts = ["Median", "Top 2", "Second Rank"]
                 x_axis_choice = st.selectbox("X-axis", x_axis_opts, key="x_axis_A")
@@ -597,7 +598,7 @@ with tabs[2]:
                 signal_type = "median" if x_axis_choice == "Median" else "top2"
 
                 with c_r2_2:
-                    r2_val = st.slider("Second Rank (R2)", min_value=2, max_value=14, value=10, key="r2_A")
+                    r2_val = st.slider("Second Rank (R2)", min_value=2, max_value=13, value=10, key="r2_A")
 
                 # Extract data
                 keys = postA["med_keys"] if signal_type == "median" else postA["t2_keys"]
@@ -706,6 +707,7 @@ with tabs[2]:
 
             # X-axis selector
             c_r2_1, c_r2_2 = st.columns([1, 2])
+            c_r2_1, c_r2_2 = st.columns([1, 1])
             with c_r2_1:
                 x_axis_opts = ["Median", "Top 2", "Second Rank"]
                 x_axis_choice = st.selectbox("X-axis", x_axis_opts, key="x_axis_B")
@@ -715,7 +717,7 @@ with tabs[2]:
                 signal_type = "median" if x_axis_choice == "Median" else "top2"
 
                 with c_r2_2:
-                    r2_val = st.slider("Second Rank (R2)", min_value=2, max_value=14, value=10, key="r2_B")
+                    r2_val = st.slider("Second Rank (R2)", min_value=2, max_value=13, value=10, key="r2_B")
 
                 # Extract data
                 keys = postB["med_keys"] if signal_type == "median" else postB["t2_keys"]
