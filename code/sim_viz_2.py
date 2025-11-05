@@ -324,7 +324,7 @@ def value_of_info_plot(sig_grid, means, title, signal_cost=None, y_range=None):
     )
     return fig
 
-def posterior_line(x, y, title, xlab):
+def posterior_line(x, y, title, xlab, ylab="P(Ace | Signals)"):
     xs = np.asarray(x); ys = np.asarray(y)
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines+markers", line=dict(color=BLUE)))
@@ -333,7 +333,7 @@ def posterior_line(x, y, title, xlab):
         margin=dict(l=10, r=10, t=56, b=40),
         font=_DEF_FONT,
         xaxis=dict(title=dict(text=xlab, font=_DEF_FONT), tickfont=_DEF_FONT),
-        yaxis=dict(title=dict(text="P(Ace | signal)", font=_DEF_FONT), range=[0,1], tickfont=_DEF_FONT),
+        yaxis=dict(title=dict(text=ylab, font=_DEF_FONT), range=[0,1], tickfont=_DEF_FONT),
         height=400,
         title=dict(text=title, y=0.995, x=0.0, xanchor="left", font=_DEF_FONT),
     )
@@ -586,13 +586,15 @@ with tabs[2]:
             # 2-Stage mode: joint posteriors with interactive controls
             st.caption("Note: Signal type is controlled by the dropdown below (panel setting ignored)")
 
-            # X-axis selector and conditional controls
+            # X-axis selector
             x_axis_opts = ["Median", "Top 2", "Second Rank"]
             x_axis_choice = st.selectbox("X-axis", x_axis_opts, key="x_axis_A")
 
             if x_axis_choice in ["Median", "Top 2"]:
                 # Signal on X-axis, R2 as parameter
                 signal_type = "median" if x_axis_choice == "Median" else "top2"
+
+                # Put slider on same row
                 r2_val = st.slider("Second Rank (R2)", min_value=2, max_value=14, value=10, key="r2_A")
 
                 # Extract data
@@ -610,19 +612,21 @@ with tabs[2]:
                 st.plotly_chart(posterior_line(x_vals, y_vals, title, xlab), width="stretch", key="post_A")
 
             else:  # "Second Rank" on X-axis
-                # R2 on X-axis, signal as parameter
-                sig_type_choice = st.selectbox("Signal type", ["Median", "Top 2"], key="sig_type_A")
-                signal_type = "median" if sig_type_choice == "Median" else "top2"
+                # R2 on X-axis, signal as parameter - put controls on same row
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    sig_type_choice = st.selectbox("Signal type", ["Median", "Top 2"], key="sig_type_A")
 
+                signal_type = "median" if sig_type_choice == "Median" else "top2"
                 keys = postA["med_keys"] if signal_type == "median" else postA["t2_keys"]
                 mat = postA["med_mat"] if signal_type == "median" else postA["t2_mat"]
 
-                # Slider for signal value
-                sig_val = st.slider(f"{sig_type_choice} value",
-                                   min_value=int(keys.min()),
-                                   max_value=int(keys.max()),
-                                   value=int(keys[len(keys)//2]) if len(keys) > 0 else 8,
-                                   key="sig_val_A")
+                with col2:
+                    sig_val = st.slider(f"{sig_type_choice} value",
+                                       min_value=int(keys.min()),
+                                       max_value=int(keys.max()),
+                                       value=int(keys[len(keys)//2]) if len(keys) > 0 else 8,
+                                       key="sig_val_A")
 
                 # Find bucket index
                 bucket_idx = np.where(keys == sig_val)[0]
@@ -698,13 +702,15 @@ with tabs[2]:
             # 2-Stage mode: joint posteriors with interactive controls
             st.caption("Note: Signal type is controlled by the dropdown below (panel setting ignored)")
 
-            # X-axis selector and conditional controls
+            # X-axis selector
             x_axis_opts = ["Median", "Top 2", "Second Rank"]
             x_axis_choice = st.selectbox("X-axis", x_axis_opts, key="x_axis_B")
 
             if x_axis_choice in ["Median", "Top 2"]:
                 # Signal on X-axis, R2 as parameter
                 signal_type = "median" if x_axis_choice == "Median" else "top2"
+
+                # Put slider on same row
                 r2_val = st.slider("Second Rank (R2)", min_value=2, max_value=14, value=10, key="r2_B")
 
                 # Extract data
@@ -722,19 +728,21 @@ with tabs[2]:
                 st.plotly_chart(posterior_line(x_vals, y_vals, title, xlab), width="stretch", key="post_B")
 
             else:  # "Second Rank" on X-axis
-                # R2 on X-axis, signal as parameter
-                sig_type_choice = st.selectbox("Signal type", ["Median", "Top 2"], key="sig_type_B")
-                signal_type = "median" if sig_type_choice == "Median" else "top2"
+                # R2 on X-axis, signal as parameter - put controls on same row
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    sig_type_choice = st.selectbox("Signal type", ["Median", "Top 2"], key="sig_type_B")
 
+                signal_type = "median" if sig_type_choice == "Median" else "top2"
                 keys = postB["med_keys"] if signal_type == "median" else postB["t2_keys"]
                 mat = postB["med_mat"] if signal_type == "median" else postB["t2_mat"]
 
-                # Slider for signal value
-                sig_val = st.slider(f"{sig_type_choice} value",
-                                   min_value=int(keys.min()),
-                                   max_value=int(keys.max()),
-                                   value=int(keys[len(keys)//2]) if len(keys) > 0 else 8,
-                                   key="sig_val_B")
+                with col2:
+                    sig_val = st.slider(f"{sig_type_choice} value",
+                                       min_value=int(keys.min()),
+                                       max_value=int(keys.max()),
+                                       value=int(keys[len(keys)//2]) if len(keys) > 0 else 8,
+                                       key="sig_val_B")
 
                 # Find bucket index
                 bucket_idx = np.where(keys == sig_val)[0]

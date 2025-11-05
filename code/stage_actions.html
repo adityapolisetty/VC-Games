@@ -159,7 +159,10 @@ window.__enterClick = function(){
 </script>
 <div id="brandbar" class="brandbar">
   <div class="brand-left">VC Card Game</div>
-  <div class="brand-center" id="dashCenter"></div>
+  <div class="brand-center">
+    <span id="dashCenter"></span>
+    <span id="stageIndicator" style="margin-left:20px; font-size:18px; font-weight:700;"></span>
+  </div>
 </div>
 
 <!-- LOGIN -->
@@ -206,7 +209,6 @@ window.__enterClick = function(){
 
   <div class="wrap">
     <section>
-      <h2 id="stageBanner" class="section-title" style="font-weight:800;margin-top:-8px;margin-bottom:36px;margin-left:-48px;"></h2>
       <h3 id="aliveTitle" class="section-title">Alive</h3>
       <div id="grid" class="grid"></div>
 
@@ -675,11 +677,12 @@ document.addEventListener("DOMContentLoaded", () => {
   appView.style.display = "block";
   applyHeaderName();
 
+  const stageIndicator = document.getElementById("stageIndicator");
   if (STAGE === 4){
     stageTitle.textContent = "End of Game";
     stageLab.textContent = "";
     stageLab.style.display = "none";
-    if (stageBanner) { stageBanner.textContent = "End of Game"; stageBanner.style.display = "block"; }
+    if (stageIndicator) stageIndicator.textContent = "End of Game";
     aliveTitle.textContent = "Survivors";
     finishBtn.textContent = "Show performance";
     panel.style.display = "none";
@@ -688,7 +691,7 @@ document.addEventListener("DOMContentLoaded", () => {
     stageTitle.textContent = "Stage";
     stageLab.textContent = String(STAGE);
     stageLab.style.display = "inline";
-    if (stageBanner) { stageBanner.textContent = `Stage ${STAGE}`; stageBanner.style.display = "block"; }
+    if (stageIndicator) stageIndicator.textContent = `Stage ${STAGE}`;
     aliveTitle.textContent = "Alive";
     finishBtn.textContent = "Finish Stage";
   }
