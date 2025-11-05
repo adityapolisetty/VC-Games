@@ -26,33 +26,33 @@
   /* Decision board width = 420 - invest(170) + 0.5*info button width */
   .wrap{display:grid;grid-template-columns:1fr calc(420px - 170px + (var(--infoW)/2));gap:20px;padding:40px 20px 20px;margin-left:72px}
   /* Card sizing variables */
-  :root{ --cardW:120px; --cardH:165px; --cardBorder:11px; --cardRadius:15px; --pileLift:14px; }
+  :root{ --cardW:140px; --cardH:192px; --cardBorder:11px; --cardRadius:15px; --pileLift:14px; }
   .grid{display:grid;grid-template-columns:repeat(5,var(--cardW));gap:48px 72px;align-content:start;overflow:visible}
   .pile{position:relative;width:var(--cardW);height:var(--cardH);overflow:visible;transition:transform .15s ease, box-shadow .15s ease}
   .pile.raised{ transform: translateY(calc(-1 * var(--pileLift))); }
   .pile.raised::after{ content:""; position:absolute; left:calc(var(--cardW)/2 - 7px); bottom:-10px; width:14px; height:14px; background:#000; border-radius:50%; }
   /* Raised pile adds a stronger drop shadow like button hover (no colour overlays) */
-  .pile.raised .card.top{ box-shadow:0 12px 28px rgba(0,0,0,.28), 0 0 0 0.5px #000; }
+  .pile.raised .card.top{ box-shadow:0 12px 28px rgba(0,0,0,.28), 0 0 0 1.5px #fff; }
   .section-title{margin:6px 0 12px 0}
 
-  .card{width:var(--cardW);height:var(--cardH);border:var(--cardBorder) solid #fff;border-radius:var(--cardRadius);cursor:pointer;position:relative;transition:border-color .15s, box-shadow .15s, filter .15s;box-shadow:0 0 0 0.5px #000}
-  .card.blue{background:#111318} .card.red{background:var(--red)}
+  .card{width:var(--cardW);height:var(--cardH);border:var(--cardBorder) solid #000;border-radius:var(--cardRadius);cursor:pointer;position:relative;transition:border-color .15s, box-shadow .15s, filter .15s;box-shadow:0 0 0 1.5px #fff}
+  .card.blue{background:#ffffff} .card.red{background:#ffffff}
   /* Ensure invested state does not change fill color */
-  .card.blue.invested{ background:#111318 !important }
-  .card.red.invested{ background:var(--red) !important }
-  /* Remove coloured overlays for signalled/invested states */
-  .card.signaled{ box-shadow:none }
+  .card.blue.invested{ background:#ffffff !important }
+  .card.red.invested{ background:#ffffff !important }
+  /* Keep white edge on signalled/invested states */
+  .card.signaled{ box-shadow:0 0 0 1.5px #fff }
   /* Also raise the selected top card itself as an extra safeguard */
-  .card.top.selected{ transform: translateY(calc(-1 * var(--pileLift))); box-shadow:0 12px 28px rgba(0,0,0,.28), 0 0 0 0.5px #000 }
-  .card.invested{ box-shadow:none }
+  .card.top.selected{ transform: translateY(calc(-1 * var(--pileLift))); box-shadow:0 12px 28px rgba(0,0,0,.28), 0 0 0 1.5px #fff }
+  .card.invested{ box-shadow:0 0 0 1.5px #fff }
   .med-reveal{ font-weight:500; color:#6b7280 }
   .card.dead{filter:grayscale(40%);opacity:.6;cursor:default}
   /* Overlay text on top card; padded down to avoid pile tag */
-  .label{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:flex-start;text-align:left;color:#fff;font-weight:600;font-size:12px;line-height:1.2;white-space:pre-line;pointer-events:none;padding:28px 12px 10px}
+  .label{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:flex-start;text-align:left;color:#111827;font-weight:600;font-size:12px;line-height:1.4;white-space:pre-line;pointer-events:none;padding:28px 12px 10px}
   /* Full under-cards (non-interactive), positioned to the left */
-  .underCard{position:absolute;left:0;top:0;width:var(--cardW);height:var(--cardH);background:#111318;
-    border:var(--cardBorder) solid #fff;border-radius:var(--cardRadius);box-shadow:0 0 0 0.5px #000; pointer-events:none; z-index:0}
-  .pile-tag{position:absolute;left:8px;top:8px;font-size:12px;color:#ffffff;background:transparent;font-weight:700;pointer-events:none;z-index:2}
+  .underCard{position:absolute;left:0;top:0;width:var(--cardW);height:var(--cardH);background:#ffffff;
+    border:var(--cardBorder) solid #000;border-radius:var(--cardRadius);box-shadow:0 0 0 1.5px #fff; pointer-events:none; z-index:0}
+  .pile-tag{position:absolute;left:8px;top:8px;font-size:12px;color:#111827;background:transparent;font-weight:700;pointer-events:none;z-index:2}
   .card.top{position:absolute;left:0;top:0;z-index:1}
 
   aside{position:sticky;top:104px;height:fit-content;border:1px solid var(--b);border-radius:12px;padding:16px;background:var(--panel)}
@@ -65,7 +65,7 @@
   .btn[disabled]{opacity:.5;cursor:not-allowed}
   /* Make all buttons match Enter button styling and be narrower */
   .btn-cta, .btn-cta-sm, .btn-ghost{ padding:10px 14px; border-radius:10px; border:1px solid var(--b); background:#111827; color:#e5e7eb; width:auto; font-weight:700 }
-  .btn-ghost{ min-width:var(--infoW); text-align:center }
+  .btn-ghost{ min-width:50px; text-align:center; background:#ffffff; color:#111827; margin-left:16px }
   .btn:hover, .btn-cta:hover, .btn-cta-sm:hover, .btn-ghost:hover { transform:translateY(-1px); filter:brightness(1.1) saturate(1.1); box-shadow:0 6px 16px rgba(0,0,0,.18); }
   .btn:active, .btn-cta:active, .btn-cta-sm:active, .btn-ghost:active { transform:none; filter:none; box-shadow:none; }
 
@@ -126,9 +126,9 @@
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:50}
   .overlay .msg{background:var(--panel);border:1px solid var(--b);border-radius:14px;padding:24px 28px;font-weight:800}
 
-  .card.sig-owned { border-color:#fff; }
-  /* Selection: keep subtle border only, let pile shadow show */
-  .card.selected  { border-color:#fff; box-shadow:none; }
+  .card.sig-owned { border-color:#000; }
+  /* Selection: keep black border and white edge */
+  .card.selected  { border-color:#000; box-shadow:0 0 0 1.5px #fff; }
 
   #pickInfo{ display:none; }
   /* Hide the Alive heading */
@@ -198,8 +198,7 @@ window.__enterClick = function(){
   <header class="nav">
     <div class="nav-left">
       <a href="#" id="rulesLink">Rules</a>
-      <a href="#" id="tipsLink">Tips</a>
-      <a href="#" id="wonkLink">Wonkish</a>
+      <a href="https://ib-vc-simulation-dynamic.streamlit.app/#b" target="_blank" id="wonkLink">Wonkish</a>
     </div>
     <div class="title" style="display:none"><span id="stageTitle">Stage</span> <span id="stageLab">?</span></div>
     <div class="right"><div id="budget" class="budget">Budget £—</div></div>
@@ -236,6 +235,23 @@ window.__enterClick = function(){
       </div>
 
       <button id="finish" class="btn-cta" style="margin-top:12px;">Finish Stage</button>
+
+      <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--b);">
+        <h3 style="margin:0 0 12px 0;">Summary</h3>
+        <div id="summaryContent">
+          <table style="width:100%; border-collapse: collapse; font-size: 14px;">
+            <thead>
+              <tr style="border-bottom: 1px solid var(--b);">
+                <th style="text-align:left; padding:8px 4px;">Stage</th>
+                <th style="text-align:right; padding:8px 4px;">Signals</th>
+                <th style="text-align:right; padding:8px 4px;">Stakes</th>
+              </tr>
+            </thead>
+            <tbody id="summaryBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
     </aside>
   </div>
 </div>
@@ -342,7 +358,7 @@ document.addEventListener("DOMContentLoaded", () => {
     dashCenter.textContent = nm ? `${nm}'s dashboard` : "Team dashboard";
   }
   function setBudget(){
-    budgetEl.textContent = `Budget £${budget.toFixed(2)} remaining`;
+    budgetEl.textContent = `Budget £${Math.round(budget)} remaining`;
     const addBtn=document.getElementById("add");
     if (addBtn) addBtn.disabled = (budget<=0);
     sigLines.querySelectorAll(".buy-sig").forEach(b=>{
@@ -351,6 +367,34 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
   function requireFunds(x){ if(budget<=0 || budget<x){ alert("Budget exhausted."); return false; } return true; }
+
+  function updateSummary(){
+    const summaryBody = document.getElementById('summaryBody');
+    if (!summaryBody) return;
+
+    // Calculate current stage totals
+    let currentSignals = 0, currentStakes = 0;
+    cards.forEach(c => {
+      const newSids = [...c.owned_sids].filter(sid => !c.prev_owned.has(sid));
+      newSids.forEach(sid => {
+        const s = SIGNALS.find(x => x.id === sid);
+        if (s) currentSignals += s.cost;
+      });
+      currentStakes += c.stage_invests.reduce((a,b) => a+b, 0);
+    });
+
+    // Build summary rows
+    let html = '';
+
+    // Add current stage
+    html += `<tr style="border-bottom: 1px solid var(--b);">
+      <td style="padding:8px 4px;">Stage ${STAGE}</td>
+      <td style="text-align:right; padding:8px 4px;">£${currentSignals}</td>
+      <td style="text-align:right; padding:8px 4px;">£${currentStakes}</td>
+    </tr>`;
+
+    summaryBody.innerHTML = html;
+  }
 
   function refreshLabels(){
     const nodes=grid.querySelectorAll(".card.top");
@@ -365,15 +409,38 @@ document.addEventListener("DOMContentLoaded", () => {
         + (c.current_sid != null ? " sig-owned" : "")
         + (wasSelected ? " selected" : "");
       const lines = [];
+
+      // Add extra space after pile number
+      lines.push('');
+      lines.push('');
+
+      // Add signal value with spacing
       if (c.current_reveal){
         if (typeof SINGLE_SIGNAL_MODE !== 'undefined' && SINGLE_SIGNAL_MODE){
           const lab = (typeof SIGNAL_MODE!== 'undefined' && SIGNAL_MODE==='top2') ? 'Sum of top 2' : 'Median';
           lines.push(`${lab} = ${c.current_reveal}`);
+          lines.push(''); // Add blank line for spacing
         } else {
           lines.push(String(c.current_reveal));
+          lines.push(''); // Add blank line for spacing
         }
       }
-      if (c.invest_total > 0) lines.push(`Invested £${c.invest_total}`);
+
+      // Show stage-by-stage stakes
+      const prevInvestment = Number(SEED.prevInvest?.[c.card_id] || 0);
+      const currentStageInvestment = c.stage_invests.reduce((a,b)=>a+b, 0);
+
+      // Show previous stages' total stake (if any)
+      if (prevInvestment > 0 && STAGE > 1) {
+        const prevStages = STAGE === 2 ? 'Stage 1' : `Stages 1-${STAGE-1}`;
+        lines.push(`${prevStages} stake £${prevInvestment}`);
+      }
+
+      // Show current stage stake (if any)
+      if (currentStageInvestment > 0) {
+        lines.push(`Stage ${STAGE} stake £${currentStageInvestment}`);
+      }
+
       el.querySelector(".label").textContent = lines.join("\n");
     });
   }
@@ -415,7 +482,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const Nmed = (c.med!=null) ? Number(c.med) : Number(c.N);
       const Nsum = (c.sum2!=null)? Number(c.sum2): Number(c.N);
       const obj={
-        card_id:Number(c.card_id), color:"blue", N,
+        card_id:Number(c.card_id), color:"blue", N: Number(c.N),
         prev_owned:new Set(owned), owned_sids:new Set(owned),
         current_sid: owned.length ? Math.max(...owned) : null,
         med_val: Nmed, sum2_val: Nsum,
@@ -517,7 +584,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (btnNow) { btnNow.classList.add('sig-owned'); btnNow.classList.add('signaled'); }
 
       lockUpTo(sid);
-      setBudget(); refreshLabels(); renderSigLines();
+      setBudget(); refreshLabels(); renderSigLines(); updateSummary();
       return;
     }
     const info=e.target.closest(".sig-info");
@@ -543,7 +610,7 @@ document.addEventListener("DOMContentLoaded", () => {
     c.invest_total = (c.invest_total||0) + vv;
     budget -= vv;
     document.getElementById("amt").value="";
-    setBudget(); renderInvList(); refreshLabels();
+    setBudget(); renderInvList(); refreshLabels(); updateSummary();
   });
 
   // Finish / Show performance
@@ -598,8 +665,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // modals
   document.querySelectorAll(".close").forEach(x=>x.onclick=()=>{ document.getElementById(x.dataset.x).style.display="none"; });
   document.getElementById("rulesLink").onclick=(e)=>{e.preventDefault();rulesModal.style.display="flex";};
-  document.getElementById("tipsLink").onclick =(e)=>{e.preventDefault();tipsModal.style.display="flex";};
-  document.getElementById("wonkLink").onclick =(e)=>{e.preventDefault();wonkModal.style.display="flex";};
   [rulesModal,tipsModal,wonkModal].forEach(m=>m.addEventListener("click",(e)=>{ if(e.target===m) m.style.display="none"; }));
 
   // view toggles
@@ -631,6 +696,7 @@ document.addEventListener("DOMContentLoaded", () => {
   buildGrid();
   budget = BUDGET;
   setBudget();
+  updateSummary();
 }
   if (STAGE===1){ localStorage.removeItem("player_name"); localStorage.removeItem("risk_pct"); localStorage.removeItem("activity_v1"); showLogin(); }
   else { const n=localStorage.getItem("player_name"), r=localStorage.getItem("risk_pct"); if(n&&r) showApp(); else showLogin(); }
