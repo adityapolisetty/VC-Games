@@ -55,7 +55,7 @@ SIGNAL_COSTS = [0, 3, 5, 7, 9, 11]
 SCALE_PAYS   = [0, 1]
 SCALE_PARAMS = [1/3, 1/4, 1/5, 1/6]
 ACE_PAYOUTS  = [10, 20, 30, 40]
-STAGE1_ALLOC = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+STAGE1_ALLOC = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
 SIG_LABELS = ["Median", "Top 2 rank sum"]
 SIG_KEY = {"Median": "median", "Top 2 rank sum": "top2", "Max Rank": "max", "Min Rank": "min"}
