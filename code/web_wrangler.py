@@ -233,22 +233,27 @@ document.getElementById('endBtn').onclick = () => {{
 
 def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None = None,
            port: int = 8765, open_browser: bool = False,
-           signal_mode: str = "median", signal_cost: float = 5.0):
-    """Serve UI for a stage and return the posted decisions."""
+           signal_mode: str = "median", signal_cost: float = 5.0,
+           stage1_invested: list | None = None):
+    """Serve UI for a stage and return the posted decisions.
+
+    stage1_invested: list of card_ids that were invested in Stage 1 (for Stage 2 restrictions)
+    """
     global _ACTIONS
     _ACTIONS = None
     _POSTED.clear()
     _END_EVENT.clear()
 
-    # Build lightweight cards with optional median/top2 fields
+    # Build lightweight cards with optional median/top2 and second_rank fields
     cards_df = df.loc[df["alive"], :].copy()
-    cols = [c for c in ("card_id", "color", "N", "med", "sum2") if c in cards_df.columns]
+    cols = [c for c in ("card_id", "color", "N", "med", "sum2", "second_rank") if c in cards_df.columns]
     cards = []
     for _, r in cards_df[cols].iterrows():
         rec = {"card_id": int(r.get("card_id")), "color": str(r.get("color", "blue"))}
         if "med" in cols: rec["med"] = int(r.get("med"))
         if "sum2" in cols: rec["sum2"] = int(r.get("sum2"))
         if "N" in cols: rec["N"] = int(r.get("N"))
+        if "second_rank" in cols: rec["second_rank"] = int(r.get("second_rank"))
         cards.append(rec)
 
     ctx = {
@@ -261,6 +266,7 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
         "results": results or {},
         "signal_mode": str(signal_mode),
         "signal_cost": float(signal_cost),
+        "stage1_invested": stage1_invested or [],  # card_ids invested in Stage 1
     }
 
     # Bind server; if requested port is busy, fall back to an ephemeral port

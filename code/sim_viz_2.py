@@ -30,12 +30,14 @@ st.markdown(
     <style>
       :root { color-scheme: light; }
       .stApp, .block-container { background: #ffffff !important; }
-      .block-container { padding-top: 1.25rem; padding-bottom: 1.0rem; }
+      .block-container { padding-top: 0.5rem; padding-bottom: 0.5rem; }
       .stSelectbox label, .stNumberInput label { font-size: 0.92rem; margin-bottom: .18rem; }
       .stSelectbox > div[data-baseweb="select"] { min-height: 36px; }
       .stTabs [data-baseweb="tab-list"] { gap: .25rem; }
       .stTabs [data-baseweb="tab"] { padding: .35rem .7rem; }
       .js-plotly-plot .plotly .main-svg { overflow: visible !important; }
+      h1 { margin-top: 0; padding-top: 0; font-size: 1.8rem; }
+      h3 { margin-top: 0.3rem; margin-bottom: 0.3rem; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -275,15 +277,15 @@ def frontier_plot(sig_grid, sd_triplet, mean_triplet, title, y_range=None):
 
     fig.update_layout(
         template="plotly_white",
-        legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font=_DEF_FONT),
-        margin=dict(l=10, r=10, t=56, b=40),
+        legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center", font=_DEF_FONT),
+        margin=dict(l=10, r=10, t=40, b=30),
         font=_DEF_FONT,
         xaxis=dict(title=dict(text="S.D. of return (%)", font=_DEF_FONT),
                    autorange=True, tickmode="auto",
                    tickfont=_DEF_FONT),
         yaxis=yaxis_cfg,
-        height=440,
-        title=dict(text=title, y=0.995, x=0.0, xanchor="left", font=_DEF_FONT),
+        height=350,
+        title=dict(text=title, y=0.99, x=0.0, xanchor="left", font=_DEF_FONT),
     )
     return fig
 
@@ -312,14 +314,14 @@ def value_of_info_plot(sig_grid, means, title, signal_cost=None, y_range=None):
     fig.update_layout(
         template="plotly_white",
         barmode="group",
-        legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font=_DEF_FONT),
-        margin=dict(l=10, r=10, t=68, b=56),
+        legend=dict(orientation="h", y=-0.18, x=0.5, xanchor="center", font=_DEF_FONT),
+        margin=dict(l=10, r=10, t=50, b=40),
         font=_DEF_FONT,
         xaxis=dict(title=dict(text="Number of signals", font=_DEF_FONT),
                    autorange=True, tickmode="linear", dtick=1,
                    tickfont=_DEF_FONT),
         yaxis=yaxis_cfg,
-        height=420,
+        height=350,
         title=dict(text=title + subtitle, x=0.0, xanchor="left", y=0.98, yanchor="top", font=_DEF_FONT),
     )
     return fig
@@ -330,12 +332,12 @@ def posterior_line(x, y, title, xlab, ylab="P(Ace | Signals)"):
     fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines+markers", line=dict(color=BLUE)))
     fig.update_layout(
         template="plotly_white",
-        margin=dict(l=10, r=10, t=56, b=40),
+        margin=dict(l=10, r=10, t=40, b=30),
         font=_DEF_FONT,
         xaxis=dict(title=dict(text=xlab, font=_DEF_FONT), tickfont=_DEF_FONT),
         yaxis=dict(title=dict(text=ylab, font=_DEF_FONT), range=[0,1], tickfont=_DEF_FONT),
-        height=400,
-        title=dict(text=title, y=0.995, x=0.0, xanchor="left", font=_DEF_FONT),
+        height=320,
+        title=dict(text=title, y=0.99, x=0.0, xanchor="left", font=_DEF_FONT),
     )
     return fig
 
@@ -674,12 +676,12 @@ with tabs[2]:
                 fig.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="lines+markers", line=dict(color=BLUE)))
                 fig.update_layout(
                     template="plotly_white",
-                    margin=dict(l=10, r=10, t=56, b=40),
+                    margin=dict(l=10, r=10, t=40, b=30),
                     font=_DEF_FONT,
                     xaxis=dict(title=dict(text=sig_name, font=_DEF_FONT), tickfont=_DEF_FONT),
                     yaxis=dict(title=dict(text=ylab_text, font=_DEF_FONT), range=[0,1], tickfont=_DEF_FONT),
-                    height=400,
-                    title=dict(text=title, y=0.995, x=0.0, xanchor="left", font=_DEF_FONT),
+                    height=320,
+                    title=dict(text=title, y=0.99, x=0.0, xanchor="left", font=_DEF_FONT),
                 )
                 st.plotly_chart(fig, width="stretch", key="post_A")
             else:
@@ -789,12 +791,12 @@ with tabs[2]:
                 fig.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="lines+markers", line=dict(color=BLUE)))
                 fig.update_layout(
                     template="plotly_white",
-                    margin=dict(l=10, r=10, t=56, b=40),
+                    margin=dict(l=10, r=10, t=40, b=30),
                     font=_DEF_FONT,
                     xaxis=dict(title=dict(text=sig_name, font=_DEF_FONT), tickfont=_DEF_FONT),
                     yaxis=dict(title=dict(text=ylab_text, font=_DEF_FONT), range=[0,1], tickfont=_DEF_FONT),
-                    height=400,
-                    title=dict(text=title, y=0.995, x=0.0, xanchor="left", font=_DEF_FONT),
+                    height=320,
+                    title=dict(text=title, y=0.99, x=0.0, xanchor="left", font=_DEF_FONT),
                 )
                 st.plotly_chart(fig, width="stretch", key="post_B")
             else:

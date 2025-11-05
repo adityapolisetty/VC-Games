@@ -18,8 +18,9 @@
 
   header.nav{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--b);background:var(--panel);position:sticky;top:40px;z-index:10}
   .nav-left{display:flex;gap:14px}
-  .nav-left a{color:#334155;text-decoration:none;font-weight:600}
-  .nav-left a:hover{color:#0f172a}
+  .nav-left a{color:#111827;text-decoration:none;font-weight:600}
+  .nav-left a:hover{color:#6b7280}
+  .nav .title{font-weight:600;font-size:14px;color:#111827}
   .right{display:flex;gap:16px}
   .budget{font-weight:700}
 
@@ -129,6 +130,8 @@
   .card.sig-owned { border-color:#000; }
   /* Selection: keep black border and white edge */
   .card.selected  { border-color:#000; box-shadow:0 0 0 1.5px #fff; }
+  /* Stage 2: uninvested piles are dimmed and not clickable */
+  .card.uninvested-stage2 { opacity: 0.4; cursor: not-allowed; filter: grayscale(80%); }
 
   #pickInfo{ display:none; }
   /* Hide the Alive heading */
@@ -161,7 +164,6 @@ window.__enterClick = function(){
   <div class="brand-left">VC Card Game</div>
   <div class="brand-center">
     <span id="dashCenter"></span>
-    <span id="stageIndicator" style="margin-left:20px; font-size:18px; font-weight:700;"></span>
   </div>
 </div>
 
@@ -203,16 +205,23 @@ window.__enterClick = function(){
       <a href="#" id="rulesLink">Rules</a>
       <a href="https://ib-vc-simulation-dynamic.streamlit.app/#b" target="_blank" id="wonkLink">Wonkish</a>
     </div>
-    <div class="title" style="display:none"><span id="stageTitle">Stage</span> <span id="stageLab">?</span></div>
+    <div class="title"><span id="stageIndicator"></span></div>
     <div class="right"><div id="budget" class="budget">Budget £—</div></div>
   </header>
 
   <div class="wrap">
     <section>
       <h3 id="aliveTitle" class="section-title">Alive</h3>
+      <div id="investedSection" style="display:none;">
+        <h4 style="margin:0 0 12px 0; font-weight:600;">Invested Piles</h4>
+        <div id="gridInvested" class="grid"></div>
+        <div style="height:48px; border-bottom:1px solid var(--b); margin:24px 0;"></div>
+        <h4 style="margin:0 0 12px 0; font-weight:600; opacity:0.5;">Not Invested</h4>
+        <div id="gridUninvested" class="grid"></div>
+      </div>
       <div id="grid" class="grid"></div>
 
-      
+
     </section>
 
     <aside>
@@ -266,12 +275,14 @@ window.__enterClick = function(){
 <div id="wonkModal"  class="modal"><div class="box"><span class="close" data-x="wonkModal">✕</span><h3>Wonkish</h3><p class="muted">S1 A–7/8–K; S2 A/2–5/6–9/10–K; S3 2–3/4–5/6–7/8–9/10–J/Q–K/A; S4 exact N.</p></div></div>
 
 <div id="sigModal" class="modal"><div class="box"><span class="close" data-x="sigModal">✕</span><h3 id="sigTitle">Signal</h3><p id="sigDesc" class="muted"></p></div></div>
+<div id="budgetAlertModal" class="modal"><div class="box"><span class="close" data-x="budgetAlertModal">✕</span><h3>Budget Alert</h3><p id="budgetAlertMsg" class="muted"></p><button class="btn" onclick="document.getElementById('budgetAlertModal').style.display='none'">OK</button></div></div>
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const SEED = window.SEED || {};
   let STAGE  = Number(SEED.stage) || 1;
   let BUDGET = Number(SEED.budgetRemaining) || 0;
+  const STAGE1_INVESTED = new Set(SEED.stage1_invested || []);  // card_ids invested in Stage 1
 
   // Refs
   const brandbar=document.getElementById("brandbar");
@@ -282,12 +293,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const riskVal=document.getElementById("riskVal");
   const enterBtn=document.getElementById("enterBtn");
   const dashCenter=document.getElementById("dashCenter");
-  const stageLab=document.getElementById("stageLab");
-  const stageBanner=document.getElementById("stageBanner");
-  const stageTitle=document.getElementById("stageTitle");
   const aliveTitle=document.getElementById("aliveTitle");
   const budgetEl=document.getElementById("budget");
   const grid=document.getElementById("grid");
+  const gridInvested=document.getElementById("gridInvested");
+  const gridUninvested=document.getElementById("gridUninvested");
+  const investedSection=document.getElementById("investedSection");
   // Wreckage removed for streamlined UI
   const idle=document.getElementById("idle");
   const panel=document.getElementById("panel");
@@ -302,8 +313,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const sigModal=document.getElementById("sigModal");
   const sigTitle=document.getElementById("sigTitle");
   const sigDesc=document.getElementById("sigDesc");
+  const budgetAlertModal=document.getElementById("budgetAlertModal");
+  const budgetAlertMsg=document.getElementById("budgetAlertMsg");
   const overlay=document.getElementById("stageOverlay");
   const overlayMsg=document.getElementById("overlayMsg");
+
+  function showBudgetAlert(message) {
+    budgetAlertMsg.textContent = message;
+    budgetAlertModal.style.display = "flex";
+  }
 
   const RISK_TAGS = {
     1: "Let's gooo! 🚀😎",
@@ -368,7 +386,17 @@ document.addEventListener("DOMContentLoaded", () => {
       b.disabled = lock || (budget<=0);
     });
   }
-  function requireFunds(x){ if(budget<=0 || budget<x){ alert("Budget exhausted."); return false; } return true; }
+  function requireFunds(x){
+    if(budget<=0){
+      showBudgetAlert("Budget exhausted. You have no remaining funds.");
+      return false;
+    }
+    if(budget<x){
+      showBudgetAlert(`Cannot afford this. You need £${x} but only have £${Math.round(budget)} remaining.`);
+      return false;
+    }
+    return true;
+  }
 
   function updateSummary(){
     const summaryBody = document.getElementById('summaryBody');
@@ -399,9 +427,19 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function refreshLabels(){
-    const nodes=grid.querySelectorAll(".card.top");
+    // In Stage 2, query from both grids
+    let nodes;
+    if(STAGE === 2) {
+      const investedNodes = gridInvested ? Array.from(gridInvested.querySelectorAll(".card.top")) : [];
+      const uninvestedNodes = gridUninvested ? Array.from(gridUninvested.querySelectorAll(".card.top")) : [];
+      nodes = [...investedNodes, ...uninvestedNodes];
+    } else {
+      nodes = Array.from(grid.querySelectorAll(".card.top"));
+    }
+
     cards.forEach((c,i)=>{
       const el=nodes[i];
+      if(!el) return;
       const hasSig = !!c.current_reveal;
       const invested = c.invest_total > 0;
       const wasSelected = el.classList.contains('selected');
@@ -409,11 +447,11 @@ document.addEventListener("DOMContentLoaded", () => {
         + (hasSig ? " signaled" : "")
         + (invested ? " invested" : "")
         + (c.current_sid != null ? " sig-owned" : "")
-        + (wasSelected ? " selected" : "");
+        + (wasSelected ? " selected" : "")
+        + (STAGE === 2 && !c.invested_stage1 ? " uninvested-stage2" : "");
       const lines = [];
 
-      // Add extra space after pile number
-      lines.push('');
+      // Add smaller space after pile number
       lines.push('');
 
       // Add signal value with spacing
@@ -421,11 +459,16 @@ document.addEventListener("DOMContentLoaded", () => {
         if (typeof SINGLE_SIGNAL_MODE !== 'undefined' && SINGLE_SIGNAL_MODE){
           const lab = (typeof SIGNAL_MODE!== 'undefined' && SIGNAL_MODE==='top2') ? 'Sum of top 2' : 'Median';
           lines.push(`${lab} = ${c.current_reveal}`);
-          lines.push(''); // Add blank line for spacing
         } else {
           lines.push(String(c.current_reveal));
-          lines.push(''); // Add blank line for spacing
         }
+        lines.push(''); // Add blank line after signal
+      }
+
+      // In Stage 2, show second rank AFTER median signal for piles invested in Stage 1
+      if (STAGE === 2 && c.invested_stage1 && c.second_rank > 0) {
+        lines.push(`2nd rank: ${c.second_rank}`);
+        lines.push(''); // Add blank line for spacing
       }
 
       // Show stage-by-stage stakes
@@ -469,11 +512,29 @@ document.addEventListener("DOMContentLoaded", () => {
   // Wreckage rendering removed
 
   function buildGrid(){
-    grid.innerHTML=""; cards=[];
+    const mainGrid = grid;
+    const investedGrid = gridInvested;
+    const uninvestedGrid = gridUninvested;
+    const invSection = investedSection;
+
+    mainGrid.innerHTML=""; cards=[];
+    if(investedGrid) investedGrid.innerHTML="";
+    if(uninvestedGrid) uninvestedGrid.innerHTML="";
+
+    // In Stage 2, use separate grids
+    const useSeparateGrids = (STAGE === 2);
+    if(useSeparateGrids && invSection) {
+      invSection.style.display = "block";
+      mainGrid.style.display = "none";
+    } else {
+      if(invSection) invSection.style.display = "none";
+      mainGrid.style.display = "grid";
+    }
+
     const list=Array.isArray(SEED.cards)?SEED.cards.slice(0,9):[];
     const prevS=SEED.prevSignals || {};
     const prevI=SEED.prevInvest || {};
-    if(!list.length){ grid.innerHTML='<div class="muted">No cards this stage.</div>'; return; }
+    if(!list.length){ mainGrid.innerHTML='<div class="muted">No cards this stage.</div>'; return; }
 
     function renderOne(i){
       if (i>=list.length){ refreshLabels(); return; }
@@ -489,7 +550,9 @@ document.addEventListener("DOMContentLoaded", () => {
         current_sid: owned.length ? Math.max(...owned) : null,
         med_val: Nmed, sum2_val: Nsum,
         current_reveal: owned.length ? ((SIGNAL_MODE==='top2')? String(Nsum) : String(Nmed)) : null,
-        invest_total: invest0, stage_invests: []
+        invest_total: invest0, stage_invests: [],
+        second_rank: Number(c.second_rank || 0),  // R2 for Stage 2 reveal
+        invested_stage1: STAGE1_INVESTED.has(Number(c.card_id))  // was invested in Stage 1
       };
       cards.push(obj);
 
@@ -505,9 +568,21 @@ document.addEventListener("DOMContentLoaded", () => {
       const b=document.createElement("button");
       b.type="button"; b.className=`card top blue`; b.dataset.idx=i;
       b.innerHTML=`<span class=\"pile-tag\">Pile ${i+1}</span><span class=\"label\"></span>`;
-      b.addEventListener("click",()=>{ if(STAGE!==4) selectCard(i); });
+      b.addEventListener("click",()=>{
+        if(STAGE===3) return;  // Results stage - no selection
+        // Stage 2: only allow selecting piles invested in Stage 1
+        if(STAGE === 2 && !cards[i].invested_stage1) return;
+        selectCard(i);
+      });
       pile.appendChild(b);
-      grid.appendChild(pile);
+
+      // In Stage 2, append to appropriate grid
+      if(STAGE === 2) {
+        const targetGrid = cards[i].invested_stage1 ? investedGrid : uninvestedGrid;
+        if(targetGrid) targetGrid.appendChild(pile);
+      } else {
+        mainGrid.appendChild(pile);
+      }
 
       requestAnimationFrame(()=>renderOne(i+1));
     }
@@ -603,7 +678,7 @@ document.addEventListener("DOMContentLoaded", () => {
     invList.textContent = `Invested: ${tot > 0 ? '£'+tot : '0'}`;
   }
   document.getElementById("add").addEventListener("click",()=>{
-    if(currentIdx==null || STAGE===4) return;
+    if(currentIdx==null || STAGE===3) return;
     const v=parseFloat(document.getElementById("amt").value);
     if(!isFinite(v)||v<=0){ msg.textContent="Enter a positive amount."; return; }
     const vv=Math.round(v*2)/2; if(!requireFunds(vv)) return;
@@ -619,7 +694,7 @@ document.addEventListener("DOMContentLoaded", () => {
   finishBtn.addEventListener("click",()=>{
     const purchases={}, invest={}; let ss=0, si=0;
 
-    if (STAGE !== 4) {
+    if (STAGE !== 3) {
       (function updateActivity(){
         const act = (function load(){ try{ return JSON.parse(localStorage.getItem("activity_v1")||"{}"); }catch{ return {}; } })();
         cards.forEach(c=>{
@@ -651,7 +726,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     fetch("/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
       .then(()=>{
-        if (STAGE === 4) {
+        if (STAGE === 3) {
           overlayMsg.textContent = "Preparing results…";
           overlay.style.display = "flex";
           setTimeout(()=>{ location.href = "/results"; }, 600);
@@ -667,7 +742,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // modals
   document.querySelectorAll(".close").forEach(x=>x.onclick=()=>{ document.getElementById(x.dataset.x).style.display="none"; });
   document.getElementById("rulesLink").onclick=(e)=>{e.preventDefault();rulesModal.style.display="flex";};
-  [rulesModal,tipsModal,wonkModal].forEach(m=>m.addEventListener("click",(e)=>{ if(e.target===m) m.style.display="none"; }));
+  [rulesModal,tipsModal,wonkModal,budgetAlertModal].forEach(m=>m.addEventListener("click",(e)=>{ if(e.target===m) m.style.display="none"; }));
 
   // view toggles
   function showLogin(){ brandbar.style.display="none"; loginSection.style.display="grid"; appView.style.display="none"; dashCenter.textContent=""; }
@@ -678,19 +753,13 @@ document.addEventListener("DOMContentLoaded", () => {
   applyHeaderName();
 
   const stageIndicator = document.getElementById("stageIndicator");
-  if (STAGE === 4){
-    stageTitle.textContent = "End of Game";
-    stageLab.textContent = "";
-    stageLab.style.display = "none";
+  if (STAGE === 3){
     if (stageIndicator) stageIndicator.textContent = "End of Game";
     aliveTitle.textContent = "Survivors";
     finishBtn.textContent = "Show performance";
     panel.style.display = "none";
     idle.textContent = "End of game.";
   } else {
-    stageTitle.textContent = "Stage";
-    stageLab.textContent = String(STAGE);
-    stageLab.style.display = "inline";
     if (stageIndicator) stageIndicator.textContent = `Stage ${STAGE}`;
     aliveTitle.textContent = "Alive";
     finishBtn.textContent = "Finish Stage";

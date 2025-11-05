@@ -7,8 +7,10 @@ from web_wrangler import run_ui  # UI server only
 from card_game import _deal_cards_global_deck, round_seed
 
 # ------- game parameters -------
-MIN_INV = {1: 1.0, 2: 5.0, 3: 10.0}
+MIN_INV = {1: 1.0, 2: 5.0}  # Only 2 stages now
 WALLET0 = 100.0
+ACE_PAYOUT = 20.0  # Default ace payout multiplier
+ACE_RANK = 14
 # Flags: restrict to a single signal type and cost
 SIGNAL_MODE = "median"  # or "top2"
 SIGNAL_COST = 5.0
@@ -22,21 +24,28 @@ def draw_deck(n_blue: int, n_red: int, seed: int | None = None) -> pd.DataFrame:
     """Compatibility wrapper returning a 9-pile blue-only board using global deck.
 
     Populates per-pile stats so the web UI can show actual signal values.
+    Includes second-highest rank (R2) for dynamic two-stage model.
     """
     rng = np.random.default_rng(seed)
     has_ace, hands, medians, top2sum, max_rank, min_rank = _deal_cards_global_deck(rng)
     rows = []
     for i in range(len(hands)):
+        # Extract second-highest rank from sorted hand
+        hand_sorted = np.sort(hands[i])
+        second_rank = int(hand_sorted[-2]) if len(hand_sorted) >= 2 else int(hand_sorted[-1])
+
         rows.append({
             "card_id": int(i),
             "color": "blue",
             "alive": True,
             "round": 0,
-            # legacy field; keep for fallback
-            "N": int(medians[i]),
+            # legacy field; keep for fallback (max rank)
+            "N": int(max_rank[i]),
             # explicit fields consumed by UI
             "med": int(medians[i]),
             "sum2": int(top2sum[i]),
+            "max_rank": int(max_rank[i]),
+            "second_rank": second_rank,  # R2 for Stage 2 reveal
         })
     return pd.DataFrame(rows)
 
@@ -80,16 +89,31 @@ def step_round(df: pd.DataFrame, round_idx: int, rng=None):
 # ===============================
 # Payoffs
 # ===============================
-def compute_payoffs_at_stage3(df: pd.DataFrame) -> pd.DataFrame:
-    out = df[(df["alive"]) & (df["round"] == 3)].copy()
-    out["Vs"] = np.where(out["color"].eq("blue"), 1.0, 1.5)
-    out["Vi"] = np.where(out["color"].eq("blue"), out["N"] / 20.0, (out["N"] ** 2).astype(float))
-    out["V"] = out["Vs"] + out["Vi"]
-    for c in ("inv1", "inv2", "inv3"):
+def compute_payoffs_at_stage2(df: pd.DataFrame, ace_payout: float = ACE_PAYOUT) -> pd.DataFrame:
+    """Compute payoffs after Stage 2 (end of game).
+
+    Stage 1 investments pay full ace_payout for Ace.
+    Stage 2 investments pay 0.5x ace_payout for Ace.
+    Only highest card in pile determines payout (Ace-only model).
+    """
+    out = df[(df["alive"]) & (df["round"] == 2)].copy()
+
+    # Ace-only model: only Aces pay out
+    is_ace = out["N"] == ACE_RANK
+
+    for c in ("inv1", "inv2"):
         if c not in out.columns:
             out[c] = 0.0
-    out["stake"] = out[["inv1", "inv2", "inv3"]].sum(axis=1)
-    out["payout"] = out["stake"] * out["V"]
+
+    # Stage 1 payout: full ace_payout
+    out["payout1"] = np.where(is_ace, out["inv1"] * ace_payout, 0.0)
+
+    # Stage 2 payout: 0.5x ace_payout
+    out["payout2"] = np.where(is_ace, out["inv2"] * 0.5 * ace_payout, 0.0)
+
+    out["stake"] = out[["inv1", "inv2"]].sum(axis=1)
+    out["payout"] = out["payout1"] + out["payout2"]
+
     return out
 
 
@@ -186,9 +210,10 @@ if __name__ == "__main__":
     mode = args.signal_mode
     cost = float(args.signal_cost)
     open_first = args.open_browser
+    ace_pay = ACE_PAYOUT
     # 9 piles, all blue
     df = draw_deck(n_blue=9, n_red=0, seed=42)
-    for c in ("inv1", "inv2", "inv3"):
+    for c in ("inv1", "inv2"):
         if c not in df.columns:
             df[c] = 0.0
 
@@ -222,8 +247,12 @@ if __name__ == "__main__":
     sys_blue |= b1
     sys_red  |= r1
 
+    # Track which piles were invested in Stage 1
+    stage1_invested_ids = [int(cid) for cid in df[df["inv1"] > 0]["card_id"].tolist()]
+
     # ---- Stage 2 ----
-    act = run_ui(2, df, wallet, signal_mode=mode, signal_cost=cost)
+    # Only allow investing in piles that were invested in Stage 1
+    act = run_ui(2, df, wallet, signal_mode=mode, signal_cost=cost, stage1_invested=stage1_invested_ids)
     df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
     wallet = max(0.0, wallet - float(s_spent))
 
@@ -248,36 +277,10 @@ if __name__ == "__main__":
     sys_blue |= b2
     sys_red  |= r2
 
-    # ---- Stage 3 ----
-    act = run_ui(3, df, wallet, signal_mode=mode, signal_cost=cost)
-    df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
-    wallet = max(0.0, wallet - float(s_spent))
-
-    inv_need = {int(k): max(float(v), MIN_INV[3]) for k, v in act["invest"].items() if float(v) > 0}
-    need = sum(inv_need.values())
-    if need > wallet:
-        left = wallet
-        for cid in list(inv_need.keys()):
-            take = min(inv_need[cid], left)
-            inv_need[cid] = take
-            left -= take
-            if left <= 0:
-                break
-        wallet = 0.0
-    else:
-        wallet -= need
-    for cid, amt in inv_need.items():
-        ix = df.index[df["card_id"].eq(cid)]
-        if len(ix) and df.at[ix[0], "alive"] and amt > 0:
-            df.at[ix[0], "inv3"] += amt
-    df, b3, r3 = step_round(df, 3, rng=np.random.default_rng(103))
-    sys_blue |= b3
-    sys_red  |= r3
-
     # ---- Results for End-of-Game page ----
-    pay = compute_payoffs_at_stage3(df)
+    pay = compute_payoffs_at_stage2(df, ace_payout=ace_pay)
 
-    inv_sum = df.get("inv1", 0) + df.get("inv2", 0) + df.get("inv3", 0)
+    inv_sum = df.get("inv1", 0) + df.get("inv2", 0)
     total_invest = float(inv_sum.sum())
     total_payoff = float(pay["payout"].sum()) if len(pay) else 0.0
     n_invested = int((inv_sum > 0).sum())
@@ -316,8 +319,8 @@ if __name__ == "__main__":
         "avg_signals": avg_signals,
     }
 
-    # ---- Stage 4: End of Game (results + explicit End Game shutdown) ----
-    _ = run_ui(4, df, wallet, results=stats, signal_mode=mode, signal_cost=cost)
+    # ---- Stage 3: End of Game (results + explicit End Game shutdown) ----
+    _ = run_ui(3, df, wallet, results=stats, signal_mode=mode, signal_cost=cost)
 
 
     # Optional console dump
