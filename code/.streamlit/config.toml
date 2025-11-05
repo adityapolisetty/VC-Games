@@ -3,6 +3,7 @@
 base = "light"
 
 # Optionally keep colors aligned with the app's styling
+primaryColor = "#0000c8"
 backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#ffffff"
 textColor = "#000000"
