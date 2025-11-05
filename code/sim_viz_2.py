@@ -55,9 +55,9 @@ SIGNAL_COSTS = [0, 3, 5, 7, 9, 11]
 SCALE_PAYS   = [0, 1]
 SCALE_PARAMS = [1/3, 1/4, 1/5, 1/6]
 ACE_PAYOUTS  = [10, 20, 30, 40]
-STAGE1_ALLOC = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+STAGE1_ALLOC = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
-SIG_LABELS = ["Median", "Top 2 rank sum", "Max Rank", "Min Rank"]
+SIG_LABELS = ["Median", "Top 2 rank sum"]
 SIG_KEY = {"Median": "median", "Top 2 rank sum": "top2", "Max Rank": "max", "Min Rank": "min"}
 
 @st.cache_data(show_spinner=False)
@@ -587,15 +587,17 @@ with tabs[2]:
             st.caption("Note: Signal type is controlled by the dropdown below (panel setting ignored)")
 
             # X-axis selector
-            x_axis_opts = ["Median", "Top 2", "Second Rank"]
-            x_axis_choice = st.selectbox("X-axis", x_axis_opts, key="x_axis_A")
+            c_r2_1, c_r2_2 = st.columns([1, 2])
+            with c_r2_1:
+                x_axis_opts = ["Median", "Top 2", "Second Rank"]
+                x_axis_choice = st.selectbox("X-axis", x_axis_opts, key="x_axis_A")
 
             if x_axis_choice in ["Median", "Top 2"]:
                 # Signal on X-axis, R2 as parameter
                 signal_type = "median" if x_axis_choice == "Median" else "top2"
 
-                # Put slider on same row
-                r2_val = st.slider("Second Rank (R2)", min_value=2, max_value=14, value=10, key="r2_A")
+                with c_r2_2:
+                    r2_val = st.slider("Second Rank (R2)", min_value=2, max_value=14, value=10, key="r2_A")
 
                 # Extract data
                 keys = postA["med_keys"] if signal_type == "median" else postA["t2_keys"]
@@ -703,15 +705,17 @@ with tabs[2]:
             st.caption("Note: Signal type is controlled by the dropdown below (panel setting ignored)")
 
             # X-axis selector
-            x_axis_opts = ["Median", "Top 2", "Second Rank"]
-            x_axis_choice = st.selectbox("X-axis", x_axis_opts, key="x_axis_B")
+            c_r2_1, c_r2_2 = st.columns([1, 2])
+            with c_r2_1:
+                x_axis_opts = ["Median", "Top 2", "Second Rank"]
+                x_axis_choice = st.selectbox("X-axis", x_axis_opts, key="x_axis_B")
 
             if x_axis_choice in ["Median", "Top 2"]:
                 # Signal on X-axis, R2 as parameter
                 signal_type = "median" if x_axis_choice == "Median" else "top2"
 
-                # Put slider on same row
-                r2_val = st.slider("Second Rank (R2)", min_value=2, max_value=14, value=10, key="r2_B")
+                with c_r2_2:
+                    r2_val = st.slider("Second Rank (R2)", min_value=2, max_value=14, value=10, key="r2_B")
 
                 # Extract data
                 keys = postB["med_keys"] if signal_type == "median" else postB["t2_keys"]
