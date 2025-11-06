@@ -482,7 +482,8 @@ if page == "Mean-Variance Frontier":
         frontier_sig_A = st.selectbox("Signal type", ["Median", "Top 2"], key="frontier_sig_A")
         sig_A = "median" if frontier_sig_A == "Median" else "top2"
         alpha_A = st.select_slider("Stage 1 allocation", options=[0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0], value=0.5,
-                                   format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}")
+                                   format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}",
+                                   key="frontier_alpha_A")
         max_n_A = st.slider("Max signals", min_value=0, max_value=9, value=9, key="max_n_sig_frontier_A")
     with ctlB:
         st.markdown("### Panel B")
@@ -491,7 +492,8 @@ if page == "Mean-Variance Frontier":
         frontier_sig_B = st.selectbox("Signal type", ["Median", "Top 2"], key="frontier_sig_B")
         sig_B = "median" if frontier_sig_B == "Median" else "top2"
         alpha_B = st.select_slider("Stage 1 allocation", options=[0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0], value=0.5,
-                                   format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}")
+                                   format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}",
+                                   key="frontier_alpha_B")
         max_n_B = st.slider("Max signals", min_value=0, max_value=9, value=9, key="max_n_sig_frontier_B")
 
     # Resolve files
