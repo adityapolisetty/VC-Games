@@ -449,7 +449,6 @@ def _panel_controls(tag: str):
 # ==============================
 # PAGE SELECTOR
 # ==============================
-st.title("VC Investment Simulation Analysis")
 page = st.radio("View", ["Simulation Results", "Mean-Variance Frontier"], horizontal=True, label_visibility="collapsed")
 st.markdown("---")
 
@@ -569,8 +568,7 @@ if page == "Mean-Variance Frontier":
                     cmin=vmin_global,
                     cmax=vmax_global,
                     colorbar=dict(
-                        title="Σw²<br>(concentration)",
-                        titleside="right",
+                        title=dict(text="Σw²<br>(concentration)", side="right"),
                         len=0.5, y=0.75,
                     ),
                 ),
