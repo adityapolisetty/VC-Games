@@ -477,9 +477,12 @@ if page == "Mean-Variance Frontier":
     ctlA, ctlB = st.columns(2)
     with ctlA:
         st.markdown("### Panel A")
-        frontier_sp_A = st.radio("Payoff scaling", ["Off (Ace-only)", "On (Scaled)"], horizontal=True, key="frontier_sp_A")
+        topA = st.columns([2, 1])
+        with topA[0]:
+            frontier_sp_A = st.radio("Payoff scaling", ["Off (Ace-only)", "On (Scaled)"], horizontal=True, key="frontier_sp_A")
+        with topA[1]:
+            frontier_sig_A = st.selectbox("Signal type", ["Median", "Top 2"], key="frontier_sig_A")
         sp_A = 1 if "On" in frontier_sp_A else 0
-        frontier_sig_A = st.selectbox("Signal type", ["Median", "Top 2"], key="frontier_sig_A")
         sig_A = "median" if frontier_sig_A == "Median" else "top2"
         rowA = st.columns([1, 1, 1])
         with rowA[0]:
@@ -492,9 +495,12 @@ if page == "Mean-Variance Frontier":
             st.empty()
     with ctlB:
         st.markdown("### Panel B")
-        frontier_sp_B = st.radio("Payoff scaling", ["Off (Ace-only)", "On (Scaled)"], horizontal=True, key="frontier_sp_B")
+        topB = st.columns([2, 1])
+        with topB[0]:
+            frontier_sp_B = st.radio("Payoff scaling", ["Off (Ace-only)", "On (Scaled)"], horizontal=True, key="frontier_sp_B")
+        with topB[1]:
+            frontier_sig_B = st.selectbox("Signal type", ["Median", "Top 2"], key="frontier_sig_B")
         sp_B = 1 if "On" in frontier_sp_B else 0
-        frontier_sig_B = st.selectbox("Signal type", ["Median", "Top 2"], key="frontier_sig_B")
         sig_B = "median" if frontier_sig_B == "Median" else "top2"
         rowB = st.columns([1, 1, 1])
         with rowB[0]:
@@ -611,7 +617,7 @@ if page == "Mean-Variance Frontier":
             yaxis=yaxis_cfg,
             height=600,
             hovermode="closest",
-            margin=dict(l=60, r=100, t=40, b=60),
+            margin=dict(l=10, r=10, t=40, b=50),
         )
         return fig
 
