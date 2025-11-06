@@ -246,25 +246,25 @@ def frontier_plot(sig_grid, sd_triplet, mean_triplet, title, y_range=None):
 
     # Legend order: E(payoff), Top-5 E(payoff), Highest expected payoff
     fig.add_trace(go.Scatter(
-        x=np.asarray(sd_lin, float) ** 2, y=mu_lin, mode="markers+text",
+        x=sd_lin, y=mu_lin, mode="markers+text",
         marker=dict(size=msize, color=GREY, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
         textfont=dict(color="black", size=11), name="𝔼[payoff] weighted", opacity=ALPHA,
-        hovertemplate="<b>𝔼[payoff] weighted</b><br>Signals: %{text}<br>Var: %{x:.2f} (%^2)<br>Mean: %{y:.2f}%<extra></extra>"
+        hovertemplate="<b>𝔼[payoff] weighted</b><br>Signals: %{text}<br>SD: %{x:.2f}%<br>Mean: %{y:.2f}%<extra></extra>"
     ))
     fig.add_trace(go.Scatter(
-        x=np.asarray(sd_sq, float) ** 2, y=mu_sq, mode="markers+text",
+        x=sd_sq, y=mu_sq, mode="markers+text",
         marker=dict(size=msize, color=RED, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
         textfont=dict(color="white", size=11), name="Top-5 𝔼[payoff] weighted", opacity=ALPHA,
-        hovertemplate="<b>Top-5 𝔼[payoff] weighted</b><br>Signals: %{text}<br>Var: %{x:.2f} (%^2)<br>Mean: %{y:.2f}%<extra></extra>"
+        hovertemplate="<b>Top-5 𝔼[payoff] weighted</b><br>Signals: %{text}<br>SD: %{x:.2f}%<br>Mean: %{y:.2f}%<extra></extra>"
     ))
     fig.add_trace(go.Scatter(
-        x=np.asarray(sd_max, float) ** 2, y=mu_max, mode="markers+text",
+        x=sd_max, y=mu_max, mode="markers+text",
         marker=dict(size=msize, color=BLUE, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
         textfont=dict(color="white", size=11), name="Highest 𝔼[payoff]", opacity=ALPHA,
-        hovertemplate="<b>Highest 𝔼[payoff]</b><br>Signals: %{text}<br>Var: %{x:.2f} (%^2)<br>Mean: %{y:.2f}%<extra></extra>"
+        hovertemplate="<b>Highest 𝔼[payoff]</b><br>Signals: %{text}<br>SD: %{x:.2f}%<br>Mean: %{y:.2f}%<extra></extra>"
     ))
 
     # Build y-axis config with optional fixed range
@@ -291,7 +291,7 @@ def frontier_plot(sig_grid, sd_triplet, mean_triplet, title, y_range=None):
         ),
         margin=dict(l=10, r=10, t=56, b=40),
         font=_DEF_FONT,
-        xaxis=dict(title=dict(text="Variance of return ((%)^2)", font=_DEF_FONT),
+        xaxis=dict(title=dict(text="S.D. of return (%)", font=_DEF_FONT),
                    autorange=True, tickmode="auto",
                    tickfont=_DEF_FONT),
         yaxis=yaxis_cfg,
@@ -603,10 +603,10 @@ if page == "Mean-Variance Frontier":
                     keep_idx.append(j)
             if not keep_idx:
                 continue
-            xs = (sd_vals[keep_idx] ** 2)
+            xs = sd_vals[keep_idx]
             ys = mean_vals[keep_idx]
             cs = ssq[keep_idx]
-            hover_texts = [f"n={n_sig}<br>Mean: {ys[k]:.2f}%<br>Var: {xs[k]:.2f} (%^2)<br>Σw²: {cs[k]:.3f}" for k in range(len(keep_idx))]
+            hover_texts = [f"n={n_sig}<br>Mean: {ys[k]:.2f}%<br>SD: {xs[k]:.2f}%<br>Σw²: {cs[k]:.3f}" for k in range(len(keep_idx))]
             fig.add_trace(go.Scatter(
                 x=xs, y=ys, mode="markers+text", name=f"n={n_sig}",
                 marker=dict(size=16, color=cs, colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
@@ -621,7 +621,7 @@ if page == "Mean-Variance Frontier":
         fig.update_layout(
             template="plotly_white",
             font=dict(family="Roboto, Arial, sans-serif", size=15),
-            xaxis=dict(title=dict(text="Variance ((%)^2)", font=dict(size=18)), tickfont=dict(size=11), showgrid=True, gridcolor="rgba(128,128,128,0.1)"),
+            xaxis=dict(title=dict(text="Standard Deviation (%)", font=dict(size=18)), tickfont=dict(size=11), showgrid=True, gridcolor="rgba(128,128,128,0.1)"),
             yaxis=yaxis_cfg,
             height=600,
             hovermode="closest",
