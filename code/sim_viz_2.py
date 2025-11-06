@@ -681,8 +681,10 @@ if page == "Mean-Variance Frontier":
                 x=[None], y=[None], mode="markers",
                 marker=dict(
                     size=0,
+                    color=global_vmin,  # trigger colorbar rendering
                     colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
                     cmin=global_vmin, cmax=global_vmax,
+                    showscale=True,
                     colorbar=dict(
                         title=dict(text="Σw² (concentration)"),
                         orientation="h",
