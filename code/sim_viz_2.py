@@ -616,7 +616,7 @@ if page == "Mean-Variance Frontier":
         else:
             st.markdown("**Fixed parameters:** Signal cost = £3, Ace payoff = 20X" + (", Scale param = 0.25" if sp_A == 1 else ""))
             figA = _build_fig(data_A, max_n_A, y_range)
-            st.plotly_chart(figA, use_container_width=True)
+            st.plotly_chart(figA, use_container_width=True, key="mv_frontier_A")
             # Frontier details removed for cleaner layout
 
     with colB:
@@ -626,7 +626,7 @@ if page == "Mean-Variance Frontier":
         else:
             st.markdown("**Fixed parameters:** Signal cost = £3, Ace payoff = 20X" + (", Scale param = 0.25" if sp_B == 1 else ""))
             figB = _build_fig(data_B, max_n_B, y_range)
-            st.plotly_chart(figB, use_container_width=True)
+            st.plotly_chart(figB, use_container_width=True, key="mv_frontier_B")
             # Frontier details removed for cleaner layout
 
     # Stop here to avoid executing Simulation Results code below
