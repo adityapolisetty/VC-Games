@@ -361,6 +361,25 @@ def _fmt_ratio(x: float) -> str:
     if abs(x - 1/6) < 1e-9: return "1/6"
     return f"{x:.4f}"
 
+@st.cache_data(show_spinner=False)
+def load_frontier_npz(npz_path: str):
+    """Load frontier NPZ file containing mean-variance efficient frontiers."""
+    p = Path(npz_path).resolve()
+    if not p.exists():
+        return None
+    try:
+        with np.load(p, allow_pickle=True) as z:
+            return {
+                "sd_levels_by_n": z["sd_levels_by_n"],
+                "best_means_by_n": z["best_means_by_n"],
+                "best_weights_by_n": z["best_weights_by_n"],
+                "sd_step": float(z["sd_step"]),
+                "meta": json.loads(str(z["meta"])),
+            }
+    except Exception as e:
+        st.error(f"Failed to load frontier NPZ: {e}")
+        return None
+
 def _panel_controls(tag: str):
     st.markdown(f"### Panel {tag}")
 
@@ -427,47 +446,211 @@ def _panel_controls(tag: str):
 
     return cfg, regime_key, mode, alpha, output_dir
 
-# Collect panel configurations (must come before path resolution)
-left, right = st.columns(2)
-with left:
-    cfgA, regimeA, modeA, alphaA, outputA = _panel_controls("A")
-with right:
-    cfgB, regimeB, modeB, alphaB, outputB = _panel_controls("B")
-
-# Build and check paths
-def _resolve_npz(cfg, output_dir, mode, alpha):
-    p, norm, kid = _file_for_params(cfg, output_dir, mode, alpha)
-    return p, norm, kid
-
-try:
-    pathA, normA, _ = _resolve_npz(cfgA, outputA, modeA, alphaA)
-    pathB, normB, _ = _resolve_npz(cfgB, outputB, modeB, alphaB)
-except Exception as e:
-    st.error(str(e))
-    st.stop()
-
-if not pathA.exists():
-    st.error(f"Missing NPZ: {pathA}")
-if not pathB.exists():
-    st.error(f"Missing NPZ: {pathB}")
-if not (pathA.exists() and pathB.exists()):
-    st.stop()
-
 # ==============================
-# Load summaries
+# PAGE SELECTOR
 # ==============================
-def _summary_keys_for(regime, pct_key):
-    return (
-        "sig_grid", "budget",
-        f"mean_{pct_key}_{regime}_max", f"mean_{pct_key}_{regime}_linear", f"mean_{pct_key}_{regime}_top5",
-        f"sd_{pct_key}_{regime}_max",   f"sd_{pct_key}_{regime}_linear",   f"sd_{pct_key}_{regime}_top5",
-        "post_median_x", "post_median_y",
-        "post_top2_x",   "post_top2_y",
-        "params_norm", "params_raw"
-    )
+st.title("VC Investment Simulation Analysis")
+page = st.radio("View", ["Simulation Results", "Mean-Variance Frontier"], horizontal=True, label_visibility="collapsed")
+st.markdown("---")
 
-dataA = load_keys(str(pathA), _summary_keys_for(regimeA, pct_key), str(outputA))
-dataB = load_keys(str(pathB), _summary_keys_for(regimeB, pct_key), str(outputB))
+if page == "Mean-Variance Frontier":
+    # ==============================
+    # FRONTIER PAGE
+    # ==============================
+    st.header("Information-Limited Mean-Variance Frontier")
+    st.caption("Efficient frontiers showing mean vs. standard deviation of net returns")
+
+    # Controls
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+    with col1:
+        frontier_sp = st.radio("Payoff scaling", ["Off (Ace-only)", "On (Scaled)"], horizontal=True)
+        sp_frontier = 1 if "On" in frontier_sp else 0
+    with col2:
+        frontier_sig = st.selectbox("Signal type", ["Median", "Top 2"], key="frontier_sig")
+        signal_type_frontier = "median" if frontier_sig == "Median" else "top2"
+    with col3:
+        frontier_alpha = st.select_slider(
+            "Stage 1 allocation",
+            options=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+            value=0.5,
+            format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}"
+        )
+    with col4:
+        max_n_sig = st.slider("Max signals", min_value=0, max_value=9, value=9, key="max_n_sig_frontier")
+
+    # Build frontier file path
+    frontier_dir = Path("frontier_output/").resolve()
+    # signal_cost=3, scale_param=0.25 for sp=1, ace_payout=20 (fixed in frontier.py)
+    raw_frontier = dict(signal_cost=3.0, scale_pay=sp_frontier, scale_param=(0.25 if sp_frontier == 1 else 0.0), ace_payout=20.0)
+    _, frontier_key_id = _canonicalize(raw_frontier)
+    a_tag = f"a{int(round(float(frontier_alpha)*10)):02d}"
+    frontier_file = frontier_dir / f"{frontier_key_id}_{signal_type_frontier}_{a_tag}.npz"
+
+    # Load frontier data
+    frontier_data = load_frontier_npz(str(frontier_file))
+
+    if frontier_data is None:
+        st.info(f"Frontier data not found: {frontier_file.name}")
+        st.caption("Run frontier.py to generate frontier data.")
+    else:
+        # Show fixed parameters
+        st.markdown("**Fixed parameters:** Signal cost = £3, Ace payoff = 20X" +
+                   (", Scale param = 0.25" if sp_frontier == 1 else ""))
+        st.markdown("---")
+
+        # Plot frontiers for all n_sig values up to max_n_sig
+        fig = go.Figure()
+
+        sd_by_n = frontier_data["sd_levels_by_n"]
+        mean_by_n = frontier_data["best_means_by_n"]
+        weights_by_n = frontier_data["best_weights_by_n"]
+
+        # First pass: collect points and global color scale domain
+        points = []  # list of dicts with keys: n, sd, mean, ssq
+        all_sum_sq_weights = []
+        for n_sig in range(min(len(sd_by_n), max_n_sig + 1)):
+            sd_vals = sd_by_n[n_sig]
+            mean_vals = mean_by_n[n_sig]
+            weights = weights_by_n[n_sig]
+            if len(sd_vals) == 0:
+                continue
+            sum_sq_weights = [float(np.sum(np.asarray(w_vec, float) ** 2)) for w_vec in weights]
+            points.append(dict(n=n_sig, sd=np.asarray(sd_vals, float), mean=np.asarray(mean_vals, float), ssq=np.asarray(sum_sq_weights, float)))
+            all_sum_sq_weights.extend(sum_sq_weights)
+
+        # Global color scaling for Σw² (concentration)
+        if len(all_sum_sq_weights) > 0:
+            vmin_global = float(min(all_sum_sq_weights))
+            vmax_global = float(max(all_sum_sq_weights))
+        else:
+            vmin_global = 0.0
+            vmax_global = 1.0
+
+        # Second pass: add traces
+        for p in points:
+            n_sig = p["n"]
+            sd_vals = p["sd"]
+            mean_vals = p["mean"]
+            ssq = p["ssq"]
+            hover_texts = [
+                f"n={n_sig}<br>Mean: {mean_vals[i]:.2f}%<br>SD: {sd_vals[i]:.2f}%<br>Σw²: {ssq[i]:.3f}"
+                for i in range(len(sd_vals))
+            ]
+            fig.add_trace(go.Scatter(
+                x=sd_vals,
+                y=mean_vals,
+                mode="markers+text+lines",
+                name=f"n={n_sig}",
+                line=dict(color="#cccccc", width=1),
+                marker=dict(
+                    size=16,
+                    color=ssq,
+                    colorscale=[[0, "#6baed6"], [1, "#08519c"]],
+                    cmin=vmin_global,
+                    cmax=vmax_global,
+                    showscale=False,
+                    line=dict(color="white", width=1),
+                ),
+                text=[str(n_sig)] * len(sd_vals),
+                textposition="middle center",
+                textfont=dict(size=9, color="white", family="Arial Black"),
+                hovertext=hover_texts,
+                hoverinfo="text",
+                showlegend=False,
+            ))
+
+        # Add a single colorbar legend for Σw²
+        if len(all_sum_sq_weights) > 0:
+            fig.add_trace(go.Scatter(
+                x=[None], y=[None], mode="markers",
+                marker=dict(
+                    size=0,
+                    colorscale=[[0, "#6baed6"], [1, "#08519c"]],
+                    cmin=vmin_global,
+                    cmax=vmax_global,
+                    colorbar=dict(
+                        title="Σw²<br>(concentration)",
+                        titleside="right",
+                        len=0.5, y=0.75,
+                    ),
+                ),
+                showlegend=False, hoverinfo="skip",
+            ))
+
+        fig.update_layout(
+            template="plotly_white",
+            font=dict(family="Roboto, Arial, sans-serif", size=12),
+            xaxis=dict(
+                title="Standard Deviation (%)",
+                tickfont=dict(size=11),
+                showgrid=True,
+                gridcolor="rgba(128,128,128,0.1)",
+            ),
+            yaxis=dict(
+                title="Mean Net Return (%)",
+                tickfont=dict(size=11),
+                showgrid=True,
+                gridcolor="rgba(128,128,128,0.1)",
+            ),
+            height=700,
+            hovermode="closest",
+            margin=dict(l=60, r=100, t=40, b=60),
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Show metadata
+        with st.expander("Frontier Details"):
+            meta = frontier_data["meta"]
+            st.json(meta)
+
+else:
+    # ==============================
+    # SIMULATION RESULTS PAGE (EXISTING)
+    # ==============================
+    st.header("Simulation Results - Two-Panel Comparison")
+
+    # Collect panel configurations (must come before path resolution)
+    left, right = st.columns(2)
+    with left:
+        cfgA, regimeA, modeA, alphaA, outputA = _panel_controls("A")
+    with right:
+        cfgB, regimeB, modeB, alphaB, outputB = _panel_controls("B")
+
+    # Build and check paths
+    def _resolve_npz(cfg, output_dir, mode, alpha):
+        p, norm, kid = _file_for_params(cfg, output_dir, mode, alpha)
+        return p, norm, kid
+
+    try:
+        pathA, normA, _ = _resolve_npz(cfgA, outputA, modeA, alphaA)
+        pathB, normB, _ = _resolve_npz(cfgB, outputB, modeB, alphaB)
+    except Exception as e:
+        st.error(str(e))
+        st.stop()
+
+    if not pathA.exists():
+        st.error(f"Missing NPZ: {pathA}")
+    if not pathB.exists():
+        st.error(f"Missing NPZ: {pathB}")
+    if not (pathA.exists() and pathB.exists()):
+        st.stop()
+
+    # ==============================
+    # Load summaries
+    # ==============================
+    def _summary_keys_for(regime, pct_key):
+        return (
+            "sig_grid", "budget",
+            f"mean_{pct_key}_{regime}_max", f"mean_{pct_key}_{regime}_linear", f"mean_{pct_key}_{regime}_top5",
+            f"sd_{pct_key}_{regime}_max",   f"sd_{pct_key}_{regime}_linear",   f"sd_{pct_key}_{regime}_top5",
+            "post_median_x", "post_median_y",
+            "post_top2_x",   "post_top2_y",
+            "params_norm", "params_raw"
+        )
+
+    dataA = load_keys(str(pathA), _summary_keys_for(regimeA, pct_key), str(outputA))
+    dataB = load_keys(str(pathB), _summary_keys_for(regimeB, pct_key), str(outputB))
 
 def _extract_summary(data, regime, pct_key):
     sig_grid = np.asarray(data["sig_grid"], int)
@@ -713,6 +896,7 @@ with tabs[2]:
             st.caption("Note: Signal type is controlled by the dropdown below (panel setting ignored)")
 
             # X-axis selector
+            
             c_r2_1, c_r2_2 = st.columns([1, 2])
             c_r2_1, c_r2_2 = st.columns([1, 1])
             with c_r2_1:

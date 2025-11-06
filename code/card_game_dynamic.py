@@ -70,6 +70,11 @@ HIST_START = -100.0   # inclusive lower bound
 HIST_STEP  = 1.0      # bin width in percentage points
 HIST_N     = 2000     # number of bins; covers [-100, 1900]
 
+# Histogram spec for weight distributions (fraction of budget)
+WEIGHT_HIST_START = 0.0   # inclusive lower bound
+WEIGHT_HIST_STEP  = 0.01  # bin width (1% of budget)
+WEIGHT_HIST_N     = 101   # number of bins; covers [0.0, 1.0]
+
 def _load_mc_posteriors(npz_path: str):
     """Load empirical P(Rmax|signal) tables and prior from precompute NPZ.
 
@@ -370,7 +375,17 @@ def run_single_round_dynamic(
     n_lin = 100.0 * ((gross_lin - BUDGET) / BUDGET) if BUDGET > 0 else 0.0
     n_top = 100.0 * ((gross_top - BUDGET) / BUDGET) if BUDGET > 0 else 0.0
 
-    return dict(net_return_max=float(n_max), net_return_linear=float(n_lin), net_return_top5=float(n_top))
+    return dict(
+        net_return_max=float(n_max),
+        net_return_linear=float(n_lin),
+        net_return_top5=float(n_top),
+        w1_max=w1_max,
+        w1_lin=w1_lin,
+        w1_top5=w1_top5,
+        w2_max=w2_max,
+        w2_lin=w2_lin,
+        w2_top5=w2_top5,
+    )
 
     
 # -----------------------
@@ -381,11 +396,19 @@ def _worker_chunk_dynamic(base_seed, round_start, rounds_chunk, signal_type, n_s
     """
     Evaluate a contiguous chunk of rounds for a fixed (signal_type, n_sig) using
     the dynamic two-stage model with Stage-1 allocation stage1_alloc.
-    Returns three 1-D arrays (length = rounds_chunk): max / linear / top-5 net returns.
+    Returns net returns and weight arrays for all strategies and both stages.
     """
     nr_max = np.empty(rounds_chunk, float)
     nr_lin = np.empty(rounds_chunk, float)
     nr_top5 = np.empty(rounds_chunk, float)
+    # Weight arrays: [rounds_chunk, NUM_PILES]
+    w1_max_arr = np.empty((rounds_chunk, NUM_PILES), float)
+    w1_lin_arr = np.empty((rounds_chunk, NUM_PILES), float)
+    w1_top5_arr = np.empty((rounds_chunk, NUM_PILES), float)
+    w2_max_arr = np.empty((rounds_chunk, NUM_PILES), float)
+    w2_lin_arr = np.empty((rounds_chunk, NUM_PILES), float)
+    w2_top5_arr = np.empty((rounds_chunk, NUM_PILES), float)
+
     for i in range(rounds_chunk):
         r = int(round_start) + int(i)
         rng = default_rng(round_seed(base_seed, r))
@@ -406,7 +429,14 @@ def _worker_chunk_dynamic(base_seed, round_start, rounds_chunk, signal_type, n_s
         nr_max[i]  = out["net_return_max"]
         nr_lin[i]  = out["net_return_linear"]
         nr_top5[i] = out["net_return_top5"]
-    return nr_max, nr_lin, nr_top5
+        w1_max_arr[i, :] = out["w1_max"]
+        w1_lin_arr[i, :] = out["w1_lin"]
+        w1_top5_arr[i, :] = out["w1_top5"]
+        w2_max_arr[i, :] = out["w2_max"]
+        w2_lin_arr[i, :] = out["w2_lin"]
+        w2_top5_arr[i, :] = out["w2_top5"]
+
+    return nr_max, nr_lin, nr_top5, w1_max_arr, w1_lin_arr, w1_top5_arr, w2_max_arr, w2_lin_arr, w2_top5_arr
 
 # -----------------------
 # Main simulate (dynamic, two-stage)
@@ -444,6 +474,18 @@ def simulate_experiment_dynamic(seed_int, rounds, max_signals, procs, params, st
         } for st in signal_types
     }
 
+    # Weight histograms: [signal_type][strategy_stage][n_sig, pile, bin]
+    weight_hists = {
+        st: {
+            'stage1_max':    np.zeros((int(max_signals)+1, NUM_PILES, WEIGHT_HIST_N), dtype=np.uint32),
+            'stage1_linear': np.zeros((int(max_signals)+1, NUM_PILES, WEIGHT_HIST_N), dtype=np.uint32),
+            'stage1_top5':   np.zeros((int(max_signals)+1, NUM_PILES, WEIGHT_HIST_N), dtype=np.uint32),
+            'stage2_max':    np.zeros((int(max_signals)+1, NUM_PILES, WEIGHT_HIST_N), dtype=np.uint32),
+            'stage2_linear': np.zeros((int(max_signals)+1, NUM_PILES, WEIGHT_HIST_N), dtype=np.uint32),
+            'stage2_top5':   np.zeros((int(max_signals)+1, NUM_PILES, WEIGHT_HIST_N), dtype=np.uint32),
+        } for st in signal_types
+    }
+
     def _hist_counts(arr: np.ndarray) -> np.ndarray:
         v = np.asarray(arr, float)
         idx = np.floor((v - HIST_START) / HIST_STEP).astype(int)
@@ -451,6 +493,16 @@ def simulate_experiment_dynamic(seed_int, rounds, max_signals, procs, params, st
         if not np.any(mask):
             return np.zeros((HIST_N,), dtype=np.uint32)
         cnt = np.bincount(idx[mask], minlength=HIST_N)
+        return cnt.astype(np.uint32, copy=False)
+
+    def _hist_counts_weights(arr: np.ndarray) -> np.ndarray:
+        """Histogram weights in [0, 1] range."""
+        v = np.asarray(arr, float)
+        idx = np.floor((v - WEIGHT_HIST_START) / WEIGHT_HIST_STEP).astype(int)
+        mask = (idx >= 0) & (idx < WEIGHT_HIST_N)
+        if not np.any(mask):
+            return np.zeros((WEIGHT_HIST_N,), dtype=np.uint32)
+        cnt = np.bincount(idx[mask], minlength=WEIGHT_HIST_N)
         return cnt.astype(np.uint32, copy=False)
 
     total_units = len(signal_types) * (int(max_signals) + 1) * int(rounds)
@@ -469,6 +521,13 @@ def simulate_experiment_dynamic(seed_int, rounds, max_signals, procs, params, st
             n_max_arr  = np.empty(int(rounds), float)
             n_lin_arr  = np.empty(int(rounds), float)
             n_top5_arr = np.empty(int(rounds), float)
+            # Weight arrays for both stages
+            w1_max_all  = np.empty((int(rounds), NUM_PILES), float)
+            w1_lin_all  = np.empty((int(rounds), NUM_PILES), float)
+            w1_top5_all = np.empty((int(rounds), NUM_PILES), float)
+            w2_max_all  = np.empty((int(rounds), NUM_PILES), float)
+            w2_lin_all  = np.empty((int(rounds), NUM_PILES), float)
+            w2_top5_all = np.empty((int(rounds), NUM_PILES), float)
 
             if procs and int(procs) > 1 and int(rounds) > 1:
                 W = int(procs); base = int(rounds) // W; rem = int(rounds) % W
@@ -489,10 +548,16 @@ def simulate_experiment_dynamic(seed_int, rounds, max_signals, procs, params, st
                         for (start, sz) in starts
                     ]
                     for (start, sz), fut in zip(starts, futures):
-                        n_m, n_l, n_s = fut.result()
+                        n_m, n_l, n_s, w1_m, w1_l, w1_t, w2_m, w2_l, w2_t = fut.result()
                         n_max_arr[start:start+sz]  = n_m
                         n_lin_arr[start:start+sz]  = n_l
                         n_top5_arr[start:start+sz] = n_s
+                        w1_max_all[start:start+sz, :]  = w1_m
+                        w1_lin_all[start:start+sz, :]  = w1_l
+                        w1_top5_all[start:start+sz, :] = w1_t
+                        w2_max_all[start:start+sz, :]  = w2_m
+                        w2_lin_all[start:start+sz, :]  = w2_l
+                        w2_top5_all[start:start+sz, :] = w2_t
                         processed += int(sz)
                         if (processed % step_overall == 0) or (processed >= total_units):
                             _print_bar(processed, total_units)
@@ -516,6 +581,12 @@ def simulate_experiment_dynamic(seed_int, rounds, max_signals, procs, params, st
                     n_max_arr[r]  = out["net_return_max"]
                     n_lin_arr[r]  = out["net_return_linear"]
                     n_top5_arr[r] = out["net_return_top5"]
+                    w1_max_all[r, :]  = out["w1_max"]
+                    w1_lin_all[r, :]  = out["w1_lin"]
+                    w1_top5_all[r, :] = out["w1_top5"]
+                    w2_max_all[r, :]  = out["w2_max"]
+                    w2_lin_all[r, :]  = out["w2_lin"]
+                    w2_top5_all[r, :] = out["w2_top5"]
                     processed += 1
                     if (processed % step_overall == 0) or (processed >= total_units):
                         _print_bar(processed, total_units)
@@ -532,6 +603,15 @@ def simulate_experiment_dynamic(seed_int, rounds, max_signals, procs, params, st
             hists[st]['linear'][int(n_sig),:] = _hist_counts(n_lin_arr)
             hists[st]['top5'][int(n_sig),  :] = _hist_counts(n_top5_arr)
 
+            # Histogram weights for each pile
+            for pile_idx in range(NUM_PILES):
+                weight_hists[st]['stage1_max'][int(n_sig), pile_idx, :]    = _hist_counts_weights(w1_max_all[:, pile_idx])
+                weight_hists[st]['stage1_linear'][int(n_sig), pile_idx, :] = _hist_counts_weights(w1_lin_all[:, pile_idx])
+                weight_hists[st]['stage1_top5'][int(n_sig), pile_idx, :]   = _hist_counts_weights(w1_top5_all[:, pile_idx])
+                weight_hists[st]['stage2_max'][int(n_sig), pile_idx, :]    = _hist_counts_weights(w2_max_all[:, pile_idx])
+                weight_hists[st]['stage2_linear'][int(n_sig), pile_idx, :] = _hist_counts_weights(w2_lin_all[:, pile_idx])
+                weight_hists[st]['stage2_top5'][int(n_sig), pile_idx, :]   = _hist_counts_weights(w2_top5_all[:, pile_idx])
+
     try:
         print()
     except Exception:
@@ -541,9 +621,10 @@ def simulate_experiment_dynamic(seed_int, rounds, max_signals, procs, params, st
         mode="dynamic", params=dict(params), stage1_alloc=float(stage1_alloc),
         post_median_x=pm_x, post_median_y=pm_y,
         post_top2_x=pt2_x, post_top2_y=pt2_y,
-        hist_start=float(HIST_START), hist_step=float(HIST_STEP), hist_n=int(HIST_N)
+        hist_start=float(HIST_START), hist_step=float(HIST_STEP), hist_n=int(HIST_N),
+        weight_hist_start=float(WEIGHT_HIST_START), weight_hist_step=float(WEIGHT_HIST_STEP), weight_hist_n=int(WEIGHT_HIST_N)
     )
-    return dist, summary, meta, hists
+    return dist, summary, meta, hists, weight_hists
 
 
 # -----------------------
@@ -629,7 +710,7 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
 
     def _run_one(item):
         raw, norm, key_tuple, key_id, seed_i, outfile, alpha = item
-        dist, summary, meta, hists = simulate_experiment_dynamic(
+        dist, summary, meta, hists, weight_hists = simulate_experiment_dynamic(
             seed_int=seed_i,
             rounds=rounds,
             max_signals=max_signals,
@@ -640,7 +721,7 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
         save_npz(
             outfile,
             argparse.Namespace(rounds=rounds, max_signals=max_signals),
-            dist, summary, meta, norm, raw, key_tuple, key_id, hists
+            dist, summary, meta, norm, raw, key_tuple, key_id, hists, weight_hists
         )
         return key_id, str(outfile)
 
@@ -725,7 +806,7 @@ def main():
 
 
     t0 = perf_counter()
-    dist, summary, meta, hists = simulate_experiment_dynamic(
+    dist, summary, meta, hists, weight_hists = simulate_experiment_dynamic(
         seed_int=int(args.seed),
         rounds=int(args.rounds),
         max_signals=int(args.max_signals),
@@ -733,7 +814,7 @@ def main():
         params=norm_params,
         stage1_alloc=float(args.stage1_alloc),
     )
-    save_npz(out_path, args, dist, summary, meta, norm_params, raw_params, key_tuple, key_id, hists)
+    save_npz(out_path, args, dist, summary, meta, norm_params, raw_params, key_tuple, key_id, hists, weight_hists)
     t1 = perf_counter()
     print(f"wrote {out_path} | total={t1 - t0:.2f}s")
 

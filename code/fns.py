@@ -99,7 +99,7 @@ def _top2sum_of_multiset(counts, ranks):
 # Save results
 # -------------------
 
-def save_npz(out_path: pathlib.Path, args, dist, summary, meta, norm_params, raw_params, key_tuple, key_id, hists=None):
+def save_npz(out_path: pathlib.Path, args, dist, summary, meta, norm_params, raw_params, key_tuple, key_id, hists=None, weight_hists=None):
     out_path.parent.mkdir(parents=True, exist_ok=True)
     sig_grid = np.arange(args.max_signals + 1, dtype=int)
 
@@ -139,11 +139,22 @@ def save_npz(out_path: pathlib.Path, args, dist, summary, meta, norm_params, raw
     payload["hist_step"]  = float(meta.get("hist_step", 1.0))
     payload["hist_n"]     = int(meta.get("hist_n", 0))
 
+    # Weight histogram meta
+    payload["weight_hist_start"] = float(meta.get("weight_hist_start", 0.0))
+    payload["weight_hist_step"]  = float(meta.get("weight_hist_step", 0.01))
+    payload["weight_hist_n"]     = int(meta.get("weight_hist_n", 0))
+
     # Add hist counts if present
     if isinstance(hists, dict):
         for reg, rules in hists.items():
             for rule_name, arr in rules.items():
                 payload[f"hist_counts_{reg}_{rule_name}"] = arr
+
+    # Add weight hist counts if present
+    if isinstance(weight_hists, dict):
+        for reg, strat_stage in weight_hists.items():
+            for strat_stage_name, arr in strat_stage.items():
+                payload[f"weight_hist_{reg}_{strat_stage_name}"] = arr
 
     fd, tmp_path = tempfile.mkstemp(prefix=out_path.stem + '.', suffix='.npz', dir=str(out_path.parent))
     os.close(fd)
