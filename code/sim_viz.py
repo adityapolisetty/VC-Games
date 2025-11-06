@@ -219,19 +219,19 @@ def frontier_plot(sig_grid, sd_triplet, mean_triplet, title, y_range=None):
 
     # Legend order: E(payoff), Top‑5 E(payoff), Highest expected payoff
     fig.add_trace(go.Scatter(
-        x=sd_lin, y=mu_lin, mode="markers+text",
+        x=np.asarray(sd_lin, float) ** 2, y=mu_lin, mode="markers+text",
         marker=dict(size=msize, color=GREY, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
         textfont=dict(color="black", size=11), name="𝔼[payoff] weighted", opacity=ALPHA
     ))
     fig.add_trace(go.Scatter(
-        x=sd_sq, y=mu_sq, mode="markers+text",
+        x=np.asarray(sd_sq, float) ** 2, y=mu_sq, mode="markers+text",
         marker=dict(size=msize, color=RED, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
         textfont=dict(color="white", size=11), name="Top‑5 𝔼[payoff] weighted", opacity=ALPHA
     ))
     fig.add_trace(go.Scatter(
-        x=sd_max, y=mu_max, mode="markers+text",
+        x=np.asarray(sd_max, float) ** 2, y=mu_max, mode="markers+text",
         marker=dict(size=msize, color=BLUE, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
         textfont=dict(color="white", size=11), name="Highest 𝔼[payoff]", opacity=ALPHA
@@ -250,10 +250,18 @@ def frontier_plot(sig_grid, sd_triplet, mean_triplet, title, y_range=None):
 
     fig.update_layout(
         template="plotly_white",
-        legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font=_DEF_FONT),
+        legend=dict(
+            orientation="h",
+            y=-0.22,
+            x=0.5,
+            xanchor="center",
+            font=_DEF_FONT,
+            itemsizing="constant",
+            itemwidth=114  # ~3 cm at 96 DPI
+        ),
         margin=dict(l=10, r=10, t=56, b=40),
         font=_DEF_FONT,
-        xaxis=dict(title=dict(text="S.D. of return (%)", font=_DEF_FONT),
+        xaxis=dict(title=dict(text="Variance of return ((%)^2)", font=_DEF_FONT),
                    autorange=True, tickmode="auto",
                    tickfont=_DEF_FONT),
         yaxis=yaxis_cfg,
@@ -477,7 +485,7 @@ sigB, meanB, sdB, pnB, budB = _extract_summary(dataB, regimeB, pct_key)
 meanA_u = meanA; sdA_u = sdA
 meanB_u = meanB; sdB_u = sdB
 
-tabs = st.tabs(["Frontier", "Value of Info", "Posteriors"])
+tabs = st.tabs(["Mean-Variances", "Value of Info", "Posteriors"])
 
 # ========== Frontier ==========
 with tabs[0]:

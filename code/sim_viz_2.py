@@ -246,25 +246,25 @@ def frontier_plot(sig_grid, sd_triplet, mean_triplet, title, y_range=None):
 
     # Legend order: E(payoff), Top-5 E(payoff), Highest expected payoff
     fig.add_trace(go.Scatter(
-        x=sd_lin, y=mu_lin, mode="markers+text",
+        x=np.asarray(sd_lin, float) ** 2, y=mu_lin, mode="markers+text",
         marker=dict(size=msize, color=GREY, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
         textfont=dict(color="black", size=11), name="𝔼[payoff] weighted", opacity=ALPHA,
-        hovertemplate="<b>𝔼[payoff] weighted</b><br>Signals: %{text}<br>SD: %{x:.2f}%<br>Mean: %{y:.2f}%<extra></extra>"
+        hovertemplate="<b>𝔼[payoff] weighted</b><br>Signals: %{text}<br>Var: %{x:.2f} (%^2)<br>Mean: %{y:.2f}%<extra></extra>"
     ))
     fig.add_trace(go.Scatter(
-        x=sd_sq, y=mu_sq, mode="markers+text",
+        x=np.asarray(sd_sq, float) ** 2, y=mu_sq, mode="markers+text",
         marker=dict(size=msize, color=RED, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
         textfont=dict(color="white", size=11), name="Top-5 𝔼[payoff] weighted", opacity=ALPHA,
-        hovertemplate="<b>Top-5 𝔼[payoff] weighted</b><br>Signals: %{text}<br>SD: %{x:.2f}%<br>Mean: %{y:.2f}%<extra></extra>"
+        hovertemplate="<b>Top-5 𝔼[payoff] weighted</b><br>Signals: %{text}<br>Var: %{x:.2f} (%^2)<br>Mean: %{y:.2f}%<extra></extra>"
     ))
     fig.add_trace(go.Scatter(
-        x=sd_max, y=mu_max, mode="markers+text",
+        x=np.asarray(sd_max, float) ** 2, y=mu_max, mode="markers+text",
         marker=dict(size=msize, color=BLUE, line=dict(width=0)),
         text=[str(int(v)) for v in sig_grid], textposition="middle center",
         textfont=dict(color="white", size=11), name="Highest 𝔼[payoff]", opacity=ALPHA,
-        hovertemplate="<b>Highest 𝔼[payoff]</b><br>Signals: %{text}<br>SD: %{x:.2f}%<br>Mean: %{y:.2f}%<extra></extra>"
+        hovertemplate="<b>Highest 𝔼[payoff]</b><br>Signals: %{text}<br>Var: %{x:.2f} (%^2)<br>Mean: %{y:.2f}%<extra></extra>"
     ))
 
     # Build y-axis config with optional fixed range
@@ -280,10 +280,18 @@ def frontier_plot(sig_grid, sd_triplet, mean_triplet, title, y_range=None):
 
     fig.update_layout(
         template="plotly_white",
-        legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font=_DEF_FONT),
+        legend=dict(
+            orientation="h",
+            y=-0.22,
+            x=0.5,
+            xanchor="center",
+            font=_DEF_FONT,
+            itemsizing="constant",
+            itemwidth=114  # ~3 cm at 96 DPI
+        ),
         margin=dict(l=10, r=10, t=56, b=40),
         font=_DEF_FONT,
-        xaxis=dict(title=dict(text="S.D. of return (%)", font=_DEF_FONT),
+        xaxis=dict(title=dict(text="Variance of return ((%)^2)", font=_DEF_FONT),
                    autorange=True, tickmode="auto",
                    tickfont=_DEF_FONT),
         yaxis=yaxis_cfg,
@@ -595,10 +603,10 @@ if page == "Mean-Variance Frontier":
                     keep_idx.append(j)
             if not keep_idx:
                 continue
-            xs = sd_vals[keep_idx]
+            xs = (sd_vals[keep_idx] ** 2)
             ys = mean_vals[keep_idx]
             cs = ssq[keep_idx]
-            hover_texts = [f"n={n_sig}<br>Mean: {ys[k]:.2f}%<br>SD: {xs[k]:.2f}%<br>Σw²: {cs[k]:.3f}" for k in range(len(keep_idx))]
+            hover_texts = [f"n={n_sig}<br>Mean: {ys[k]:.2f}%<br>Var: {xs[k]:.2f} (%^2)<br>Σw²: {cs[k]:.3f}" for k in range(len(keep_idx))]
             fig.add_trace(go.Scatter(
                 x=xs, y=ys, mode="markers+text", name=f"n={n_sig}",
                 marker=dict(size=16, color=cs, colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
@@ -607,13 +615,13 @@ if page == "Mean-Variance Frontier":
                 hovertext=hover_texts, hoverinfo="text", showlegend=False, opacity=ALPHA,
             ))
         # No per-figure colorbar; shared legend rendered once below both charts
-        yaxis_cfg = dict(title=dict(text="Mean Net Return (%)", font=dict(size=18)), tickfont=dict(size=11), showgrid=True, gridcolor="rgba(128,128,128,0.1)")
+        yaxis_cfg = dict(title=dict(text="Mean Return (%)", font=dict(size=18)), tickfont=dict(size=11), showgrid=True, gridcolor="rgba(128,128,128,0.1)")
         if y_range_override is not None:
             yaxis_cfg.update(range=list(map(float, y_range_override)))
         fig.update_layout(
             template="plotly_white",
             font=dict(family="Roboto, Arial, sans-serif", size=15),
-            xaxis=dict(title=dict(text="Standard Deviation (%)", font=dict(size=18)), tickfont=dict(size=11), showgrid=True, gridcolor="rgba(128,128,128,0.1)"),
+            xaxis=dict(title=dict(text="Variance ((%)^2)", font=dict(size=18)), tickfont=dict(size=11), showgrid=True, gridcolor="rgba(128,128,128,0.1)"),
             yaxis=yaxis_cfg,
             height=600,
             hovermode="closest",
@@ -665,20 +673,36 @@ if page == "Mean-Variance Frontier":
             st.plotly_chart(figB, use_container_width=True, key="mv_frontier_B")
             # Frontier details removed for cleaner layout
 
-    # Shared legend at bottom
+    # Shared legend at bottom (horizontal, ~3 cm width)
     if (global_vmin is not None) and (global_vmax is not None):
         legend_fig = go.Figure()
-        legend_fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers",
-                                        marker=dict(size=0,
-                                                    colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
-                                                    cmin=global_vmin, cmax=global_vmax,
-                                                    colorbar=dict(title=dict(text="Σw² (concentration)"),
-                                                                  x=0.5, xanchor="center",
-                                                                  y=0.0, yanchor="bottom",
-                                                                  len=0.8, thickness=15)),
-                                        showlegend=False, hoverinfo="skip"))
-        legend_fig.update_layout(template="plotly_white", height=90, margin=dict(l=60, r=100, t=0, b=10))
-        st.plotly_chart(legend_fig, use_container_width=True, key="mv_shared_legend")
+        legend_fig.add_trace(
+            go.Scatter(
+                x=[None], y=[None], mode="markers",
+                marker=dict(
+                    size=0,
+                    colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
+                    cmin=global_vmin, cmax=global_vmax,
+                    colorbar=dict(
+                        title=dict(text="Σw² (concentration)"),
+                        orientation="h",
+                        x=0.5, xanchor="center",
+                        y=0.0, yanchor="bottom",
+                        len=1.0,  # occupy full figure width
+                        thickness=14  # height of the horizontal bar
+                    ),
+                ),
+                showlegend=False, hoverinfo="skip",
+            )
+        )
+        # Constrain figure width to ~3 cm (~114 px at 96 DPI)
+        legend_fig.update_layout(
+            template="plotly_white",
+            height=80,
+            width=114,
+            margin=dict(l=6, r=6, t=0, b=6),
+        )
+        st.plotly_chart(legend_fig, use_container_width=False, key="mv_shared_legend")
 
     # Stop here to avoid executing Simulation Results code below
     st.stop()
@@ -757,7 +781,7 @@ sigB, meanB, sdB, pnB, budB = _extract_summary(dataB, regimeB, pct_key)
 meanA_u = meanA; sdA_u = sdA
 meanB_u = meanB; sdB_u = sdB
 
-tabs = st.tabs(["Frontier", "Value of Info", "Posteriors"])
+tabs = st.tabs(["Mean-Variances", "Value of Info", "Posteriors"])
 
 # ========== Frontier ==========
 with tabs[0]:
