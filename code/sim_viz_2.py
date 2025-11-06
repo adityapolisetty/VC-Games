@@ -538,9 +538,8 @@ if page == "Mean-Variance Frontier":
             fig.add_trace(go.Scatter(
                 x=sd_vals,
                 y=mean_vals,
-                mode="markers+text+lines",
+                mode="markers+text",
                 name=f"n={n_sig}",
-                line=dict(color="#cccccc", width=1),
                 marker=dict(
                     size=16,
                     color=ssq,
@@ -548,14 +547,15 @@ if page == "Mean-Variance Frontier":
                     cmin=vmin_global,
                     cmax=vmax_global,
                     showscale=False,
-                    line=dict(color="white", width=1),
+                    line=dict(width=0),
                 ),
                 text=[str(n_sig)] * len(sd_vals),
                 textposition="middle center",
-                textfont=dict(size=9, color="white", family="Arial Black"),
+                textfont=dict(size=11, color="white"),
                 hovertext=hover_texts,
                 hoverinfo="text",
                 showlegend=False,
+                opacity=ALPHA,
             ))
 
         # Add a single colorbar legend for Σw²
