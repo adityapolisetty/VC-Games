@@ -547,19 +547,42 @@ if page == "Mean-Variance Frontier":
             sum_sq_weights = [float(np.sum(np.asarray(w_vec, float) ** 2)) for w_vec in weights]
             points.append(dict(n=n_sig, sd=np.asarray(sd_vals, float), mean=np.asarray(mean_vals, float), ssq=np.asarray(sum_sq_weights, float)))
             all_sum_sq_weights.extend(sum_sq_weights)
+        # Determine global frontier (Pareto-efficient) across all points
+        combined = []  # (sd, mean, (series_idx, point_idx))
+        for i, p in enumerate(points):
+            sd_vals = p["sd"]; mean_vals = p["mean"]
+            for j in range(len(sd_vals)):
+                combined.append((float(sd_vals[j]), float(mean_vals[j]), (i, j)))
+        combined.sort(key=lambda t: (t[0], -t[1]))
+        frontier_pos = set()
+        best_mean = -1e9
+        for sd, mean, pos in combined:
+            if mean > best_mean + 1e-12:
+                frontier_pos.add(pos)
+                best_mean = mean
         if len(all_sum_sq_weights) > 0:
             vmin_global = float(min(all_sum_sq_weights))
             vmax_global = float(max(all_sum_sq_weights))
         else:
             vmin_global = 0.0; vmax_global = 1.0
-        for p in points:
+        for i, p in enumerate(points):
             n_sig = p["n"]; sd_vals = p["sd"]; mean_vals = p["mean"]; ssq = p["ssq"]
-            hover_texts = [f"n={n_sig}<br>Mean: {mean_vals[i]:.2f}%<br>SD: {sd_vals[i]:.2f}%<br>Σw²: {ssq[i]:.3f}" for i in range(len(sd_vals))]
+            # Keep all frontier points; keep every other interior point to reduce clutter
+            keep_idx = []
+            for j in range(len(sd_vals)):
+                if (i, j) in frontier_pos or (j % 2 == 0):
+                    keep_idx.append(j)
+            if not keep_idx:
+                continue
+            xs = sd_vals[keep_idx]
+            ys = mean_vals[keep_idx]
+            cs = ssq[keep_idx]
+            hover_texts = [f"n={n_sig}<br>Mean: {ys[k]:.2f}%<br>SD: {xs[k]:.2f}%<br>Σw²: {cs[k]:.3f}" for k in range(len(keep_idx))]
             fig.add_trace(go.Scatter(
-                x=sd_vals, y=mean_vals, mode="markers+text", name=f"n={n_sig}",
-                marker=dict(size=16, color=ssq, colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
+                x=xs, y=ys, mode="markers+text", name=f"n={n_sig}",
+                marker=dict(size=16, color=cs, colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
                             cmin=vmin_global, cmax=vmax_global, showscale=False, line=dict(width=0)),
-                text=[str(n_sig)] * len(sd_vals), textposition="middle center", textfont=dict(size=11, color="white"),
+                text=[str(n_sig)] * len(keep_idx), textposition="middle center", textfont=dict(size=11, color="white"),
                 hovertext=hover_texts, hoverinfo="text", showlegend=False, opacity=ALPHA,
             ))
         if len(all_sum_sq_weights) > 0:
@@ -592,8 +615,7 @@ if page == "Mean-Variance Frontier":
             st.markdown("**Fixed parameters:** Signal cost = £3, Ace payoff = 20X" + (", Scale param = 0.25" if sp_A == 1 else ""))
             figA = _build_fig(data_A, max_n_A, y_range)
             st.plotly_chart(figA, use_container_width=True)
-            with st.expander("Frontier Details — A"):
-                st.json(data_A["meta"])
+            # Frontier details removed for cleaner layout
 
     with colB:
         if data_B is None:
@@ -603,8 +625,7 @@ if page == "Mean-Variance Frontier":
             st.markdown("**Fixed parameters:** Signal cost = £3, Ace payoff = 20X" + (", Scale param = 0.25" if sp_B == 1 else ""))
             figB = _build_fig(data_B, max_n_B, y_range)
             st.plotly_chart(figB, use_container_width=True)
-            with st.expander("Frontier Details — B"):
-                st.json(data_B["meta"])
+            # Frontier details removed for cleaner layout
 
     # Stop here to avoid executing Simulation Results code below
     st.stop()
