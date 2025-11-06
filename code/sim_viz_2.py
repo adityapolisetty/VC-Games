@@ -349,7 +349,7 @@ def posterior_line(x, y, title, xlab, ylab="P(Ace | Signals)"):
 # ==============================
 # UI: MODE TOGGLE
 # ==============================
-st.title("Simulation Visualiser")
+st.title("Visualiser")
 
 # Only net returns are shown in percentages
 pct_key = "net_return"
@@ -543,7 +543,7 @@ if page == "Mean-Variance Frontier":
                 marker=dict(
                     size=16,
                     color=ssq,
-                    colorscale=[[0, "#6baed6"], [1, "#08519c"]],
+                    colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
                     cmin=vmin_global,
                     cmax=vmax_global,
                     showscale=False,
@@ -564,7 +564,7 @@ if page == "Mean-Variance Frontier":
                 x=[None], y=[None], mode="markers",
                 marker=dict(
                     size=0,
-                    colorscale=[[0, "#6baed6"], [1, "#08519c"]],
+                    colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
                     cmin=vmin_global,
                     cmax=vmax_global,
                     colorbar=dict(
@@ -577,20 +577,20 @@ if page == "Mean-Variance Frontier":
 
         fig.update_layout(
             template="plotly_white",
-            font=dict(family="Roboto, Arial, sans-serif", size=12),
+            font=dict(family="Roboto, Arial, sans-serif", size=15),
             xaxis=dict(
-                title="Standard Deviation (%)",
+                title=dict(text="Standard Deviation (%)", font=dict(size=18)),
                 tickfont=dict(size=11),
                 showgrid=True,
                 gridcolor="rgba(128,128,128,0.1)",
             ),
             yaxis=dict(
-                title="Mean Net Return (%)",
+                title=dict(text="Mean Net Return (%)", font=dict(size=18)),
                 tickfont=dict(size=11),
                 showgrid=True,
                 gridcolor="rgba(128,128,128,0.1)",
             ),
-            height=700,
+            height=600,
             hovermode="closest",
             margin=dict(l=60, r=100, t=40, b=60),
         )
@@ -601,6 +601,9 @@ if page == "Mean-Variance Frontier":
         with st.expander("Frontier Details"):
             meta = frontier_data["meta"]
             st.json(meta)
+
+        # Stop here to avoid executing Simulation Results code below
+        st.stop()
 
 else:
     # ==============================
