@@ -676,25 +676,25 @@ if page == "Mean-Variance Frontier":
     # Shared legend at bottom (horizontal, ~3 cm width)
     if (global_vmin is not None) and (global_vmax is not None):
         legend_fig = go.Figure()
+        # Use a tiny heatmap solely to render a horizontal colorbar reliably
         legend_fig.add_trace(
-            go.Scatter(
-                x=[None], y=[None], mode="markers",
-                marker=dict(
-                    size=0,
-                    color=global_vmin,  # trigger colorbar rendering
-                    colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
-                    cmin=global_vmin, cmax=global_vmax,
-                    showscale=True,
-                    colorbar=dict(
-                        title=dict(text="Σw² (concentration)"),
-                        orientation="h",
-                        x=0.5, xanchor="center",
-                        y=0.0, yanchor="bottom",
-                        len=1.0,  # occupy full figure width
-                        thickness=14  # height of the horizontal bar
-                    ),
+            go.Heatmap(
+                z=[[global_vmin, global_vmax]],
+                showscale=True,
+                colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
+                zmin=global_vmin,
+                zmax=global_vmax,
+                colorbar=dict(
+                    title=dict(text="Σw² (concentration)"),
+                    orientation="h",
+                    x=0.5, xanchor="center",
+                    y=0.0, yanchor="bottom",
+                    len=1.0,
+                    thickness=16,
                 ),
-                showlegend=False, hoverinfo="skip",
+                hoverinfo="skip",
+                xgap=1,
+                ygap=1,
             )
         )
         # Constrain figure width to ~3 cm (~114 px at 96 DPI)
@@ -704,6 +704,8 @@ if page == "Mean-Variance Frontier":
             width=114,
             margin=dict(l=6, r=6, t=0, b=6),
         )
+        legend_fig.update_xaxes(visible=False, showgrid=False, zeroline=False)
+        legend_fig.update_yaxes(visible=False, showgrid=False, zeroline=False)
         st.plotly_chart(legend_fig, use_container_width=False, key="mv_shared_legend")
 
     # Stop here to avoid executing Simulation Results code below
