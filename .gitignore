@@ -13,3 +13,6 @@
 
 !/output_joint/
 !/output_joint/**
+
+!/frontier_output/
+!/frontier_output/**
