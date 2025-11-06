@@ -449,65 +449,96 @@ def _panel_controls(tag: str):
 # ==============================
 # PAGE SELECTOR
 # ==============================
-page = st.radio("View", ["Simulation Results", "Mean-Variance Frontier"], horizontal=True, label_visibility="collapsed")
+with st.expander("☰ Menu", expanded=False):
+    page = st.radio("View", ["Simulation Results", "Mean-Variance Frontier"], horizontal=True)
 st.markdown("---")
 
 if page == "Mean-Variance Frontier":
     # ==============================
-    # FRONTIER PAGE
+    # FRONTIER PAGE — TWO PANELS
     # ==============================
     st.header("Information-Limited Mean-Variance Frontier")
     st.caption("Efficient frontiers showing mean vs. standard deviation of net returns")
 
-    # Controls
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
-    with col1:
-        frontier_sp = st.radio("Payoff scaling", ["Off (Ace-only)", "On (Scaled)"], horizontal=True)
-        sp_frontier = 1 if "On" in frontier_sp else 0
-    with col2:
-        frontier_sig = st.selectbox("Signal type", ["Median", "Top 2"], key="frontier_sig")
-        signal_type_frontier = "median" if frontier_sig == "Median" else "top2"
-    with col3:
-        frontier_alpha = st.select_slider(
-            "Stage 1 allocation",
-            options=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
-            value=0.5,
-            format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}"
+    # Small help + shared y-range toggle
+    row = st.columns([1, 0.25])
+    with row[0]:
+        st.markdown(
+            "<div style='font-size:0.9rem; font-style:italic;'>"
+            "All returns are net returns in percentages — "
+            "100*(Cash at end of game - Total budget)/Total budget"
+            "</div>",
+            unsafe_allow_html=True,
         )
-    with col4:
-        max_n_sig = st.slider("Max signals", min_value=0, max_value=9, value=9, key="max_n_sig_frontier")
+    with row[1]:
+        fix_y_mv = st.toggle("Fix Y axis range across panels", value=True, key="fix_y_mv")
 
-    # Build frontier file path
+    # Per-panel controls
+    ctlA, ctlB = st.columns(2)
+    with ctlA:
+        st.markdown("### Panel A")
+        frontier_sp_A = st.radio("Payoff scaling", ["Off (Ace-only)", "On (Scaled)"], horizontal=True, key="frontier_sp_A")
+        sp_A = 1 if "On" in frontier_sp_A else 0
+        frontier_sig_A = st.selectbox("Signal type", ["Median", "Top 2"], key="frontier_sig_A")
+        sig_A = "median" if frontier_sig_A == "Median" else "top2"
+        alpha_A = st.select_slider("Stage 1 allocation", options=[0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0], value=0.5,
+                                   format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}")
+        max_n_A = st.slider("Max signals", min_value=0, max_value=9, value=9, key="max_n_sig_frontier_A")
+    with ctlB:
+        st.markdown("### Panel B")
+        frontier_sp_B = st.radio("Payoff scaling", ["Off (Ace-only)", "On (Scaled)"], horizontal=True, key="frontier_sp_B")
+        sp_B = 1 if "On" in frontier_sp_B else 0
+        frontier_sig_B = st.selectbox("Signal type", ["Median", "Top 2"], key="frontier_sig_B")
+        sig_B = "median" if frontier_sig_B == "Median" else "top2"
+        alpha_B = st.select_slider("Stage 1 allocation", options=[0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0], value=0.5,
+                                   format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}")
+        max_n_B = st.slider("Max signals", min_value=0, max_value=9, value=9, key="max_n_sig_frontier_B")
+
+    # Resolve files
     frontier_dir = Path("frontier_output/").resolve()
-    # signal_cost=3, scale_param=0.25 for sp=1, ace_payout=20 (fixed in frontier.py)
-    raw_frontier = dict(signal_cost=3.0, scale_pay=sp_frontier, scale_param=(0.25 if sp_frontier == 1 else 0.0), ace_payout=20.0)
-    _, frontier_key_id = _canonicalize(raw_frontier)
-    a_tag = f"a{int(round(float(frontier_alpha)*10)):02d}"
-    frontier_file = frontier_dir / f"{frontier_key_id}_{signal_type_frontier}_{a_tag}.npz"
+    raw_A = dict(signal_cost=3.0, scale_pay=sp_A, scale_param=(0.25 if sp_A == 1 else 0.0), ace_payout=20.0)
+    raw_B = dict(signal_cost=3.0, scale_pay=sp_B, scale_param=(0.25 if sp_B == 1 else 0.0), ace_payout=20.0)
+    _, key_A = _canonicalize(raw_A)
+    _, key_B = _canonicalize(raw_B)
+    tag_A = f"a{int(round(float(alpha_A)*10)):02d}"
+    tag_B = f"a{int(round(float(alpha_B)*10)):02d}"
+    file_A = frontier_dir / f"{key_A}_{sig_A}_{tag_A}.npz"
+    file_B = frontier_dir / f"{key_B}_{sig_B}_{tag_B}.npz"
 
-    # Load frontier data
-    frontier_data = load_frontier_npz(str(frontier_file))
+    data_A = load_frontier_npz(str(file_A))
+    data_B = load_frontier_npz(str(file_B))
 
-    if frontier_data is None:
-        st.info(f"Frontier data not found: {frontier_file.name}")
-        st.caption("Run frontier.py to generate frontier data.")
-    else:
-        # Show fixed parameters
-        st.markdown("**Fixed parameters:** Signal cost = £3, Ace payoff = 20X" +
-                   (", Scale param = 0.25" if sp_frontier == 1 else ""))
-        st.markdown("---")
+    # Helper: gather means for y-range
+    def _gather_means(fd, max_n):
+        if fd is None:
+            return []
+        means = []
+        mean_by_n = fd["best_means_by_n"]
+        for n_sig in range(min(len(mean_by_n), max_n + 1)):
+            mv = mean_by_n[n_sig]
+            if len(mv) > 0:
+                means.append(np.asarray(mv, float))
+        return means
 
-        # Plot frontiers for all n_sig values up to max_n_sig
+    y_range = None
+    if fix_y_mv and (data_A is not None) and (data_B is not None):
+        all_means = [*_gather_means(data_A, max_n_A), *_gather_means(data_B, max_n_B)]
+        if len(all_means) > 0:
+            y_min = float(min(np.min(a) for a in all_means))
+            y_max = float(max(np.max(a) for a in all_means))
+            y_range = _padded_range(y_min, y_max)
+
+    # Helper: build figure
+    def _build_fig(fd, max_n, y_range_override=None):
+        if fd is None:
+            return None
         fig = go.Figure()
-
-        sd_by_n = frontier_data["sd_levels_by_n"]
-        mean_by_n = frontier_data["best_means_by_n"]
-        weights_by_n = frontier_data["best_weights_by_n"]
-
-        # First pass: collect points and global color scale domain
-        points = []  # list of dicts with keys: n, sd, mean, ssq
+        sd_by_n = fd["sd_levels_by_n"]
+        mean_by_n = fd["best_means_by_n"]
+        weights_by_n = fd["best_weights_by_n"]
+        points = []
         all_sum_sq_weights = []
-        for n_sig in range(min(len(sd_by_n), max_n_sig + 1)):
+        for n_sig in range(min(len(sd_by_n), max_n + 1)):
             sd_vals = sd_by_n[n_sig]
             mean_vals = mean_by_n[n_sig]
             weights = weights_by_n[n_sig]
@@ -516,94 +547,67 @@ if page == "Mean-Variance Frontier":
             sum_sq_weights = [float(np.sum(np.asarray(w_vec, float) ** 2)) for w_vec in weights]
             points.append(dict(n=n_sig, sd=np.asarray(sd_vals, float), mean=np.asarray(mean_vals, float), ssq=np.asarray(sum_sq_weights, float)))
             all_sum_sq_weights.extend(sum_sq_weights)
-
-        # Global color scaling for Σw² (concentration)
         if len(all_sum_sq_weights) > 0:
             vmin_global = float(min(all_sum_sq_weights))
             vmax_global = float(max(all_sum_sq_weights))
         else:
-            vmin_global = 0.0
-            vmax_global = 1.0
-
-        # Second pass: add traces
+            vmin_global = 0.0; vmax_global = 1.0
         for p in points:
-            n_sig = p["n"]
-            sd_vals = p["sd"]
-            mean_vals = p["mean"]
-            ssq = p["ssq"]
-            hover_texts = [
-                f"n={n_sig}<br>Mean: {mean_vals[i]:.2f}%<br>SD: {sd_vals[i]:.2f}%<br>Σw²: {ssq[i]:.3f}"
-                for i in range(len(sd_vals))
-            ]
+            n_sig = p["n"]; sd_vals = p["sd"]; mean_vals = p["mean"]; ssq = p["ssq"]
+            hover_texts = [f"n={n_sig}<br>Mean: {mean_vals[i]:.2f}%<br>SD: {sd_vals[i]:.2f}%<br>Σw²: {ssq[i]:.3f}" for i in range(len(sd_vals))]
             fig.add_trace(go.Scatter(
-                x=sd_vals,
-                y=mean_vals,
-                mode="markers+text",
-                name=f"n={n_sig}",
-                marker=dict(
-                    size=16,
-                    color=ssq,
-                    colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
-                    cmin=vmin_global,
-                    cmax=vmax_global,
-                    showscale=False,
-                    line=dict(width=0),
-                ),
-                text=[str(n_sig)] * len(sd_vals),
-                textposition="middle center",
-                textfont=dict(size=11, color="white"),
-                hovertext=hover_texts,
-                hoverinfo="text",
-                showlegend=False,
-                opacity=ALPHA,
+                x=sd_vals, y=mean_vals, mode="markers+text", name=f"n={n_sig}",
+                marker=dict(size=16, color=ssq, colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
+                            cmin=vmin_global, cmax=vmax_global, showscale=False, line=dict(width=0)),
+                text=[str(n_sig)] * len(sd_vals), textposition="middle center", textfont=dict(size=11, color="white"),
+                hovertext=hover_texts, hoverinfo="text", showlegend=False, opacity=ALPHA,
             ))
-
-        # Add a single colorbar legend for Σw²
         if len(all_sum_sq_weights) > 0:
-            fig.add_trace(go.Scatter(
-                x=[None], y=[None], mode="markers",
-                marker=dict(
-                    size=0,
-                    colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
-                    cmin=vmin_global,
-                    cmax=vmax_global,
-                    colorbar=dict(
-                        title=dict(text="Σw²<br>(concentration)", side="right"),
-                        len=0.5, y=0.75,
-                    ),
-                ),
-                showlegend=False, hoverinfo="skip",
-            ))
-
+            fig.add_trace(go.Scatter(x=[None], y=[None], mode="markers",
+                                     marker=dict(size=0, colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
+                                                 cmin=vmin_global, cmax=vmax_global,
+                                                 colorbar=dict(title=dict(text="Σw²<br>(concentration)", side="right"), len=0.5, y=0.75)),
+                                     showlegend=False, hoverinfo="skip"))
+        yaxis_cfg = dict(title=dict(text="Mean Net Return (%)", font=dict(size=18)), tickfont=dict(size=11), showgrid=True, gridcolor="rgba(128,128,128,0.1)")
+        if y_range_override is not None:
+            yaxis_cfg.update(range=list(map(float, y_range_override)))
         fig.update_layout(
             template="plotly_white",
             font=dict(family="Roboto, Arial, sans-serif", size=15),
-            xaxis=dict(
-                title=dict(text="Standard Deviation (%)", font=dict(size=18)),
-                tickfont=dict(size=11),
-                showgrid=True,
-                gridcolor="rgba(128,128,128,0.1)",
-            ),
-            yaxis=dict(
-                title=dict(text="Mean Net Return (%)", font=dict(size=18)),
-                tickfont=dict(size=11),
-                showgrid=True,
-                gridcolor="rgba(128,128,128,0.1)",
-            ),
+            xaxis=dict(title=dict(text="Standard Deviation (%)", font=dict(size=18)), tickfont=dict(size=11), showgrid=True, gridcolor="rgba(128,128,128,0.1)"),
+            yaxis=yaxis_cfg,
             height=600,
             hovermode="closest",
             margin=dict(l=60, r=100, t=40, b=60),
         )
+        return fig
 
-        st.plotly_chart(fig, use_container_width=True)
+    # Render charts side-by-side
+    colA, colB = st.columns(2)
+    with colA:
+        if data_A is None:
+            st.info(f"Frontier data not found: {file_A.name}")
+            st.caption("Run frontier.py to generate frontier data.")
+        else:
+            st.markdown("**Fixed parameters:** Signal cost = £3, Ace payoff = 20X" + (", Scale param = 0.25" if sp_A == 1 else ""))
+            figA = _build_fig(data_A, max_n_A, y_range)
+            st.plotly_chart(figA, use_container_width=True)
+            with st.expander("Frontier Details — A"):
+                st.json(data_A["meta"])
 
-        # Show metadata
-        with st.expander("Frontier Details"):
-            meta = frontier_data["meta"]
-            st.json(meta)
+    with colB:
+        if data_B is None:
+            st.info(f"Frontier data not found: {file_B.name}")
+            st.caption("Run frontier.py to generate frontier data.")
+        else:
+            st.markdown("**Fixed parameters:** Signal cost = £3, Ace payoff = 20X" + (", Scale param = 0.25" if sp_B == 1 else ""))
+            figB = _build_fig(data_B, max_n_B, y_range)
+            st.plotly_chart(figB, use_container_width=True)
+            with st.expander("Frontier Details — B"):
+                st.json(data_B["meta"])
 
-        # Stop here to avoid executing Simulation Results code below
-        st.stop()
+    # Stop here to avoid executing Simulation Results code below
+    st.stop()
 
 else:
     # ==============================
