@@ -282,14 +282,14 @@ def frontier_plot(sig_grid, sd_triplet, mean_triplet, title, y_range=None):
         template="plotly_white",
         legend=dict(
             orientation="h",
-            y=-0.22,
+            y=-0.40,
             x=0.5,
             xanchor="center",
             font=_DEF_FONT,
             itemsizing="constant",
             itemwidth=114  # ~3 cm at 96 DPI
         ),
-        margin=dict(l=10, r=10, t=56, b=40),
+        margin=dict(l=10, r=10, t=56, b=80),
         font=_DEF_FONT,
         xaxis=dict(title=dict(text="S.D. of return (%)", font=_DEF_FONT),
                    autorange=True, tickmode="auto",
