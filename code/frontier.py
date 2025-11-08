@@ -469,9 +469,11 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
 
     # Write debug Excel if enabled
     if debug_excel:
+        excel_dir = out_dir / "frontier_excel"
+        excel_dir.mkdir(parents=True, exist_ok=True)
         for n_sig in range(int(max_signals) + 1):
             if debug_data_by_n[n_sig] is not None and stats_by_n[n_sig] is not None:
-                excel_path = out_dir / f"{key_id}_{st}_{a_tag}_n{n_sig}_debug.xlsx"
+                excel_path = excel_dir / f"{key_id}_{st}_{a_tag}_n{n_sig}_debug.xlsx"
                 _write_debug_excel(debug_data_by_n[n_sig], stats_by_n[n_sig]["Wm_template"], stats_by_n[n_sig], excel_path)
 
 

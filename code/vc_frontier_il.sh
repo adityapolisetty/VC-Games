@@ -40,3 +40,4 @@ python3 -u frontier.py \
   --sweep_out ../frontier_output \
   --sweep_index "$ID" \
   --sweep_stride "$STRIDE"
+  --debug_excel
