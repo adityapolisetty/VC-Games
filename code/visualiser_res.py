@@ -457,7 +457,7 @@ def _panel_controls(tag: str):
 # ==============================
 # SIMULATION RESULTS PAGE (EXISTING)
 # ==============================
-st.header("Simulation Results - Two-Panel Comparison")
+st.header("Results")
 
 # Collect panel configurations (must come before path resolution)
 left, right = st.columns(2)
