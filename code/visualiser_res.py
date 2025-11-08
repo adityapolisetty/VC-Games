@@ -34,7 +34,7 @@ st.markdown(
       .stSelectbox label, .stNumberInput label { font-size: 0.92rem; margin-bottom: .18rem; }
       .stSelectbox > div[data-baseweb="select"] { min-height: 36px; }
       .stTabs [data-baseweb="tab-list"] { gap: .25rem; }
-      .stTabs [data-baseweb="tab"] { padding: .35rem .7rem; }
+      .stTabs [data-baseweb="tab"] { padding: .5rem 1rem; font-size: 1.1rem; font-weight: 600; }
       .js-plotly-plot .plotly .main-svg { overflow: visible !important; }
     </style>
     """,
@@ -457,7 +457,6 @@ def _panel_controls(tag: str):
 # ==============================
 # SIMULATION RESULTS PAGE (EXISTING)
 # ==============================
-st.header("Results")
 
 # Collect panel configurations (must come before path resolution)
 left, right = st.columns(2)
@@ -623,7 +622,7 @@ with tabs[2]:
             st.info("Load a valid posterior NPZ to see curves.")
         elif postA.get("is_joint"):
             # 2-Stage mode: joint posteriors with interactive controls
-            st.caption("Note: Signal type is controlled by the dropdown below (panel setting ignored)")
+            st.caption("Note: Signal type is controlled by the dropdown below (above above panel setting ignored)")
 
             # X-axis selector
             c_r2_1, c_r2_2 = st.columns([1, 2])
@@ -742,7 +741,7 @@ with tabs[2]:
             st.info("Load a valid posterior NPZ to see curves.")
         elif postB.get("is_joint"):
             # 2-Stage mode: joint posteriors with interactive controls
-            st.caption("Note: Signal type is controlled by the dropdown below (panel setting ignored)")
+            st.caption("Note: Signal type is controlled by the dropdown below (above panel setting ignored)")
 
             # X-axis selector
             

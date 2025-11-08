@@ -39,5 +39,5 @@ python3 -u frontier.py \
   --sweep \
   --sweep_out ../frontier_output \
   --sweep_index "$ID" \
-  --sweep_stride "$STRIDE"
+  --sweep_stride "$STRIDE" \
   --debug_excel
