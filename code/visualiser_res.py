@@ -116,7 +116,8 @@ def load_post_npz(npz_path: str, is_joint: bool = False):
                     st.error("Posterior NPZ is missing required arrays: " + ", ".join(missing))
                     st.caption("Re-run precompute_posteriors.py to regenerate post_mc.npz with the updated schema.")
                     return None
-                return {
+
+                result = {
                     "is_joint": False,
                     "med_x": np.asarray(z["rmax_median_keys"], float),
                     "med_y": np.asarray(z["ace_median_probs"], float),
@@ -131,6 +132,13 @@ def load_post_npz(npz_path: str, is_joint: bool = False):
                     "mn_y": np.asarray(z["ace_min_probs"], float),
                     "mn_mat": np.asarray(z["rmax_min_mat"], float),
                 }
+
+                # Optionally load R2 (second rank) data if available
+                if "r2_marginal_mat" in zset:
+                    result["r2_marginal_mat"] = np.asarray(z["r2_marginal_mat"], float)  # [13(R2), 13(Rmax)]
+                    result["prior_rmax"] = np.asarray(z["prior_rmax"], float)
+
+                return result
     except Exception as e:
         st.error(f"Failed to read posterior NPZ: {e}")
         return None
@@ -726,13 +734,20 @@ with tabs[2]:
             else:
                 # Payoff scaling OFF: show P(Ace | signal)
                 if regimeA == "median":
-                    st.plotly_chart(posterior_line(postA["med_x"], postA["med_y"], "P(Ace | Median = x)", "Median"), width="stretch", key="post_A")
+                    st.plotly_chart(posterior_line(postA["med_x"], postA["med_y"], "P(Ace | Median = x)", "Median"), width="stretch", key="post_A_med")
                 elif regimeA == "top2":
-                    st.plotly_chart(posterior_line(postA["t2_x"], postA["t2_y"], "P(Ace | Top-2 sum = x)", "Top-2 sum"), width="stretch", key="post_A")
+                    st.plotly_chart(posterior_line(postA["t2_x"], postA["t2_y"], "P(Ace | Top-2 sum = x)", "Top-2 sum"), width="stretch", key="post_A_t2")
                 elif regimeA == "max":
-                    st.plotly_chart(posterior_line(postA["mx_x"], postA["mx_y"], "P(Ace | Max rank = k)", "Max rank"), width="stretch", key="post_A")
+                    st.plotly_chart(posterior_line(postA["mx_x"], postA["mx_y"], "P(Ace | Max rank = k)", "Max rank"), width="stretch", key="post_A_max")
                 else:
-                    st.plotly_chart(posterior_line(postA["mn_x"], postA["mn_y"], "P(Ace | Min rank = k)", "Min rank"), width="stretch", key="post_A")
+                    st.plotly_chart(posterior_line(postA["mn_x"], postA["mn_y"], "P(Ace | Min rank = k)", "Min rank"), width="stretch", key="post_A_min")
+
+                # Also show P(Ace | Second rank) if data is available
+                if "r2_marginal_mat" in postA:
+                    ace_idx = ACE_RANK - 2
+                    r2_vals = np.arange(2, 15)  # R2 values 2-14
+                    ace_probs = postA["r2_marginal_mat"][:, ace_idx]  # [13]
+                    st.plotly_chart(posterior_line(r2_vals, ace_probs, "P(Ace | Second rank = x)", "Second rank"), width="stretch", key="post_A_r2")
 
     # Panel B
     with c[1]:
@@ -845,10 +860,17 @@ with tabs[2]:
             else:
                 # Payoff scaling OFF: show P(Ace | signal)
                 if regimeB == "median":
-                    st.plotly_chart(posterior_line(postB["med_x"], postB["med_y"], "P(Ace | Median = x)", "Median"), width="stretch", key="post_B")
+                    st.plotly_chart(posterior_line(postB["med_x"], postB["med_y"], "P(Ace | Median = x)", "Median"), width="stretch", key="post_B_med")
                 elif regimeB == "top2":
-                    st.plotly_chart(posterior_line(postB["t2_x"], postB["t2_y"], "P(Ace | Top-2 sum = x)", "Top-2 sum"), width="stretch", key="post_B")
+                    st.plotly_chart(posterior_line(postB["t2_x"], postB["t2_y"], "P(Ace | Top-2 sum = x)", "Top-2 sum"), width="stretch", key="post_B_t2")
                 elif regimeB == "max":
-                    st.plotly_chart(posterior_line(postB["mx_x"], postB["mx_y"], "P(Ace | Max rank = k)", "Max rank"), width="stretch", key="post_B")
+                    st.plotly_chart(posterior_line(postB["mx_x"], postB["mx_y"], "P(Ace | Max rank = k)", "Max rank"), width="stretch", key="post_B_max")
                 else:
-                    st.plotly_chart(posterior_line(postB["mn_x"], postB["mn_y"], "P(Ace | Min rank = k)", "Min rank"), width="stretch", key="post_B")
+                    st.plotly_chart(posterior_line(postB["mn_x"], postB["mn_y"], "P(Ace | Min rank = k)", "Min rank"), width="stretch", key="post_B_min")
+
+                # Also show P(Ace | Second rank) if data is available
+                if "r2_marginal_mat" in postB:
+                    ace_idx = ACE_RANK - 2
+                    r2_vals = np.arange(2, 15)  # R2 values 2-14
+                    ace_probs = postB["r2_marginal_mat"][:, ace_idx]  # [13]
+                    st.plotly_chart(posterior_line(r2_vals, ace_probs, "P(Ace | Second rank = x)", "Second rank"), width="stretch", key="post_B_r2")

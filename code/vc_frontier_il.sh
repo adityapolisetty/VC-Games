@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -l select=1:ncpus=12:mem=5gb
 #PBS -l walltime=08:00:00
-#PBS -J 0-39
+#PBS -J 0-50
 #PBS -N il_frontier_array
 #PBS -o ../logs/il_frontier.out
 #PBS -e ../logs/il_frontier.err
@@ -39,5 +39,4 @@ python3 -u frontier.py \
   --sweep \
   --sweep_out ../frontier_output \
   --sweep_index "$ID" \
-  --sweep_stride "$STRIDE" \
-  --debug_excel
+  --sweep_stride "$STRIDE" 
