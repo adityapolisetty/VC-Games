@@ -282,20 +282,20 @@ def frontier_plot(sig_grid, sd_triplet, mean_triplet, title, y_range=None):
         template="plotly_white",
         legend=dict(
             orientation="h",
-            y=-0.40,
+            y=-0.18,
             x=0.5,
             xanchor="center",
             font=_DEF_FONT,
             itemsizing="constant",
             itemwidth=114  # ~3 cm at 96 DPI
         ),
-        margin=dict(l=10, r=10, t=56, b=80),
+        margin=dict(l=10, r=10, t=56, b=40),
         font=_DEF_FONT,
         xaxis=dict(title=dict(text="S.D. of return (%)", font=_DEF_FONT),
                    autorange=True, tickmode="auto",
                    tickfont=_DEF_FONT),
         yaxis=yaxis_cfg,
-        height=440,
+        height=520,
         title=dict(text=title, y=0.995, x=0.0, xanchor="left", font=_DEF_FONT),
         hovermode="closest",
         hoverdistance=20,
@@ -400,7 +400,7 @@ def _panel_controls(tag: str):
             alpha = st.select_slider(
                 "Budget allocation (%) - Stage 1 : 2",
                 options=STAGE1_ALLOC,
-                value=0.5,
+                value=1.0,
                 key=f"alpha_{tag}",
                 format_func=lambda v: f"{round(v*100)}:{round((1-v)*100)} split"
             )
