@@ -47,7 +47,6 @@ ACE_PAYOUT = 20.0
 SCALE_PARAM_ON = 0.25
 ALPHA_GRID = np.linspace(0, 1.0, 11)  # 0.0..1.0 step 0.1
 UNITS = 10  # 0.10 granularity (10% per step)
-MAX_SUPPORT = 9  # m=9 only (all piles) - ~8.6 hours runtime
 SD_STEP = 1  # percentage points
 
 
@@ -183,44 +182,20 @@ def _weight_splits(units: int, m: int) -> np.ndarray:
     return (np.asarray(out, float) / float(units)).reshape((-1, m))
 
 
-def _concat_stats(stats_by_m: Dict[int, Dict[str, np.ndarray]]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, np.ndarray]:
-    # Concatenate across m in consistent order and return also an index-to-rank9 mapping
-    parts_g1 = []
-    parts_g2 = []
-    parts_g1sq = []
-    parts_g2sq = []
-    parts_g12 = []
-    parts_count = []
-    rank9_weights = []
-    for m in sorted(stats_by_m.keys()):
-        st = stats_by_m[m]
-        parts_g1.append(st["sum_g1"]) ; parts_g2.append(st["sum_g2"]) ; parts_g1sq.append(st["sum_g1_sq"]) ; parts_g2sq.append(st["sum_g2_sq"]) ; parts_g12.append(st["sum_g12"]) ; parts_count.append(int(st["count"]))
-        # Build rank-ordered 9-vector templates for this m once
-        Wm = st.get("Wm_template", None)
-        if Wm is None:
-            # reconstruct from shapes: sum_g1 length = num_splits
-            # regenerate splits deterministically
-            Wm = _weight_splits(UNITS, m)
-        for row in Wm:
-            v = np.zeros((NUM_PILES,), float)
-            v[:m] = row
-            rank9_weights.append(v)
-    g1 = np.concatenate(parts_g1) if parts_g1 else np.zeros((0,), float)
-    g2 = np.concatenate(parts_g2) if parts_g2 else np.zeros((0,), float)
-    g1sq = np.concatenate(parts_g1sq) if parts_g1sq else np.zeros((0,), float)
-    g2sq = np.concatenate(parts_g2sq) if parts_g2sq else np.zeros((0,), float)
-    g12 = np.concatenate(parts_g12) if parts_g12 else np.zeros((0,), float)
-    # all counts equal; take first nonzero
-    cnt = 0
-    for c in parts_count:
-        if c > 0:
-            cnt = c
-            break
-    rank9 = np.vstack(rank9_weights) if rank9_weights else np.zeros((0, NUM_PILES), float)
+def _concat_stats(stats: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, np.ndarray]:
+    # Extract statistics directly (m=NUM_PILES=9 hardcoded, no concatenation needed)
+    g1 = stats["sum_g1"]
+    g2 = stats["sum_g2"]
+    g1sq = stats["sum_g1_sq"]
+    g2sq = stats["sum_g2_sq"]
+    g12 = stats["sum_g12"]
+    cnt = int(stats["count"])
+    # Weight template is already in (43758, NUM_PILES) format
+    rank9 = stats.get("Wm_template", _weight_splits(UNITS, NUM_PILES))
     return g1, g2, g1sq, g2sq, g12, cnt, rank9
 
 
-def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, sp, scale_param, rmax_tables, joint_tables, prior_rmax, r2_marginal):
+def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, sp, scale_param, rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel=False):
     """
     Worker for IL frontier computation with deterministic round seeding.
 
@@ -231,21 +206,26 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
     - Different chosen_idx based on n_sig (first n_sig from same permutation)
     - Different rankings based on which piles were observed
     """
-    # Prepare per-chunk accumulators by support size
-    stats = {}
-    # Only compute for m=MAX_SUPPORT (not range 1..MAX_SUPPORT)
-    W_by_m = {MAX_SUPPORT: _weight_splits(UNITS, MAX_SUPPORT)}
-    for m, Wm in W_by_m.items():
-        Ns = Wm.shape[0]
-        stats[m] = dict(
-            sum_g1=np.zeros(Ns, float),
-            sum_g2=np.zeros(Ns, float),
-            sum_g1_sq=np.zeros(Ns, float),
-            sum_g2_sq=np.zeros(Ns, float),
-            sum_g12=np.zeros(Ns, float),
-            count=0,
-            Wm_template=Wm,
-        )
+    # Prepare per-chunk accumulators (m=NUM_PILES=9 hardcoded)
+    Wm = _weight_splits(UNITS, NUM_PILES)
+    Ns = Wm.shape[0]
+    stats = dict(
+        sum_g1=np.zeros(Ns, float),
+        sum_g2=np.zeros(Ns, float),
+        sum_g1_sq=np.zeros(Ns, float),
+        sum_g2_sq=np.zeros(Ns, float),
+        sum_g12=np.zeros(Ns, float),
+        count=0,
+        Wm_template=Wm,
+    )
+
+    # Select debug strategies if Excel output enabled
+    if debug_excel:
+        debug_strategies = _select_debug_strategies(Wm)
+        debug_data = {idx: [] for idx in debug_strategies}
+    else:
+        debug_strategies = []
+        debug_data = {}
 
     h1 = _hvals(sp, scale_param, ACE_PAYOUT, half=False)
     h2 = _hvals(sp, scale_param, ACE_PAYOUT, half=True)
@@ -271,39 +251,47 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         p_real = _per_dollar_realized(np.asarray(max_rank, int), sp, scale_param, ACE_PAYOUT)
         p_real_stage2 = 0.5 * p_real  # Stage 2 receives 0.5x payoff per pound
 
-        for m, Wm in W_by_m.items():
-            top_idx = order1[:m]
-            p_m = p_real[top_idx]
-            p_m_stage2 = p_real_stage2[top_idx]
-            # Stage-2 expected ordering within support
-            s2_m = np.zeros(m, float)
-            for jj, k in enumerate(top_idx):
-                r2k = int(R2[k]) - 2
-                if k in chosen_set:
-                    b = int(buckets[k])
-                    if (b in rowmap) and (0 <= r2k < 13):
-                        vec = np.asarray(mat3d[rowmap[b], r2k, :], float)
-                    else:
-                        vec = prior_vec
+        # Investment in all NUM_PILES companies with various weight strategies
+        top_idx = order1  # All 9 companies in ranked order
+        p_m = p_real[top_idx]
+        p_m_stage2 = p_real_stage2[top_idx]
+        # Stage-2 expected ordering within support
+        s2_m = np.zeros(NUM_PILES, float)
+        for jj, k in enumerate(top_idx):
+            r2k = int(R2[k]) - 2
+            if k in chosen_set:
+                b = int(buckets[k])
+                if (b in rowmap) and (0 <= r2k < 13):
+                    vec = np.asarray(mat3d[rowmap[b], r2k, :], float)
                 else:
-                    vec = np.asarray(r2_marginal[r2k, :], float) if (0 <= r2k < 13) else prior_vec
-                s2_m[jj] = float(np.dot(h2, vec))
-            perm2 = np.argsort(-s2_m)
-            g1 = Wm @ p_m
-            g2 = Wm[:, perm2] @ p_m_stage2  # Use Stage 2 payouts (0.5x)
-            st = stats[m]
-            st["sum_g1"] += g1
-            st["sum_g2"] += g2
-            st["sum_g1_sq"] += g1 * g1
-            st["sum_g2_sq"] += g2 * g2
-            st["sum_g12"] += g1 * g2
-            st["count"] += 1
+                    vec = prior_vec
+            else:
+                vec = np.asarray(r2_marginal[r2k, :], float) if (0 <= r2k < 13) else prior_vec
+            s2_m[jj] = float(np.dot(h2, vec))
+        perm2 = np.argsort(-s2_m)
+        g1 = Wm @ p_m
+        g2 = Wm[:, perm2] @ p_m_stage2  # Use Stage 2 payouts (0.5x)
+        stats["sum_g1"] += g1
+        stats["sum_g2"] += g2
+        stats["sum_g1_sq"] += g1 * g1
+        stats["sum_g2_sq"] += g2 * g2
+        stats["sum_g12"] += g1 * g2
+        stats["count"] += 1
 
-    return stats
+        # Collect debug data if enabled
+        if debug_excel:
+            round_debug = _collect_round_debug_data(debug_strategies, r, g1, g2, Wm, max_rank, order1, n_sig)
+            for strategy_idx, data in round_debug.items():
+                debug_data[strategy_idx].append(data)
+
+    if debug_excel:
+        return stats, debug_data
+    else:
+        return stats
 
 
 def _collect_stats_il(seed: int, rounds: int, procs: int, signal_type: str, n_sig: int, sp: int, scale_param: float,
-                      rmax_tables, joint_tables, prior_rmax, r2_marginal):
+                      rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel=False):
     if procs and int(procs) > 1 and int(rounds) > 1:
         W = int(procs); base = int(rounds) // W; rem = int(rounds) % W
         chunk_sizes = [base + (1 if i < rem else 0) for i in range(W)]
@@ -314,27 +302,41 @@ def _collect_stats_il(seed: int, rounds: int, procs: int, signal_type: str, n_si
                 starts.append((s, c))
                 s += c
         out_stats = None
+        out_debug_data = {}
         from concurrent.futures import ProcessPoolExecutor
         with ProcessPoolExecutor(max_workers=len(starts)) as ex:
             futs = [
                 ex.submit(
                     _worker_chunk_il,
                     int(seed), int(start), int(sz), signal_type, int(n_sig), int(sp), float(scale_param),
-                    rmax_tables, joint_tables, prior_rmax, r2_marginal,
+                    rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel,
                 ) for (start, sz) in starts
             ]
             for fut in futs:
-                st = fut.result()
+                result = fut.result()
+                if debug_excel:
+                    st, debug_data = result
+                    # Merge debug data
+                    for strategy_idx, rounds_list in debug_data.items():
+                        if strategy_idx not in out_debug_data:
+                            out_debug_data[strategy_idx] = []
+                        out_debug_data[strategy_idx].extend(rounds_list)
+                else:
+                    st = result
+
                 if out_stats is None:
                     out_stats = st
                 else:
-                    for m in out_stats.keys():
-                        for k in ("sum_g1","sum_g2","sum_g1_sq","sum_g2_sq","sum_g12"):
-                            out_stats[m][k] += st[m][k]
-                        out_stats[m]["count"] += st[m]["count"]
-        return out_stats
+                    for k in ("sum_g1","sum_g2","sum_g1_sq","sum_g2_sq","sum_g12"):
+                        out_stats[k] += st[k]
+                    out_stats["count"] += st["count"]
+
+        if debug_excel:
+            return out_stats, out_debug_data
+        else:
+            return out_stats
     else:
-        return _worker_chunk_il(int(seed), 0, int(rounds), signal_type, int(n_sig), int(sp), float(scale_param), rmax_tables, joint_tables, prior_rmax, r2_marginal)
+        return _worker_chunk_il(int(seed), 0, int(rounds), signal_type, int(n_sig), int(sp), float(scale_param), rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel)
     
 
 
@@ -361,7 +363,7 @@ def _save_bins_npz(out_path: pathlib.Path, sd_levels_by_n, best_means_by_n, best
         raise
 
 
-def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, stage1_alloc, out_dir: pathlib.Path, signal_type: str):
+def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, stage1_alloc, out_dir: pathlib.Path, signal_type: str, debug_excel=False):
     # Load posteriors and build tables
     rmax_median, rmax_top2, prior_mc = _load_mc_posteriors(POST_NPZ_DEFAULT)
     joint_tables, prior_joint, r2_marginal = _load_joint_posteriors(POST_NPZ_JOINT_DEFAULT)
@@ -372,11 +374,26 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
     st = str(signal_type)
     # For each n, collect stats across rounds
     stats_by_n = {}
+    debug_data_by_n = {}  # Collect debug data per n_sig
     for n_sig in range(int(max_signals) + 1):
-        stats_by_n[n_sig] = _collect_stats_il(
+        # Validate: skip if cannot afford n_sig signals with this stage1_alloc
+        budget1 = float(stage1_alloc) * BUDGET
+        signal_cost_total = float(n_sig) * SIGNAL_COST
+        if budget1 < signal_cost_total:
+            # Cannot afford signals - skip simulation entirely
+            stats_by_n[n_sig] = None
+            debug_data_by_n[n_sig] = None
+            continue
+
+        result = _collect_stats_il(
             seed=int(seed_int), rounds=int(rounds), procs=int(procs), signal_type=st, n_sig=int(n_sig), sp=sp, scale_param=scale_param,
-            rmax_tables=rmax_tables, joint_tables=joint_tables, prior_rmax=prior_rmax, r2_marginal=r2_marginal,
+            rmax_tables=rmax_tables, joint_tables=joint_tables, prior_rmax=prior_rmax, r2_marginal=r2_marginal, debug_excel=debug_excel,
         )
+        if debug_excel:
+            stats_by_n[n_sig], debug_data_by_n[n_sig] = result
+        else:
+            stats_by_n[n_sig] = result
+            debug_data_by_n[n_sig] = None
 
     # For this alpha, compute bins per n and save
     sd_levels_by_n = []
@@ -385,6 +402,12 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
 
     for n_sig in range(int(max_signals) + 1):
         stats = stats_by_n[n_sig]
+        # Skip configurations where signals were unaffordable
+        if stats is None:
+            sd_levels_by_n.append(np.array([], float))
+            best_means_by_n.append(np.array([], float))
+            best_weights_by_n.append(np.zeros((0, NUM_PILES), float))
+            continue
         g1, g2, g1sq, g2sq, g12, cnt, rank9 = _concat_stats(stats)
         if cnt <= 1 or g1.size == 0:
             sd_levels_by_n.append(np.array([], float))
@@ -405,7 +428,8 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
         var_g1 = g1sq / cnt - mean_g1 ** 2
         var_g2 = g2sq / cnt - mean_g2 ** 2
         cov_g12 = g12 / cnt - (mean_g1 * mean_g2)
-        mean_net = 100.0 * (c1 * mean_g1 + c2 * mean_g2 - 1.0)
+        # Account for uninvested cash (1.0x return): only invested portions contribute to excess returns
+        mean_net = 100.0 * (c1 * (mean_g1 - 1.0) + c2 * (mean_g2 - 1.0))
         var_net = (100.0 ** 2) * ((c1 ** 2) * np.clip(var_g1, 0, np.inf) + (c2 ** 2) * np.clip(var_g2, 0, np.inf) + 2.0 * c1 * c2 * cov_g12)
         sd_net = np.sqrt(np.clip(var_net, 0.0, np.inf))
 
@@ -443,9 +467,109 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
     )
     _save_bins_npz(out_path, sd_levels_by_n, best_means_by_n, best_weights_by_n, meta)
 
+    # Write debug Excel if enabled
+    if debug_excel:
+        for n_sig in range(int(max_signals) + 1):
+            if debug_data_by_n[n_sig] is not None and stats_by_n[n_sig] is not None:
+                excel_path = out_dir / f"{key_id}_{st}_{a_tag}_n{n_sig}_debug.xlsx"
+                _write_debug_excel(debug_data_by_n[n_sig], stats_by_n[n_sig]["Wm_template"], stats_by_n[n_sig], excel_path)
+
+
+# ========================
+# Debug Excel Functions
+# ========================
+
+def _select_debug_strategies(Wm):
+    """Select 3 representative strategies for Excel output."""
+    Ns = Wm.shape[0]
+    strategy_concentrated = 0  # First: [1.0, 0, 0, 0, 0, 0, 0, 0, 0]
+    strategy_diversified = Ns - 1  # Last: ~[0.11, 0.11, ..., 0.12]
+
+    # Find medium strategy: 3-4 non-zero weights, concentrated at top
+    strategy_medium = Ns // 2  # Default fallback
+    for idx in range(Ns):
+        row = Wm[idx]
+        non_zero = int(np.sum(row > 0))
+        if non_zero >= 3 and non_zero <= 4 and row[0] >= 0.3:
+            strategy_medium = idx
+            break
+
+    return [strategy_concentrated, strategy_medium, strategy_diversified]
+
+
+def _collect_round_debug_data(debug_strategies, r, g1, g2, Wm, max_rank, order1, n_sig):
+    """Collect debug data for selected strategies in this round."""
+    ace_present = (max_rank == 14).astype(int)
+    debug_data = {}
+    for debug_idx in debug_strategies:
+        debug_data[debug_idx] = {
+            'round': r,
+            'g1': float(g1[debug_idx]),
+            'g2': float(g2[debug_idx]),
+            'weights': Wm[debug_idx].copy(),
+            'ace_present': ace_present.copy(),
+            'order1': order1.copy(),
+            'n_sig': n_sig,
+        }
+    return debug_data
+
+
+def _write_debug_excel(debug_data_by_strategy, Wm, stats, filepath):
+    """Write debug Excel file with 3 sheets (one per strategy)."""
+    try:
+        import openpyxl
+        from openpyxl import Workbook
+    except ImportError:
+        print("WARNING: openpyxl not installed, skipping debug Excel generation")
+        return
+
+    wb = Workbook()
+    wb.remove(wb.active)  # Remove default sheet
+
+    for strategy_idx in sorted(debug_data_by_strategy.keys()):
+        rounds_data = debug_data_by_strategy[strategy_idx]
+        weights = Wm[strategy_idx]
+
+        # Compute SD from accumulated stats
+        mean_g1 = stats["sum_g1"][strategy_idx] / stats["count"]
+        mean_g2 = stats["sum_g2"][strategy_idx] / stats["count"]
+        var_g1 = stats["sum_g1_sq"][strategy_idx] / stats["count"] - mean_g1**2
+        var_g2 = stats["sum_g2_sq"][strategy_idx] / stats["count"] - mean_g2**2
+        sd_g1 = np.sqrt(max(0, var_g1))
+        sd_g2 = np.sqrt(max(0, var_g2))
+
+        # Create sheet
+        sheet_name = f"Strat_{strategy_idx}"
+        ws = wb.create_sheet(sheet_name)
+
+        # Header row
+        header = ['Round', 'Stage1_Return', 'Stage2_Return', 'SD_Stage1', 'SD_Stage2', 'N_Signals']
+        header += [f'Weight_Pile{i}' for i in range(NUM_PILES)]
+        header += [f'Ace_Pile{i}' for i in range(NUM_PILES)]
+        header += [f'Rank_Pos{i}' for i in range(NUM_PILES)]
+        ws.append(header)
+
+        # Data rows
+        for row_data in rounds_data:
+            row = [
+                row_data['round'],
+                row_data['g1'],
+                row_data['g2'],
+                sd_g1,
+                sd_g2,
+                row_data['n_sig'],
+            ]
+            row += list(row_data['weights'])
+            row += list(row_data['ace_present'])
+            row += list(row_data['order1'])
+            ws.append(row)
+
+    wb.save(str(filepath))
+    print(f"Debug Excel saved to: {filepath}")
+
 
 def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
-              sweep_index=None, sweep_stride=1, skip_existing=False):
+              sweep_index=None, sweep_stride=1, skip_existing=False, debug_excel=False):
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -482,7 +606,7 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
     for raw, alpha, st, outfile in combos:
         simulate_and_save_frontier(
             seed_int=int(base_seed), rounds=int(rounds), max_signals=int(max_signals), procs=int(procs_inner),
-            params=raw, stage1_alloc=float(alpha), out_dir=out_dir, signal_type=st,
+            params=raw, stage1_alloc=float(alpha), out_dir=out_dir, signal_type=st, debug_excel=debug_excel,
         )
 
 
@@ -508,6 +632,9 @@ def main():
     ap.add_argument("--sweep_stride", type=int, default=1, help="Array job stride")
     ap.add_argument("--skip_existing", action="store_true", help="Skip existing output files")
 
+    # Debug options
+    ap.add_argument("--debug_excel", action="store_true", help="Generate Excel files with round-by-round debug data for 3 sample strategies")
+
     args = ap.parse_args()
 
     if not args.sweep:
@@ -516,6 +643,7 @@ def main():
     run_sweep(
         base_seed=int(args.seed), rounds=int(args.rounds), max_signals=int(args.max_signals), procs_inner=int(args.procs),
         out_dir=args.sweep_out, sweep_index=args.sweep_index, sweep_stride=args.sweep_stride, skip_existing=bool(args.skip_existing),
+        debug_excel=bool(args.debug_excel),
     )
 
 

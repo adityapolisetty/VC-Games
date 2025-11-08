@@ -334,7 +334,7 @@ def value_of_info_plot(sig_grid, means, title, signal_cost=None, y_range=None):
                    autorange=True, tickmode="linear", dtick=1,
                    tickfont=_DEF_FONT),
         yaxis=yaxis_cfg,
-        height=420,
+        height=520,
         title=dict(text=title + subtitle, x=0.0, xanchor="left", y=0.98, yanchor="top", font=_DEF_FONT),
     )
     return fig
@@ -349,7 +349,7 @@ def posterior_line(x, y, title, xlab, ylab="P(Ace | Signals)"):
         font=_DEF_FONT,
         xaxis=dict(title=dict(text=xlab, font=_DEF_FONT), tickfont=_DEF_FONT),
         yaxis=dict(title=dict(text=ylab, font=_DEF_FONT), range=[0,1], tickfont=_DEF_FONT),
-        height=320,
+        height=420,
         title=dict(text=title, y=0.99, x=0.0, xanchor="left", font=_DEF_FONT),
     )
     return fig

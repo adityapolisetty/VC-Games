@@ -420,8 +420,19 @@ document.addEventListener("DOMContentLoaded", () => {
       currentStakes += c.stage_invests.reduce((a,b) => a+b, 0);
     });
 
-    // Build summary rows
+    // Build summary rows showing all completed stages + current stage
     let html = '';
+
+    // Add previous stages from SEED if available
+    if (STAGE > 1 && SEED.stage_history) {
+      SEED.stage_history.forEach((hist, idx) => {
+        html += `<tr style="border-bottom: 1px solid var(--b);">
+          <td style="padding:8px 4px;">Stage ${idx + 1}</td>
+          <td style="text-align:right; padding:8px 4px;">£${hist.signals || 0}</td>
+          <td style="text-align:right; padding:8px 4px;">£${hist.stakes || 0}</td>
+        </tr>`;
+      });
+    }
 
     // Add current stage
     html += `<tr style="border-bottom: 1px solid var(--b);">
@@ -676,31 +687,29 @@ document.addEventListener("DOMContentLoaded", () => {
   finishBtn.addEventListener("click",()=>{
     const purchases={}, invest={}; let ss=0, si=0;
 
-    if (STAGE !== 3) {
-      (function updateActivity(){
-        const act = (function load(){ try{ return JSON.parse(localStorage.getItem("activity_v1")||"{}"); }catch{ return {}; } })();
-        cards.forEach(c=>{
-          const stageSum = c.stage_invests.reduce((a,b)=>a+b,0);
-          const newS = [...c.owned_sids].filter(x=>!c.prev_owned.has(x));
-          if (stageSum>0 || newS.length>0){
-            const prev = act[c.card_id] || {color:c.color, N:c.N, invested:0, signals:[]};
-            prev.color=c.color; prev.N=c.N;
-            prev.invested = Number(prev.invested||0) + stageSum;
-            prev.signals = Array.from(new Set([...(prev.signals||[]), ...newS])).sort((a,b)=>a-b);
-            act[c.card_id] = prev;
-          }
-        });
-        localStorage.setItem("activity_v1", JSON.stringify(act));
-      })();
-
+    (function updateActivity(){
+      const act = (function load(){ try{ return JSON.parse(localStorage.getItem("activity_v1")||"{}"); }catch{ return {}; } })();
       cards.forEach(c=>{
-        const prev = c.prev_owned;
-        const newS = [...c.owned_sids].filter(x=>!prev.has(x));
-        if(newS.length){ purchases[c.card_id] = newS.sort((a,b)=>a-b); newS.forEach(id=>{ const s=SIGNALS.find(x=>x.id===id); if(s) ss+=s.cost; }); }
         const stageSum = c.stage_invests.reduce((a,b)=>a+b,0);
-        if(stageSum>0){ invest[c.card_id]=Number(stageSum); si+=stageSum; }
+        const newS = [...c.owned_sids].filter(x=>!c.prev_owned.has(x));
+        if (stageSum>0 || newS.length>0){
+          const prev = act[c.card_id] || {color:c.color, N:c.N, invested:0, signals:[]};
+          prev.color=c.color; prev.N=c.N;
+          prev.invested = Number(prev.invested||0) + stageSum;
+          prev.signals = Array.from(new Set([...(prev.signals||[]), ...newS])).sort((a,b)=>a-b);
+          act[c.card_id] = prev;
+        }
       });
-    }
+      localStorage.setItem("activity_v1", JSON.stringify(act));
+    })();
+
+    cards.forEach(c=>{
+      const prev = c.prev_owned;
+      const newS = [...c.owned_sids].filter(x=>!prev.has(x));
+      if(newS.length){ purchases[c.card_id] = newS.sort((a,b)=>a-b); newS.forEach(id=>{ const s=SIGNALS.find(x=>x.id===id); if(s) ss+=s.cost; }); }
+      const stageSum = c.stage_invests.reduce((a,b)=>a+b,0);
+      if(stageSum>0){ invest[c.card_id]=Number(stageSum); si+=stageSum; }
+    });
 
     const payload={ stage:STAGE, player_name:localStorage.getItem("player_name")||"",
       risk_percentile:Number(localStorage.getItem("risk_pct")||""), purchases, invest,
@@ -708,11 +717,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     fetch("/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
       .then(()=>{
-        if (STAGE === 3) {
+        if (STAGE === 2) {
+          // Stage 2: go directly to results
           overlayMsg.textContent = "Preparing results…";
           overlay.style.display = "flex";
           setTimeout(()=>{ location.href = "/results"; }, 600);
         } else {
+          // Stage 1: advance to Stage 2
           overlayMsg.textContent = "Your investments are hard at work…";
           overlay.style.display = "flex";
           setTimeout(()=>{ location.href = "/"; }, 5000);
@@ -735,13 +746,13 @@ document.addEventListener("DOMContentLoaded", () => {
   applyHeaderName();
 
   const stageIndicator = document.getElementById("stageIndicator");
-  if (STAGE === 3){
-    if (stageIndicator) stageIndicator.textContent = "End of Game";
-    aliveTitle.textContent = "Survivors";
+  if (STAGE === 2){
+    // Stage 2: Show performance button
+    if (stageIndicator) stageIndicator.textContent = `Stage ${STAGE}`;
+    aliveTitle.textContent = "Alive";
     finishBtn.textContent = "Show performance";
-    panel.style.display = "none";
-    idle.textContent = "End of game.";
   } else {
+    // Stage 1
     if (stageIndicator) stageIndicator.textContent = `Stage ${STAGE}`;
     aliveTitle.textContent = "Alive";
     finishBtn.textContent = "Finish Stage";

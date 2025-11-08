@@ -220,6 +220,7 @@ if __name__ == "__main__":
     wallet = WALLET0
     sys_blue = False
     sys_red = False
+    stage_history = []  # Track stage-wise stats
 
     # ---- Stage 1 ----
     act = run_ui(1, df, wallet, open_browser=open_first, signal_mode=mode, signal_cost=cost)
@@ -229,7 +230,8 @@ if __name__ == "__main__":
     wallet = max(0.0, wallet - float(s_spent))
 
     inv_need = {int(k): max(float(v), MIN_INV[1]) for k, v in act["invest"].items() if float(v) > 0}
-    need = sum(inv_need.values())
+    stage1_stakes = sum(inv_need.values())
+    need = stage1_stakes
     if need > wallet:
         left = wallet
         for cid in list(inv_need.keys()):
@@ -239,6 +241,7 @@ if __name__ == "__main__":
             if left <= 0:
                 break
         wallet = 0.0
+        stage1_stakes = sum(inv_need.values())  # Update to actual invested amount
     else:
         wallet -= need
     for cid, amt in inv_need.items():
@@ -249,19 +252,23 @@ if __name__ == "__main__":
     sys_blue |= b1
     sys_red  |= r1
 
+    # Record Stage 1 history
+    stage_history.append({"signals": float(s_spent), "stakes": float(stage1_stakes)})
+
     # Track which piles were invested in Stage 1
     stage1_invested_ids = [int(cid) for cid in df[df["inv1"] > 0]["card_id"].tolist()]
 
     # ---- Stage 2 ----
     # Only allow investing in piles that were invested in Stage 1
-    act = run_ui(2, df, wallet, signal_mode=mode, signal_cost=cost, stage1_invested=stage1_invested_ids)
+    act = run_ui(2, df, wallet, signal_mode=mode, signal_cost=cost, stage1_invested=stage1_invested_ids, stage_history=stage_history)
     if act is None:
         raise RuntimeError("Stage 2 UI returned None - did the server fail?")
     df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
     wallet = max(0.0, wallet - float(s_spent))
 
     inv_need = {int(k): max(float(v), MIN_INV[2]) for k, v in act["invest"].items() if float(v) > 0}
-    need = sum(inv_need.values())
+    stage2_stakes = sum(inv_need.values())
+    need = stage2_stakes
     if need > wallet:
         left = wallet
         for cid in list(inv_need.keys()):
@@ -271,6 +278,7 @@ if __name__ == "__main__":
             if left <= 0:
                 break
         wallet = 0.0
+        stage2_stakes = sum(inv_need.values())  # Update to actual invested amount
     else:
         wallet -= need
     for cid, amt in inv_need.items():
@@ -281,7 +289,10 @@ if __name__ == "__main__":
     sys_blue |= b2
     sys_red  |= r2
 
-    # ---- Results for End-of-Game page ----
+    # Record Stage 2 history
+    stage_history.append({"signals": float(s_spent), "stakes": float(stage2_stakes)})
+
+    # ---- Compute Results and Show Performance ----
     pay = compute_payoffs_at_stage2(df, ace_payout=ace_pay)
 
     inv_sum = df.get("inv1", 0) + df.get("inv2", 0)
@@ -323,8 +334,9 @@ if __name__ == "__main__":
         "avg_signals": avg_signals,
     }
 
-    # ---- Stage 3: End of Game (results + explicit End Game shutdown) ----
-    _ = run_ui(3, df, wallet, results=stats, signal_mode=mode, signal_cost=cost)
+    # ---- Show Results (triggered from Stage 2) ----
+    # The UI will redirect to /results when Stage 2's "Show performance" is clicked
+    _ = run_ui(2, df, wallet, results=stats, signal_mode=mode, signal_cost=cost)
 
 
     # Optional console dump

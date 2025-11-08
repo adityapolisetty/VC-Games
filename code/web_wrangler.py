@@ -119,6 +119,8 @@ class _H(BaseHTTPRequestHandler):
                 "cards": self.server.ctx["cards"],  # [{card_id,color,N}]
                 "prevSignals": self.server.ctx["prev_signals"],
                 "prevInvest": self.server.ctx["prev_invest"],
+                "stage_history": self.server.ctx.get("stage_history", []),
+                "stage1_invested": self.server.ctx.get("stage1_invested", []),
             }
             html = html.replace("</head>", f"<script>window.SEED={json.dumps(seed)};</script></head>")
             self.send_response(200)
@@ -234,10 +236,11 @@ document.getElementById('endBtn').onclick = () => {{
 def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None = None,
            port: int = 8765, open_browser: bool = False,
            signal_mode: str = "median", signal_cost: float = 5.0,
-           stage1_invested: list | None = None):
+           stage1_invested: list | None = None, stage_history: list | None = None):
     """Serve UI for a stage and return the posted decisions.
 
     stage1_invested: list of card_ids that were invested in Stage 1 (for Stage 2 restrictions)
+    stage_history: list of dicts with 'signals' and 'stakes' for each completed stage
     """
     global _ACTIONS
     _ACTIONS = None
@@ -267,6 +270,7 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
         "signal_mode": str(signal_mode),
         "signal_cost": float(signal_cost),
         "stage1_invested": stage1_invested or [],  # card_ids invested in Stage 1
+        "stage_history": stage_history or [],  # history of previous stages
     }
 
     # Bind server; if requested port is busy, fall back to an ephemeral port
@@ -294,7 +298,7 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
 
     _POSTED.wait()  # wait for stage POST
 
-    if stage == 3:  # Results stage (was stage 4, now stage 3 in 2-stage model)
+    if results:  # Results stage: wait for end event
         _END_EVENT.wait(timeout=3600)
         time.sleep(0.2)
 
