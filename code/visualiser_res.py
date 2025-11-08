@@ -504,24 +504,20 @@ dataB = load_keys(str(pathB), _summary_keys_for(regimeB, pct_key), str(outputB))
 def _extract_summary(data, regime, pct_key):
     sig_grid = np.asarray(data["sig_grid"], int)
     budget   = float(data["budget"]) if data["budget"] is not None else 100.0
-
     mean_triplet = (
         np.asarray(data[f"mean_{pct_key}_{regime}_max"], float),
         np.asarray(data[f"mean_{pct_key}_{regime}_linear"], float),
         np.asarray(data[f"mean_{pct_key}_{regime}_top5"], float),
     )
-    
     sd_triplet = (
         np.asarray(data[f"sd_{pct_key}_{regime}_max"], float),
         np.asarray(data[f"sd_{pct_key}_{regime}_linear"], float),
         np.asarray(data[f"sd_{pct_key}_{regime}_top5"], float),
     )
-    
     try:
         params_norm = json.loads(str(data["params_norm"].astype(str)))
     except Exception:
         params_norm = {}
-
     return sig_grid, mean_triplet, sd_triplet, params_norm, budget
 
 sigA, meanA, sdA, pnA, budA = _extract_summary(dataA, regimeA, pct_key)
@@ -536,324 +532,324 @@ tabs = st.tabs(["Mean-Variances", "Value of Info", "Posteriors"])
 # ========== Frontier ==========
 with tabs[0]:
     row = st.columns([1, 0.25])
-with row[0]:
-    st.markdown(
-        "<div style='font-size:0.9rem; font-style:italic;'>"
-        "All returns are net returns in percentages — "
-        "100*(Cash at end of game - Total budget)/Total budget"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-with row[1]:
-    fix_y_frontier = st.toggle("Fix Y axis range across panels", value=True, key="fix_y_frontier")
-# Compute shared y-range if requested
-if fix_y_frontier:
-    yvals_frontier = [*meanA_u, *meanB_u]
-    y_min_f = float(min(np.min(a) for a in yvals_frontier))
-    y_max_f = float(max(np.max(a) for a in yvals_frontier))
-    y_range_frontier = _padded_range(y_min_f, y_max_f)
-else:
-    y_range_frontier = None
-c = st.columns(2)
-with c[0]:
-    st.subheader("A")
-    st.plotly_chart(
-        frontier_plot(sigA, sdA_u, meanA_u, f"Frontier — {_label_for_regime_key(regimeA)}", y_range_frontier),
-        width="stretch",
-        key="frontier_A",
-    )
-with c[1]:
-    st.subheader("B")
-    st.plotly_chart(
-        frontier_plot(sigB, sdB_u, meanB_u, f"Frontier — {_label_for_regime_key(regimeB)}", y_range_frontier),
-        width="stretch",
-        key="frontier_B",
-    )
+    with row[0]:
+        st.markdown(
+            "<div style='font-size:0.9rem; font-style:italic;'>"
+            "All returns are net returns in percentages — "
+            "100*(Cash at end of game - Total budget)/Total budget"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    with row[1]:
+        fix_y_frontier = st.toggle("Fix Y axis range across panels", value=True, key="fix_y_frontier")
+    # Compute shared y-range if requested
+    if fix_y_frontier:
+        yvals_frontier = [*meanA_u, *meanB_u]
+        y_min_f = float(min(np.min(a) for a in yvals_frontier))
+        y_max_f = float(max(np.max(a) for a in yvals_frontier))
+        y_range_frontier = _padded_range(y_min_f, y_max_f)
+    else:
+        y_range_frontier = None
+    c = st.columns(2)
+    with c[0]:
+        st.subheader("A")
+        st.plotly_chart(
+            frontier_plot(sigA, sdA_u, meanA_u, f"Frontier — {_label_for_regime_key(regimeA)}", y_range_frontier),
+            width="stretch",
+            key="frontier_A",
+        )
+    with c[1]:
+        st.subheader("B")
+        st.plotly_chart(
+            frontier_plot(sigB, sdB_u, meanB_u, f"Frontier — {_label_for_regime_key(regimeB)}", y_range_frontier),
+            width="stretch",
+            key="frontier_B",
+        )
 
 # ========== Value of Info ==========
 with tabs[1]:
     row = st.columns([1, 0.25])
-with row[0]:
-    st.markdown(
-        "<div style='font-size:0.9rem; font-style:italic;'>"
-        "All returns are net returns in percentages — "
-        "100*(Cash at end of game - Total budget)/Total budget"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-with row[1]:
-    fix_y_voinfo = st.toggle("Fix Y axis range across panels", value=True, key="fix_y_voinfo")
-# Compute shared y-range if requested
-if fix_y_voinfo:
-    yvals_vo = [*meanA_u, *meanB_u]
-    y_min_vo = float(min(np.min(a) for a in yvals_vo))
-    y_max_vo = float(max(np.max(a) for a in yvals_vo))
-    y_range_vo = _padded_range(y_min_vo, y_max_vo)
-else:
-    y_range_vo = None
-c = st.columns(2)
-with c[0]:
-    st.subheader("A")
-    scA = pnA.get("signal_cost", None)
-    st.plotly_chart(
-        value_of_info_plot(sigA, meanA_u, "Value of Information", scA, y_range_vo),
-        width="stretch",
-        key="voi_A",
-    )
-with c[1]:
-    st.subheader("B")
-    scB = pnB.get("signal_cost", None)
-    st.plotly_chart(
-        value_of_info_plot(sigB, meanB_u, "Value of Information", scB, y_range_vo),
-        width="stretch",
-        key="voi_B",
-    )
+    with row[0]:
+        st.markdown(
+            "<div style='font-size:0.9rem; font-style:italic;'>"
+            "All returns are net returns in percentages — "
+            "100*(Cash at end of game - Total budget)/Total budget"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    with row[1]:
+        fix_y_voinfo = st.toggle("Fix Y axis range across panels", value=True, key="fix_y_voinfo")
+    # Compute shared y-range if requested
+    if fix_y_voinfo:
+        yvals_vo = [*meanA_u, *meanB_u]
+        y_min_vo = float(min(np.min(a) for a in yvals_vo))
+        y_max_vo = float(max(np.max(a) for a in yvals_vo))
+        y_range_vo = _padded_range(y_min_vo, y_max_vo)
+    else:
+        y_range_vo = None
+    c = st.columns(2)
+    with c[0]:
+        st.subheader("A")
+        scA = pnA.get("signal_cost", None)
+        st.plotly_chart(
+            value_of_info_plot(sigA, meanA_u, "Value of Information", scA, y_range_vo),
+            width="stretch",
+            key="voi_A",
+        )
+    with c[1]:
+        st.subheader("B")
+        scB = pnB.get("signal_cost", None)
+        st.plotly_chart(
+            value_of_info_plot(sigB, meanB_u, "Value of Information", scB, y_range_vo),
+            width="stretch",
+            key="voi_B",
+        )
 
 # ========== Posteriors ==========
 with tabs[2]:
-# Use posterior NPZ from appropriate directory based on panel mode
-postA_path = str((outputA / "post_joint.npz" if modeA == "2-Stage" else outputA / "post_mc.npz"))
-postB_path = str((outputB / "post_joint.npz" if modeB == "2-Stage" else outputB / "post_mc.npz"))
+    # Use posterior NPZ from appropriate directory based on panel mode
+    postA_path = str((outputA / "post_joint.npz" if modeA == "2-Stage" else outputA / "post_mc.npz"))
+    postB_path = str((outputB / "post_joint.npz" if modeB == "2-Stage" else outputB / "post_mc.npz"))
 
-postA = load_post_npz(postA_path, is_joint=(modeA == "2-Stage"))
-postB = load_post_npz(postB_path, is_joint=(modeB == "2-Stage"))
+    postA = load_post_npz(postA_path, is_joint=(modeA == "2-Stage"))
+    postB = load_post_npz(postB_path, is_joint=(modeB == "2-Stage"))
 
-c = st.columns(2)
+    c = st.columns(2)
 
-# Panel A
-with c[0]:
-    st.subheader("A")
-    if postA is None:
-        st.info("Load a valid posterior NPZ to see curves.")
-    elif postA.get("is_joint"):
-        # 2-Stage mode: joint posteriors with interactive controls
-        st.caption("Note: Signal type is controlled by the dropdown below (panel setting ignored)")
+    # Panel A
+    with c[0]:
+        st.subheader("A")
+        if postA is None:
+            st.info("Load a valid posterior NPZ to see curves.")
+        elif postA.get("is_joint"):
+            # 2-Stage mode: joint posteriors with interactive controls
+            st.caption("Note: Signal type is controlled by the dropdown below (panel setting ignored)")
 
-        # X-axis selector
-        c_r2_1, c_r2_2 = st.columns([1, 2])
-        c_r2_1, c_r2_2 = st.columns([1, 1])
-        with c_r2_1:
-            x_axis_opts = ["Median", "Top 2", "Second Rank"]
-            x_axis_choice = st.selectbox("X-axis", x_axis_opts, key="x_axis_A")
+            # X-axis selector
+            c_r2_1, c_r2_2 = st.columns([1, 2])
+            c_r2_1, c_r2_2 = st.columns([1, 1])
+            with c_r2_1:
+                x_axis_opts = ["Median", "Top 2", "Second Rank"]
+                x_axis_choice = st.selectbox("X-axis", x_axis_opts, key="x_axis_A")
 
-        if x_axis_choice in ["Median", "Top 2"]:
-            # Signal on X-axis, R2 as parameter
-            signal_type = "median" if x_axis_choice == "Median" else "top2"
+            if x_axis_choice in ["Median", "Top 2"]:
+                # Signal on X-axis, R2 as parameter
+                signal_type = "median" if x_axis_choice == "Median" else "top2"
 
-            with c_r2_2:
-                r2_val = st.slider("Second Rank (R2)", min_value=2, max_value=13, value=10, key="r2_A")
+                with c_r2_2:
+                    r2_val = st.slider("Second Rank (R2)", min_value=2, max_value=13, value=10, key="r2_A")
 
-            # Extract data
-            keys = postA["med_keys"] if signal_type == "median" else postA["t2_keys"]
-            mat = postA["med_mat"] if signal_type == "median" else postA["t2_mat"]  # [K, 13(R2), 13(Rmax)]
+                # Extract data
+                keys = postA["med_keys"] if signal_type == "median" else postA["t2_keys"]
+                mat = postA["med_mat"] if signal_type == "median" else postA["t2_mat"]  # [K, 13(R2), 13(Rmax)]
 
-            # Slice for R2 and Ace
-            r2_idx = int(r2_val) - 2
-            ace_idx = ACE_RANK - 2  # Ace = 14, idx = 12
-            y_vals = mat[:, r2_idx, ace_idx]  # [K]
-            x_vals = keys
+                # Slice for R2 and Ace
+                r2_idx = int(r2_val) - 2
+                ace_idx = ACE_RANK - 2  # Ace = 14, idx = 12
+                y_vals = mat[:, r2_idx, ace_idx]  # [K]
+                x_vals = keys
 
-            title = f"P(Ace | {x_axis_choice} = x and R2 = {r2_val})"
-            xlab = x_axis_choice
-            st.plotly_chart(posterior_line(x_vals, y_vals, title, xlab), width="stretch", key="post_A")
-
-        else:  # "Second Rank" on X-axis
-            # R2 on X-axis, signal as parameter - put controls on same row
-            col1, col2 = st.columns([1, 2])
-            with col1:
-                sig_type_choice = st.selectbox("Signal type", ["Median", "Top 2"], key="sig_type_A")
-
-            signal_type = "median" if sig_type_choice == "Median" else "top2"
-            keys = postA["med_keys"] if signal_type == "median" else postA["t2_keys"]
-            mat = postA["med_mat"] if signal_type == "median" else postA["t2_mat"]
-
-            with col2:
-                sig_val = st.slider(f"{sig_type_choice} value",
-                                   min_value=int(keys.min()),
-                                   max_value=int(keys.max()),
-                                   value=int(keys[len(keys)//2]) if len(keys) > 0 else 8,
-                                   key="sig_val_A")
-
-            # Find bucket index
-            bucket_idx = np.where(keys == sig_val)[0]
-            if len(bucket_idx) == 0:
-                st.warning(f"No data for {sig_type_choice} = {sig_val}")
-            else:
-                bucket_idx = bucket_idx[0]
-                ace_idx = ACE_RANK - 2
-                y_vals = mat[bucket_idx, :, ace_idx]  # [13(R2)]
-                x_vals = np.arange(2, 15)  # R2 values 2-14
-
-                title = f"P(Ace | {sig_type_choice} = {sig_val} and R2 = x)"
-                xlab = "Second Rank (R2)"
+                title = f"P(Ace | {x_axis_choice} = x and R2 = {r2_val})"
+                xlab = x_axis_choice
                 st.plotly_chart(posterior_line(x_vals, y_vals, title, xlab), width="stretch", key="post_A")
-    else:
-        # One-off mode: marginal posteriors (existing logic)
-        scale_pay = pnA.get("scale_pay", 0)
-        if scale_pay == 1:
-            # Payoff scaling ON: show P(Max rank = k | signal)
-            max_rank_choice = st.slider("Max Rank", min_value=2, max_value=14, value=14, key="max_rank_A")
-            rmax_idx = max_rank_choice - 2
 
-            if regimeA == "median":
-                x_vals = postA["med_x"]
-                y_vals = postA["med_mat"][:, rmax_idx]
-                sig_name = "Median"
-            elif regimeA == "top2":
-                x_vals = postA["t2_x"]
-                y_vals = postA["t2_mat"][:, rmax_idx]
-                sig_name = "Top-2 sum"
-            elif regimeA == "max":
-                x_vals = postA["mx_x"]
-                y_vals = postA["mx_mat"][:, rmax_idx]
-                sig_name = "Max rank"
-            else:
-                x_vals = postA["mn_x"]
-                y_vals = postA["mn_mat"][:, rmax_idx]
-                sig_name = "Min rank"
+            else:  # "Second Rank" on X-axis
+                # R2 on X-axis, signal as parameter - put controls on same row
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    sig_type_choice = st.selectbox("Signal type", ["Median", "Top 2"], key="sig_type_A")
 
-            title = f"P(Max rank = {max_rank_choice} | {sig_name} = x)"
-            ylab_text = f"P(Max rank = {max_rank_choice} | signal)"
+                signal_type = "median" if sig_type_choice == "Median" else "top2"
+                keys = postA["med_keys"] if signal_type == "median" else postA["t2_keys"]
+                mat = postA["med_mat"] if signal_type == "median" else postA["t2_mat"]
 
-            # Use modified posterior_line that accepts custom ylab
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="lines+markers", line=dict(color=BLUE)))
-            fig.update_layout(
-                template="plotly_white",
-                margin=dict(l=10, r=10, t=40, b=30),
-                font=_DEF_FONT,
-                xaxis=dict(title=dict(text=sig_name, font=_DEF_FONT), tickfont=_DEF_FONT),
-                yaxis=dict(title=dict(text=ylab_text, font=_DEF_FONT), range=[0,1], tickfont=_DEF_FONT),
-                height=320,
-                title=dict(text=title, y=0.99, x=0.0, xanchor="left", font=_DEF_FONT),
-            )
-            st.plotly_chart(fig, width="stretch", key="post_A")
+                with col2:
+                    sig_val = st.slider(f"{sig_type_choice} value",
+                                       min_value=int(keys.min()),
+                                       max_value=int(keys.max()),
+                                       value=int(keys[len(keys)//2]) if len(keys) > 0 else 8,
+                                       key="sig_val_A")
+
+                # Find bucket index
+                bucket_idx = np.where(keys == sig_val)[0]
+                if len(bucket_idx) == 0:
+                    st.warning(f"No data for {sig_type_choice} = {sig_val}")
+                else:
+                    bucket_idx = bucket_idx[0]
+                    ace_idx = ACE_RANK - 2
+                    y_vals = mat[bucket_idx, :, ace_idx]  # [13(R2)]
+                    x_vals = np.arange(2, 15)  # R2 values 2-14
+
+                    title = f"P(Ace | {sig_type_choice} = {sig_val} and R2 = x)"
+                    xlab = "Second Rank (R2)"
+                    st.plotly_chart(posterior_line(x_vals, y_vals, title, xlab), width="stretch", key="post_A")
         else:
-            # Payoff scaling OFF: show P(Ace | signal)
-            if regimeA == "median":
-                st.plotly_chart(posterior_line(postA["med_x"], postA["med_y"], "P(Ace | Median = x)", "Median"), width="stretch", key="post_A")
-            elif regimeA == "top2":
-                st.plotly_chart(posterior_line(postA["t2_x"], postA["t2_y"], "P(Ace | Top-2 sum = x)", "Top-2 sum"), width="stretch", key="post_A")
-            elif regimeA == "max":
-                st.plotly_chart(posterior_line(postA["mx_x"], postA["mx_y"], "P(Ace | Max rank = k)", "Max rank"), width="stretch", key="post_A")
+            # One-off mode: marginal posteriors (existing logic)
+            scale_pay = pnA.get("scale_pay", 0)
+            if scale_pay == 1:
+                # Payoff scaling ON: show P(Max rank = k | signal)
+                max_rank_choice = st.slider("Max Rank", min_value=2, max_value=14, value=14, key="max_rank_A")
+                rmax_idx = max_rank_choice - 2
+
+                if regimeA == "median":
+                    x_vals = postA["med_x"]
+                    y_vals = postA["med_mat"][:, rmax_idx]
+                    sig_name = "Median"
+                elif regimeA == "top2":
+                    x_vals = postA["t2_x"]
+                    y_vals = postA["t2_mat"][:, rmax_idx]
+                    sig_name = "Top-2 sum"
+                elif regimeA == "max":
+                    x_vals = postA["mx_x"]
+                    y_vals = postA["mx_mat"][:, rmax_idx]
+                    sig_name = "Max rank"
+                else:
+                    x_vals = postA["mn_x"]
+                    y_vals = postA["mn_mat"][:, rmax_idx]
+                    sig_name = "Min rank"
+
+                title = f"P(Max rank = {max_rank_choice} | {sig_name} = x)"
+                ylab_text = f"P(Max rank = {max_rank_choice} | signal)"
+
+                # Use modified posterior_line that accepts custom ylab
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="lines+markers", line=dict(color=BLUE)))
+                fig.update_layout(
+                    template="plotly_white",
+                    margin=dict(l=10, r=10, t=40, b=30),
+                    font=_DEF_FONT,
+                    xaxis=dict(title=dict(text=sig_name, font=_DEF_FONT), tickfont=_DEF_FONT),
+                    yaxis=dict(title=dict(text=ylab_text, font=_DEF_FONT), range=[0,1], tickfont=_DEF_FONT),
+                    height=320,
+                    title=dict(text=title, y=0.99, x=0.0, xanchor="left", font=_DEF_FONT),
+                )
+                st.plotly_chart(fig, width="stretch", key="post_A")
             else:
-                st.plotly_chart(posterior_line(postA["mn_x"], postA["mn_y"], "P(Ace | Min rank = k)", "Min rank"), width="stretch", key="post_A")
+                # Payoff scaling OFF: show P(Ace | signal)
+                if regimeA == "median":
+                    st.plotly_chart(posterior_line(postA["med_x"], postA["med_y"], "P(Ace | Median = x)", "Median"), width="stretch", key="post_A")
+                elif regimeA == "top2":
+                    st.plotly_chart(posterior_line(postA["t2_x"], postA["t2_y"], "P(Ace | Top-2 sum = x)", "Top-2 sum"), width="stretch", key="post_A")
+                elif regimeA == "max":
+                    st.plotly_chart(posterior_line(postA["mx_x"], postA["mx_y"], "P(Ace | Max rank = k)", "Max rank"), width="stretch", key="post_A")
+                else:
+                    st.plotly_chart(posterior_line(postA["mn_x"], postA["mn_y"], "P(Ace | Min rank = k)", "Min rank"), width="stretch", key="post_A")
 
-# Panel B
-with c[1]:
-    st.subheader("B")
-    if postB is None:
-        st.info("Load a valid posterior NPZ to see curves.")
-    elif postB.get("is_joint"):
-        # 2-Stage mode: joint posteriors with interactive controls
-        st.caption("Note: Signal type is controlled by the dropdown below (panel setting ignored)")
+    # Panel B
+    with c[1]:
+        st.subheader("B")
+        if postB is None:
+            st.info("Load a valid posterior NPZ to see curves.")
+        elif postB.get("is_joint"):
+            # 2-Stage mode: joint posteriors with interactive controls
+            st.caption("Note: Signal type is controlled by the dropdown below (panel setting ignored)")
 
-        # X-axis selector
-        
-        c_r2_1, c_r2_2 = st.columns([1, 2])
-        c_r2_1, c_r2_2 = st.columns([1, 1])
-        with c_r2_1:
-            x_axis_opts = ["Median", "Top 2", "Second Rank"]
-            x_axis_choice = st.selectbox("X-axis", x_axis_opts, key="x_axis_B")
+            # X-axis selector
+            
+            c_r2_1, c_r2_2 = st.columns([1, 2])
+            c_r2_1, c_r2_2 = st.columns([1, 1])
+            with c_r2_1:
+                x_axis_opts = ["Median", "Top 2", "Second Rank"]
+                x_axis_choice = st.selectbox("X-axis", x_axis_opts, key="x_axis_B")
 
-        if x_axis_choice in ["Median", "Top 2"]:
-            # Signal on X-axis, R2 as parameter
-            signal_type = "median" if x_axis_choice == "Median" else "top2"
+            if x_axis_choice in ["Median", "Top 2"]:
+                # Signal on X-axis, R2 as parameter
+                signal_type = "median" if x_axis_choice == "Median" else "top2"
 
-            with c_r2_2:
-                r2_val = st.slider("Second Rank (R2)", min_value=2, max_value=13, value=10, key="r2_B")
+                with c_r2_2:
+                    r2_val = st.slider("Second Rank (R2)", min_value=2, max_value=13, value=10, key="r2_B")
 
-            # Extract data
-            keys = postB["med_keys"] if signal_type == "median" else postB["t2_keys"]
-            mat = postB["med_mat"] if signal_type == "median" else postB["t2_mat"]
+                # Extract data
+                keys = postB["med_keys"] if signal_type == "median" else postB["t2_keys"]
+                mat = postB["med_mat"] if signal_type == "median" else postB["t2_mat"]
 
-            # Slice for R2 and Ace
-            r2_idx = int(r2_val) - 2
-            ace_idx = ACE_RANK - 2
-            y_vals = mat[:, r2_idx, ace_idx]
-            x_vals = keys
-
-            title = f"P(Ace | {x_axis_choice} = x and R2 = {r2_val})"
-            xlab = x_axis_choice
-            st.plotly_chart(posterior_line(x_vals, y_vals, title, xlab), width="stretch", key="post_B")
-
-        else:  # "Second Rank" on X-axis
-            # R2 on X-axis, signal as parameter - put controls on same row
-            col1, col2 = st.columns([1, 2])
-            with col1:
-                sig_type_choice = st.selectbox("Signal type", ["Median", "Top 2"], key="sig_type_B")
-
-            signal_type = "median" if sig_type_choice == "Median" else "top2"
-            keys = postB["med_keys"] if signal_type == "median" else postB["t2_keys"]
-            mat = postB["med_mat"] if signal_type == "median" else postB["t2_mat"]
-
-            with col2:
-                sig_val = st.slider(f"{sig_type_choice} value",
-                                   min_value=int(keys.min()),
-                                   max_value=int(keys.max()),
-                                   value=int(keys[len(keys)//2]) if len(keys) > 0 else 8,
-                                   key="sig_val_B")
-
-            # Find bucket index
-            bucket_idx = np.where(keys == sig_val)[0]
-            if len(bucket_idx) == 0:
-                st.warning(f"No data for {sig_type_choice} = {sig_val}")
-            else:
-                bucket_idx = bucket_idx[0]
+                # Slice for R2 and Ace
+                r2_idx = int(r2_val) - 2
                 ace_idx = ACE_RANK - 2
-                y_vals = mat[bucket_idx, :, ace_idx]
-                x_vals = np.arange(2, 15)
+                y_vals = mat[:, r2_idx, ace_idx]
+                x_vals = keys
 
-                title = f"P(Ace | {sig_type_choice} = {sig_val} and R2 = x)"
-                xlab = "Second Rank (R2)"
+                title = f"P(Ace | {x_axis_choice} = x and R2 = {r2_val})"
+                xlab = x_axis_choice
                 st.plotly_chart(posterior_line(x_vals, y_vals, title, xlab), width="stretch", key="post_B")
-    else:
-        # One-off mode: marginal posteriors
-        scale_pay = pnB.get("scale_pay", 0)
-        if scale_pay == 1:
-            # Payoff scaling ON: show P(Max rank = k | signal)
-            max_rank_choice = st.slider("Max Rank", min_value=2, max_value=14, value=14, key="max_rank_B")
-            rmax_idx = max_rank_choice - 2
 
-            if regimeB == "median":
-                x_vals = postB["med_x"]
-                y_vals = postB["med_mat"][:, rmax_idx]
-                sig_name = "Median"
-            elif regimeB == "top2":
-                x_vals = postB["t2_x"]
-                y_vals = postB["t2_mat"][:, rmax_idx]
-                sig_name = "Top-2 sum"
-            elif regimeB == "max":
-                x_vals = postB["mx_x"]
-                y_vals = postB["mx_mat"][:, rmax_idx]
-                sig_name = "Max rank"
-            else:
-                x_vals = postB["mn_x"]
-                y_vals = postB["mn_mat"][:, rmax_idx]
-                sig_name = "Min rank"
+            else:  # "Second Rank" on X-axis
+                # R2 on X-axis, signal as parameter - put controls on same row
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    sig_type_choice = st.selectbox("Signal type", ["Median", "Top 2"], key="sig_type_B")
 
-            title = f"P(Max rank = {max_rank_choice} | {sig_name} = x)"
-            ylab_text = f"P(Max rank = {max_rank_choice} | signal)"
+                signal_type = "median" if sig_type_choice == "Median" else "top2"
+                keys = postB["med_keys"] if signal_type == "median" else postB["t2_keys"]
+                mat = postB["med_mat"] if signal_type == "median" else postB["t2_mat"]
 
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="lines+markers", line=dict(color=BLUE)))
-            fig.update_layout(
-                template="plotly_white",
-                margin=dict(l=10, r=10, t=40, b=30),
-                font=_DEF_FONT,
-                xaxis=dict(title=dict(text=sig_name, font=_DEF_FONT), tickfont=_DEF_FONT),
-                yaxis=dict(title=dict(text=ylab_text, font=_DEF_FONT), range=[0,1], tickfont=_DEF_FONT),
-                height=320,
-                title=dict(text=title, y=0.99, x=0.0, xanchor="left", font=_DEF_FONT),
-            )
-            st.plotly_chart(fig, width="stretch", key="post_B")
+                with col2:
+                    sig_val = st.slider(f"{sig_type_choice} value",
+                                       min_value=int(keys.min()),
+                                       max_value=int(keys.max()),
+                                       value=int(keys[len(keys)//2]) if len(keys) > 0 else 8,
+                                       key="sig_val_B")
+
+                # Find bucket index
+                bucket_idx = np.where(keys == sig_val)[0]
+                if len(bucket_idx) == 0:
+                    st.warning(f"No data for {sig_type_choice} = {sig_val}")
+                else:
+                    bucket_idx = bucket_idx[0]
+                    ace_idx = ACE_RANK - 2
+                    y_vals = mat[bucket_idx, :, ace_idx]
+                    x_vals = np.arange(2, 15)
+
+                    title = f"P(Ace | {sig_type_choice} = {sig_val} and R2 = x)"
+                    xlab = "Second Rank (R2)"
+                    st.plotly_chart(posterior_line(x_vals, y_vals, title, xlab), width="stretch", key="post_B")
         else:
-            # Payoff scaling OFF: show P(Ace | signal)
-            if regimeB == "median":
-                st.plotly_chart(posterior_line(postB["med_x"], postB["med_y"], "P(Ace | Median = x)", "Median"), width="stretch", key="post_B")
-            elif regimeB == "top2":
-                st.plotly_chart(posterior_line(postB["t2_x"], postB["t2_y"], "P(Ace | Top-2 sum = x)", "Top-2 sum"), width="stretch", key="post_B")
-            elif regimeB == "max":
-                st.plotly_chart(posterior_line(postB["mx_x"], postB["mx_y"], "P(Ace | Max rank = k)", "Max rank"), width="stretch", key="post_B")
+            # One-off mode: marginal posteriors
+            scale_pay = pnB.get("scale_pay", 0)
+            if scale_pay == 1:
+                # Payoff scaling ON: show P(Max rank = k | signal)
+                max_rank_choice = st.slider("Max Rank", min_value=2, max_value=14, value=14, key="max_rank_B")
+                rmax_idx = max_rank_choice - 2
+
+                if regimeB == "median":
+                    x_vals = postB["med_x"]
+                    y_vals = postB["med_mat"][:, rmax_idx]
+                    sig_name = "Median"
+                elif regimeB == "top2":
+                    x_vals = postB["t2_x"]
+                    y_vals = postB["t2_mat"][:, rmax_idx]
+                    sig_name = "Top-2 sum"
+                elif regimeB == "max":
+                    x_vals = postB["mx_x"]
+                    y_vals = postB["mx_mat"][:, rmax_idx]
+                    sig_name = "Max rank"
+                else:
+                    x_vals = postB["mn_x"]
+                    y_vals = postB["mn_mat"][:, rmax_idx]
+                    sig_name = "Min rank"
+
+                title = f"P(Max rank = {max_rank_choice} | {sig_name} = x)"
+                ylab_text = f"P(Max rank = {max_rank_choice} | signal)"
+
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="lines+markers", line=dict(color=BLUE)))
+                fig.update_layout(
+                    template="plotly_white",
+                    margin=dict(l=10, r=10, t=40, b=30),
+                    font=_DEF_FONT,
+                    xaxis=dict(title=dict(text=sig_name, font=_DEF_FONT), tickfont=_DEF_FONT),
+                    yaxis=dict(title=dict(text=ylab_text, font=_DEF_FONT), range=[0,1], tickfont=_DEF_FONT),
+                    height=320,
+                    title=dict(text=title, y=0.99, x=0.0, xanchor="left", font=_DEF_FONT),
+                )
+                st.plotly_chart(fig, width="stretch", key="post_B")
             else:
-                st.plotly_chart(posterior_line(postB["mn_x"], postB["mn_y"], "P(Ace | Min rank = k)", "Min rank"), width="stretch", key="post_B")
+                # Payoff scaling OFF: show P(Ace | signal)
+                if regimeB == "median":
+                    st.plotly_chart(posterior_line(postB["med_x"], postB["med_y"], "P(Ace | Median = x)", "Median"), width="stretch", key="post_B")
+                elif regimeB == "top2":
+                    st.plotly_chart(posterior_line(postB["t2_x"], postB["t2_y"], "P(Ace | Top-2 sum = x)", "Top-2 sum"), width="stretch", key="post_B")
+                elif regimeB == "max":
+                    st.plotly_chart(posterior_line(postB["mx_x"], postB["mx_y"], "P(Ace | Max rank = k)", "Max rank"), width="stretch", key="post_B")
+                else:
+                    st.plotly_chart(posterior_line(postB["mn_x"], postB["mn_y"], "P(Ace | Min rank = k)", "Min rank"), width="stretch", key="post_B")
