@@ -45,10 +45,10 @@ POST_NPZ_JOINT_DEFAULT = "../output_joint/post_joint.npz"
 SIGNAL_COST = 3.0
 ACE_PAYOUT = 20.0
 SCALE_PARAM_ON = 0.25
-ALPHA_GRID = np.linspace(0.1, 1.0, 10)  # 0.0..1.0 step 0.1
-UNITS = 20  # 0.05 granularity
-MAX_SUPPORT = 3  # support size m ∈ {1,2,3} - concentrate investment in top 3 piles
-SD_STEP = 0.1  # percentage points
+ALPHA_GRID = np.linspace(0, 1.0, 11)  # 0.0..1.0 step 0.1
+UNITS = 10  # 0.10 granularity (10% per step)
+MAX_SUPPORT = 9  # m=9 only (all piles) - ~8.6 hours runtime
+SD_STEP = 1  # percentage points
 
 
 # -----------------------
@@ -233,7 +233,8 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
     """
     # Prepare per-chunk accumulators by support size
     stats = {}
-    W_by_m = {m: _weight_splits(UNITS, m) for m in range(1, MAX_SUPPORT + 1)}
+    # Only compute for m=MAX_SUPPORT (not range 1..MAX_SUPPORT)
+    W_by_m = {MAX_SUPPORT: _weight_splits(UNITS, MAX_SUPPORT)}
     for m, Wm in W_by_m.items():
         Ns = Wm.shape[0]
         stats[m] = dict(
@@ -268,10 +269,12 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         order1 = np.argsort(-s1)
         R2 = np.array([_second_highest_rank(h) for h in hands], int)
         p_real = _per_dollar_realized(np.asarray(max_rank, int), sp, scale_param, ACE_PAYOUT)
+        p_real_stage2 = 0.5 * p_real  # Stage 2 receives 0.5x payoff per pound
 
         for m, Wm in W_by_m.items():
             top_idx = order1[:m]
             p_m = p_real[top_idx]
+            p_m_stage2 = p_real_stage2[top_idx]
             # Stage-2 expected ordering within support
             s2_m = np.zeros(m, float)
             for jj, k in enumerate(top_idx):
@@ -287,7 +290,7 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
                 s2_m[jj] = float(np.dot(h2, vec))
             perm2 = np.argsort(-s2_m)
             g1 = Wm @ p_m
-            g2 = Wm[:, perm2] @ p_m
+            g2 = Wm[:, perm2] @ p_m_stage2  # Use Stage 2 payouts (0.5x)
             st = stats[m]
             st["sum_g1"] += g1
             st["sum_g2"] += g2
@@ -392,7 +395,11 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
         investable1 = max(0.0, budget1 - float(n_sig) * SIGNAL_COST)
         budget2 = max(0.0, BUDGET - budget1)
         c1 = investable1 / BUDGET
-        c2 = 0.5 * budget2 / BUDGET
+        # Stage 2 can only invest in piles that Stage 1 invested in
+        if investable1 <= 0:
+            c2 = 0.0
+        else:
+            c2 = budget2 / BUDGET  # Full budget2 (0.5x payoff already in g2)
         mean_g1 = g1 / cnt
         mean_g2 = g2 / cnt
         var_g1 = g1sq / cnt - mean_g1 ** 2

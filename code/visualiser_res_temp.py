@@ -457,8 +457,7 @@ def _panel_controls(tag: str):
 # ==============================
 # PAGE SELECTOR
 # ==============================
-with st.expander("☰ Menu", expanded=False):
-    page = st.radio("View", ["Simulation Results", "Mean-Variance Frontier"], horizontal=True)
+page = st.radio("View", ["Simulation Results", "Mean-Variance Frontier"], horizontal=True)
 st.markdown("---")
 
 if page == "Mean-Variance Frontier":
@@ -615,13 +614,13 @@ if page == "Mean-Variance Frontier":
                 hovertext=hover_texts, hoverinfo="text", showlegend=False, opacity=ALPHA,
             ))
         # No per-figure colorbar; shared legend rendered once below both charts
-        yaxis_cfg = dict(title=dict(text="Mean Return (%)", font=dict(size=18)), tickfont=dict(size=11), showgrid=True, gridcolor="rgba(128,128,128,0.1)")
+        yaxis_cfg = dict(title=dict(text="Mean Return (%)", font=dict(size=13)), tickfont=dict(size=16), showgrid=True, gridcolor="rgba(128,128,128,0.1)")
         if y_range_override is not None:
             yaxis_cfg.update(range=list(map(float, y_range_override)))
         fig.update_layout(
             template="plotly_white",
             font=dict(family="Roboto, Arial, sans-serif", size=15),
-            xaxis=dict(title=dict(text="Standard Deviation (%)", font=dict(size=18)), tickfont=dict(size=11), showgrid=True, gridcolor="rgba(128,128,128,0.1)"),
+            xaxis=dict(title=dict(text="Standard Deviation (%)", font=dict(size=13)), tickfont=dict(size=16), showgrid=True, gridcolor="rgba(128,128,128,0.1)"),
             yaxis=yaxis_cfg,
             height=600,
             hovermode="closest",

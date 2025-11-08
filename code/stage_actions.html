@@ -130,9 +130,10 @@
   .card.sig-owned { border-color:#000; }
   /* Selection: keep black border and white edge */
   .card.selected  { border-color:#000; box-shadow:0 0 0 1.5px #fff; }
-  /* Stage 2: uninvested piles are translucent with overlay message */
+  /* Stage 2: uninvested piles are black with white text overlay */
   .pile.uninvested-stage2 { position: relative; }
-  .pile.uninvested-stage2 .card { opacity: 0.3; cursor: not-allowed; }
+  .pile.uninvested-stage2 .card { background: #000 !important; cursor: not-allowed; }
+  .pile.uninvested-stage2 .underCard { background: #000 !important; }
   .pile.uninvested-stage2::after {
     content: "Too late to invest";
     position: absolute;
@@ -142,11 +143,13 @@
     justify-content: center;
     font-weight: 700;
     font-size: 13px;
-    color: #111827;
+    color: #ffffff;
     pointer-events: none;
     z-index: 10;
     text-align: center;
     padding: 8px;
+    white-space: normal;
+    word-wrap: break-word;
   }
 
   #pickInfo{ display:none; }
