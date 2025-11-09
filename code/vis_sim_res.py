@@ -329,13 +329,12 @@ def posterior_line(x, y, title, xlab, ylab="P(Ace | Signals)"):
     )
     return fig
 
-def _render_posteriors_panel(tag: str, post_data: dict, scale_pay: int):
+def _render_posteriors_panel(tag: str, post_data: dict):
     """Render a single posteriors panel with independent controls.
 
     Args:
         tag: Panel identifier ("A" or "B")
         post_data: Loaded posterior data from load_post_npz()
-        scale_pay: Payoff scaling setting (0 or 1)
     """
     st.subheader(f"Panel {tag}")
 
@@ -346,6 +345,9 @@ def _render_posteriors_panel(tag: str, post_data: dict, scale_pay: int):
     # Row 1: Posterior type selector (always shown)
     post_type = st.radio("Posterior type", ["Conditional", "Joint Conditional"],
                         horizontal=True, key=f"post_type_{tag}")
+
+    # Row 2: Payoff scaling toggle (always shown)
+    scale_pay = 1 if st.toggle("Payoff scaling", value=False, key=f"scale_pay_post_{tag}") else 0
 
     # ========== CONDITIONAL POSTERIORS ==========
     if post_type == "Conditional":
@@ -733,22 +735,12 @@ else:  # view == "Posteriors"
     post_npz_path = Path("precomp_output/post_mc.npz").resolve()
     post_data = load_post_npz(str(post_npz_path))
 
-    # Simple payoff scaling controls for posteriors view
-    st.markdown("### Payoff Scaling Setting")
-    col1, col2 = st.columns(2)
-    with col1:
-        scale_pay_A = 1 if st.toggle("Payoff scaling (Panel A)", value=False, key="scale_pay_post_A") else 0
-    with col2:
-        scale_pay_B = 1 if st.toggle("Payoff scaling (Panel B)", value=False, key="scale_pay_post_B") else 0
-
-    st.markdown("---")
-
     c = st.columns(2)
 
     # Panel A
     with c[0]:
-        _render_posteriors_panel("A", post_data, scale_pay_A)
+        _render_posteriors_panel("A", post_data)
 
     # Panel B
     with c[1]:
-        _render_posteriors_panel("B", post_data, scale_pay_B)
+        _render_posteriors_panel("B", post_data)
