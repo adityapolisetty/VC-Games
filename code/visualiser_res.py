@@ -748,6 +748,8 @@ with tabs[2]:
                     r2_vals = np.arange(2, 15)  # R2 values 2-14
                     ace_probs = postA["r2_marginal_mat"][:, ace_idx]  # [13]
                     st.plotly_chart(posterior_line(r2_vals, ace_probs, "P(Ace | Second rank = x)", "Second rank"), width="stretch", key="post_A_r2")
+                else:
+                    st.caption("ℹ️ Second rank posteriors not available (regenerate with updated precomp.py)")
 
     # Panel B
     with c[1]:
@@ -874,3 +876,5 @@ with tabs[2]:
                     r2_vals = np.arange(2, 15)  # R2 values 2-14
                     ace_probs = postB["r2_marginal_mat"][:, ace_idx]  # [13]
                     st.plotly_chart(posterior_line(r2_vals, ace_probs, "P(Ace | Second rank = x)", "Second rank"), width="stretch", key="post_B_r2")
+                else:
+                    st.caption("ℹ️ Second rank posteriors not available (regenerate with updated precomp.py)")

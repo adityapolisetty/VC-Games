@@ -45,8 +45,8 @@ POST_NPZ_JOINT_DEFAULT = "../output_joint/post_joint.npz"
 SIGNAL_COST = 3.0
 ACE_PAYOUT = 20.0
 SCALE_PARAM_ON = 0.25
-ALPHA_GRID = np.linspace(0, 1.0, 11)  # 0.0..1.0 step 0.1
-UNITS = 10  # 0.10 granularity (10% per step)
+ALPHA_GRID = np.linspace(0, 1.0, 21)  # 0.0..1.0 step 0.05
+UNITS = 15  # 6.67% granularity, ~490k strategies, ~7.5 hrs for 2 combos @ 6 cores
 SD_STEP = 1  # percentage points
 
 
@@ -82,16 +82,20 @@ def _deal_cards_global_deck(rng):
             hands[i].extend(draw.tolist())
             pool = np.delete(pool, idx)
     has_ace = np.zeros(NUM_PILES, dtype=bool)
+    has_king = np.zeros(NUM_PILES, dtype=bool)
+    has_queen = np.zeros(NUM_PILES, dtype=bool)
     medians = np.empty(NUM_PILES, dtype=int)
     top2sum = np.empty(NUM_PILES, dtype=int)
     max_rank = np.empty(NUM_PILES, dtype=int)
     for i in range(NUM_PILES):
         arr = np.array(sorted(hands[i]), dtype=int)
         has_ace[i] = bool(np.any(arr == ACE_RANK))
+        has_king[i] = bool(np.any(arr == 13))
+        has_queen[i] = bool(np.any(arr == 12))
         medians[i] = int(arr[CARDS_PER_PILE // 2])
         top2sum[i] = int(arr[-1] + arr[-2])
         max_rank[i] = int(arr[-1])
-    return has_ace, [np.array(sorted(h), int) for h in hands], medians, top2sum, max_rank
+    return has_ace, has_king, has_queen, [np.array(sorted(h), int) for h in hands], medians, top2sum, max_rank
 
 
 def _second_highest_rank(pile: np.ndarray) -> int:
@@ -182,20 +186,23 @@ def _weight_splits(units: int, m: int) -> np.ndarray:
     return (np.asarray(out, float) / float(units)).reshape((-1, m))
 
 
-def _concat_stats(stats: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, np.ndarray]:
+def _concat_stats(stats: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     # Extract statistics directly (m=NUM_PILES=9 hardcoded, no concatenation needed)
     g1 = stats["sum_g1"]
     g2 = stats["sum_g2"]
     g1sq = stats["sum_g1_sq"]
     g2sq = stats["sum_g2_sq"]
     g12 = stats["sum_g12"]
+    ace_hits = stats["ace_hits"]
+    king_hits = stats["king_hits"]
+    queen_hits = stats["queen_hits"]
     cnt = int(stats["count"])
     # Weight template is already in (43758, NUM_PILES) format
     rank9 = stats.get("Wm_template", _weight_splits(UNITS, NUM_PILES))
-    return g1, g2, g1sq, g2sq, g12, cnt, rank9
+    return g1, g2, g1sq, g2sq, g12, cnt, rank9, ace_hits, king_hits, queen_hits
 
 
-def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, sp, scale_param, rmax_tables, joint_tables, prior_rmax, r2_marginal):
+def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, sp, scale_param, rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel=False):
     """
     Worker for IL frontier computation with deterministic round seeding.
 
@@ -215,6 +222,9 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         sum_g1_sq=np.zeros(Ns, float),
         sum_g2_sq=np.zeros(Ns, float),
         sum_g12=np.zeros(Ns, float),
+        ace_hits=np.zeros(Ns, int),  # Count rounds where strategy invested in ace-containing piles
+        king_hits=np.zeros(Ns, int),  # Count rounds where strategy invested in king-containing piles
+        queen_hits=np.zeros(Ns, int),  # Count rounds where strategy invested in queen-containing piles
         count=0,
         Wm_template=Wm,
     )
@@ -228,7 +238,7 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         r = int(round_start) + int(i)
         # DETERMINISM: same base_seed and round r → same RNG state → same board
         rng = default_rng(round_seed(int(base_seed), r))
-        _, hands, medians, top2sum, max_rank = _deal_cards_global_deck(rng)
+        has_ace, has_king, has_queen, hands, medians, top2sum, max_rank = _deal_cards_global_deck(rng)
         pi = rng.permutation(NUM_PILES)
         chosen_idx = pi[:n_sig]
         chosen_set = set(int(x) for x in np.asarray(chosen_idx, int))
@@ -268,13 +278,25 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         stats["sum_g1_sq"] += g1 * g1
         stats["sum_g2_sq"] += g2 * g2
         stats["sum_g12"] += g1 * g2
+
+        # Track premium card hits: which strategies invested in piles containing aces/kings/queens
+        has_ace_ranked = has_ace[top_idx]  # Boolean array for ranked positions
+        has_king_ranked = has_king[top_idx]
+        has_queen_ranked = has_queen[top_idx]
+        ace_hit_mask = np.any((Wm > 0) & has_ace_ranked, axis=1)  # True if strategy invested in any ace pile
+        king_hit_mask = np.any((Wm > 0) & has_king_ranked, axis=1)
+        queen_hit_mask = np.any((Wm > 0) & has_queen_ranked, axis=1)
+        stats["ace_hits"] += ace_hit_mask.astype(int)
+        stats["king_hits"] += king_hit_mask.astype(int)
+        stats["queen_hits"] += queen_hit_mask.astype(int)
+
         stats["count"] += 1
 
     return stats
 
 
 def _collect_stats_il(seed: int, rounds: int, procs: int, signal_type: str, n_sig: int, sp: int, scale_param: float,
-                      rmax_tables, joint_tables, prior_rmax, r2_marginal):
+                      rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel=False):
     if procs and int(procs) > 1 and int(rounds) > 1:
         W = int(procs); base = int(rounds) // W; rem = int(rounds) % W
         chunk_sizes = [base + (1 if i < rem else 0) for i in range(W)]
@@ -291,7 +313,7 @@ def _collect_stats_il(seed: int, rounds: int, procs: int, signal_type: str, n_si
                 ex.submit(
                     _worker_chunk_il,
                     int(seed), int(start), int(sz), signal_type, int(n_sig), int(sp), float(scale_param),
-                    rmax_tables, joint_tables, prior_rmax, r2_marginal,
+                    rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel,
                 ) for (start, sz) in starts
             ]
             for fut in futs:
@@ -299,22 +321,25 @@ def _collect_stats_il(seed: int, rounds: int, procs: int, signal_type: str, n_si
                 if out_stats is None:
                     out_stats = st
                 else:
-                    for k in ("sum_g1","sum_g2","sum_g1_sq","sum_g2_sq","sum_g12"):
+                    for k in ("sum_g1","sum_g2","sum_g1_sq","sum_g2_sq","sum_g12","ace_hits","king_hits","queen_hits"):
                         out_stats[k] += st[k]
                     out_stats["count"] += st["count"]
 
         return out_stats
     else:
-        return _worker_chunk_il(int(seed), 0, int(rounds), signal_type, int(n_sig), int(sp), float(scale_param), rmax_tables, joint_tables, prior_rmax, r2_marginal)
+        return _worker_chunk_il(int(seed), 0, int(rounds), signal_type, int(n_sig), int(sp), float(scale_param), rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel)
     
 
 
-def _save_bins_npz(out_path: pathlib.Path, sd_levels_by_n, best_means_by_n, best_weights_by_n, meta: dict):
+def _save_bins_npz(out_path: pathlib.Path, sd_levels_by_n, best_means_by_n, best_weights_by_n, best_ace_hits_by_n, best_king_hits_by_n, best_queen_hits_by_n, meta: dict):
     payload = dict(
         sd_step=float(SD_STEP),
         sd_levels_by_n=np.array(sd_levels_by_n, dtype=object),
         best_means_by_n=np.array(best_means_by_n, dtype=object),
         best_weights_by_n=np.array(best_weights_by_n, dtype=object),
+        best_ace_hits_by_n=np.array(best_ace_hits_by_n, dtype=object),
+        best_king_hits_by_n=np.array(best_king_hits_by_n, dtype=object),
+        best_queen_hits_by_n=np.array(best_queen_hits_by_n, dtype=object),
         meta=json.dumps(meta),
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -368,6 +393,9 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
     sd_levels_by_n = []
     best_means_by_n = []
     best_weights_by_n = []
+    best_ace_hits_by_n = []
+    best_king_hits_by_n = []
+    best_queen_hits_by_n = []
 
     for n_sig in range(int(max_signals) + 1):
         stats = stats_by_n[n_sig]
@@ -376,12 +404,18 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
             sd_levels_by_n.append(np.array([], float))
             best_means_by_n.append(np.array([], float))
             best_weights_by_n.append(np.zeros((0, NUM_PILES), float))
+            best_ace_hits_by_n.append(np.array([], int))
+            best_king_hits_by_n.append(np.array([], int))
+            best_queen_hits_by_n.append(np.array([], int))
             continue
-        g1, g2, g1sq, g2sq, g12, cnt, rank9 = _concat_stats(stats)
+        g1, g2, g1sq, g2sq, g12, cnt, rank9, ace_hits, king_hits, queen_hits = _concat_stats(stats)
         if cnt <= 1 or g1.size == 0:
             sd_levels_by_n.append(np.array([], float))
             best_means_by_n.append(np.array([], float))
             best_weights_by_n.append(np.zeros((0, NUM_PILES), float))
+            best_ace_hits_by_n.append(np.array([], int))
+            best_king_hits_by_n.append(np.array([], int))
+            best_queen_hits_by_n.append(np.array([], int))
             continue
         budget1 = float(stage1_alloc) * BUDGET
         investable1 = max(0.0, budget1 - float(n_sig) * SIGNAL_COST)
@@ -409,6 +443,9 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
         sd_levels = []
         best_means = []
         best_weights = []
+        best_ace_hits = []
+        best_king_hits = []
+        best_queen_hits = []
         if max_bin >= 0:
             for b in range(max_bin + 1):
                 mask = (bins == b)
@@ -419,9 +456,15 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
                 sd_levels.append(float(b) * SD_STEP)
                 best_means.append(float(mean_net[sel]))
                 best_weights.append(rank9[sel])
+                best_ace_hits.append(int(ace_hits[sel]))
+                best_king_hits.append(int(king_hits[sel]))
+                best_queen_hits.append(int(queen_hits[sel]))
         sd_levels_by_n.append(np.array(sd_levels, float))
         best_means_by_n.append(np.array(best_means, float))
         best_weights_by_n.append(np.array(best_weights, float))
+        best_ace_hits_by_n.append(np.array(best_ace_hits, int))
+        best_king_hits_by_n.append(np.array(best_king_hits, int))
+        best_queen_hits_by_n.append(np.array(best_queen_hits, int))
 
     # Save per (params, alpha, st)
     from fns import canonicalize_params
@@ -434,11 +477,11 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
         signal_type=st,
         params=norm_params,
     )
-    _save_bins_npz(out_path, sd_levels_by_n, best_means_by_n, best_weights_by_n, meta)
+    _save_bins_npz(out_path, sd_levels_by_n, best_means_by_n, best_weights_by_n, best_ace_hits_by_n, best_king_hits_by_n, best_queen_hits_by_n, meta)
 
 
 def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
-              sweep_index=None, sweep_stride=1, skip_existing=False):
+              sweep_index=None, sweep_stride=1, skip_existing=False, debug_excel=False):
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -446,10 +489,9 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
     SCALE_PARAMS = [0.25]
     SCALE_PAYS = [0, 1]
     ACE_PAYOUTS = [20.0]
-    STAGE1_ALLOC = [i / 10.0 for i in range(11)]
 
     combos = []
-    for alpha in STAGE1_ALLOC:
+    for alpha in ALPHA_GRID:
         for sp in SCALE_PAYS:
             for s in SCALE_PARAMS:
                 for ap in ACE_PAYOUTS:
@@ -457,7 +499,7 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
                     from fns import canonicalize_params
                     norm, key_tuple, key_id = canonicalize_params(raw)
                     for st in ("median", "top2"):
-                        a_tag = f"a{int(round(float(alpha)*10)):02d}"
+                        a_tag = f"a{int(round(float(alpha)*100)):03d}"  # 000, 005, 010, ..., 100
                         outfile = out_dir / f"{key_id}_{st}_{a_tag}.npz"
                         combos.append((raw, alpha, st, outfile))
 

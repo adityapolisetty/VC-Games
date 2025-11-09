@@ -1,7 +1,7 @@
 #!/bin/bash
-#PBS -l select=1:ncpus=12:mem=5gb
-#PBS -l walltime=08:00:00
-#PBS -J 0-50
+#PBS -l select=1:ncpus=6:mem=5gb
+#PBS -l walltime=24:00:00
+#PBS -J 0-82
 #PBS -N il_frontier_array
 #PBS -o ../logs/il_frontier.out
 #PBS -e ../logs/il_frontier.err
@@ -29,14 +29,14 @@ SEED=${SEED:-12345}
 ROUNDS=${ROUNDS:-100000}
 MAX_SIGNALS=${MAX_SIGNALS:-9}
 
-STRIDE=${STRIDE:-40}
+STRIDE=${STRIDE:-83}  # Total number of tasks
 
 python3 -u frontier.py \
   --seed "$SEED" \
   --rounds "$ROUNDS" \
   --max_signals "$MAX_SIGNALS" \
-  --procs 12 \
+  --procs 6 \
   --sweep \
   --sweep_out ../frontier_output \
   --sweep_index "$ID" \
-  --sweep_stride "$STRIDE" 
+  --sweep_stride "$STRIDE"
