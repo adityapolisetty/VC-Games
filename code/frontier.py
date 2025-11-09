@@ -29,13 +29,13 @@ from typing import Dict, List, Tuple
 import numpy as np
 from numpy.random import default_rng
 
+# Import shared functions and constants
+from sim_res import round_seed, _deal_cards_global_deck, _second_highest_rank
+from fns import canonicalize_params, NUM_PILES, CARDS_PER_PILE, ACE_RANK, BUDGET
+
 # -----------------------
 # Constants / defaults
 # -----------------------
-NUM_PILES = 9
-CARDS_PER_PILE = 5
-ACE_RANK = 14
-BUDGET = 100.0
 
 # Posterior NPZs (same defaults as dynamic code, relative to this file)
 POST_NPZ_DEFAULT = "../output/post_mc.npz"
@@ -45,7 +45,7 @@ POST_NPZ_JOINT_DEFAULT = "../output_joint/post_joint.npz"
 SIGNAL_COST = 3.0
 ACE_PAYOUT = 20.0
 SCALE_PARAM_ON = 0.25
-ALPHA_GRID = np.linspace(0, 1.0, 11)  # 0.0..1.0 step 0.05
+ALPHA_GRID = np.linspace(0, 1.0, 11)  # 0.0..1.0 step 0.1
 UNITS = 10  # 10%
 SD_STEP = 0.1  # percentage points
 
@@ -53,57 +53,7 @@ SD_STEP = 0.1  # percentage points
 # -----------------------
 # Helpers (synced with dynamic code)
 # -----------------------
-def round_seed(base_seed: int, r: int) -> int:
-    import zlib
-
-    s = f"{int(base_seed)}|round|{int(r)}".encode("utf-8")
-    return int(np.uint32(zlib.adler32(s)))
-
-
-def _deal_cards_global_deck(rng):
-    special_cards = np.array([ACE_RANK, 13, 13, 12, 12], dtype=int)
-    if special_cards.size:
-        rng.shuffle(special_cards)
-    hands = [[] for _ in range(NUM_PILES)]
-    for card in special_cards:
-        available = [i for i in range(NUM_PILES) if len(hands[i]) < CARDS_PER_PILE]
-        if not available:
-            break
-        pile_idx = int(rng.choice(available))
-        hands[pile_idx].append(int(card))
-    pool = np.repeat(np.arange(2, 12, dtype=int), 4)
-    for i in range(NUM_PILES):
-        need = CARDS_PER_PILE - len(hands[i])
-        if need > 0:
-            if need > pool.shape[0]:
-                need = int(pool.shape[0])
-            idx = rng.choice(pool.shape[0], size=need, replace=False)
-            draw = pool[idx]
-            hands[i].extend(draw.tolist())
-            pool = np.delete(pool, idx)
-    has_ace = np.zeros(NUM_PILES, dtype=bool)
-    has_king = np.zeros(NUM_PILES, dtype=bool)
-    has_queen = np.zeros(NUM_PILES, dtype=bool)
-    medians = np.empty(NUM_PILES, dtype=int)
-    top2sum = np.empty(NUM_PILES, dtype=int)
-    max_rank = np.empty(NUM_PILES, dtype=int)
-    for i in range(NUM_PILES):
-        arr = np.array(sorted(hands[i]), dtype=int)
-        has_ace[i] = bool(np.any(arr == ACE_RANK))
-        has_king[i] = bool(np.any(arr == 13))
-        has_queen[i] = bool(np.any(arr == 12))
-        medians[i] = int(arr[CARDS_PER_PILE // 2])
-        # Top2sum: sum of top 2 unique ranks
-        unique_ranks = sorted(set(arr.tolist()), reverse=True)
-        top2sum[i] = int(unique_ranks[0] + unique_ranks[1]) if len(unique_ranks) >= 2 else int(unique_ranks[0] * 2)
-        max_rank[i] = int(arr[-1])
-    return has_ace, has_king, has_queen, [np.array(sorted(h), int) for h in hands], medians, top2sum, max_rank
-
-
-def _second_highest_rank(pile: np.ndarray) -> int:
-    """Return the second-highest UNIQUE rank value (not second position)."""
-    unique_ranks = sorted(set(np.asarray(pile, int).tolist()), reverse=True)
-    return int(unique_ranks[1]) if len(unique_ranks) >= 2 else int(unique_ranks[0])
+# Functions imported from sim_res: round_seed, _deal_cards_global_deck, _second_highest_rank
 
 
 def _load_mc_posteriors(npz_path: str):

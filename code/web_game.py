@@ -4,7 +4,7 @@ import argparse
 import pandas as pd
 
 from web_wrangler import run_ui  # UI server only
-from card_game import _deal_cards_global_deck, round_seed
+from sim_res import _deal_cards_global_deck, round_seed
 
 # ------- game parameters -------
 MIN_INV = {1: 1.0, 2: 5.0}  # Only 2 stages now
