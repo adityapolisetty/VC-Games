@@ -390,7 +390,7 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
         xaxis=dict(title=dict(text="Standard Deviation (%)", font=dict(size=13)), tickfont=dict(size=16), showgrid=True, gridcolor="rgba(128,128,128,0.1)"),
         yaxis=yaxis_cfg,
         height=750,  # Increased height for hover at top
-        hovermode="x unified",  # Keep hover at top
+        hovermode="closest",
         margin=dict(l=10, r=10, t=120, b=50),  # Large top margin for hover box
         hoverlabel=dict(
             bgcolor="white",
@@ -399,6 +399,8 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
             bordercolor="#2b8cbe",
             align="left",
             namelength=-1,  # Don't truncate
+            yanchor="top",  # Anchor hover to top
+            y=1,  # Position at top of chart
         ),
     )
     return fig, all_custom_data
