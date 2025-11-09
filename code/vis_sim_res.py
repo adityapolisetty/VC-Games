@@ -359,36 +359,7 @@ def posterior_line(x, y, title, xlab, ylab="P(Ace | Signals)", counts=None):
     ys = np.asarray(y)
     fig = go.Figure()
 
-    # Add confidence interval bands if counts provided
-    if counts is not None and np.any(counts):
-        # Compute sample sizes by summing counts across outcomes
-        # For marginal posteriors, counts is already the right shape
-        sample_sizes = np.asarray(counts, dtype=float)
-
-        # Compute confidence intervals
-        lower, upper = _compute_binomial_ci(ys, sample_sizes)
-
-        # Add upper bound trace (invisible line)
-        fig.add_trace(go.Scatter(
-            x=xs, y=upper,
-            mode='lines',
-            line=dict(width=0),
-            showlegend=False,
-            hoverinfo='skip'
-        ))
-
-        # Add lower bound trace with fill to upper (creates grey band)
-        fig.add_trace(go.Scatter(
-            x=xs, y=lower,
-            mode='lines',
-            line=dict(width=0),
-            fill='tonexty',
-            fillcolor='rgba(128,128,128,0.2)',  # Grey with 20% opacity
-            showlegend=False,
-            hoverinfo='skip'
-        ))
-
-    # Add main line trace (on top of confidence band)
+    # Add main line trace
     fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines+markers", line=dict(color=BLUE)))
 
     fig.update_layout(
@@ -502,27 +473,6 @@ def _render_posteriors_panel(tag: str, post_data: dict):
             ylab_text = f"P(Max rank = {max_rank_choice} | signal)"
 
             fig = go.Figure()
-
-            # Add confidence intervals if counts available
-            if counts_mat is not None:
-                # Compute sample sizes by summing across all Rmax values for each signal bucket
-                sample_sizes = counts_mat.sum(axis=1)
-                lower, upper = _compute_binomial_ci(y_vals, sample_sizes)
-
-                # Upper bound trace (invisible line)
-                fig.add_trace(go.Scatter(
-                    x=x_vals, y=upper,
-                    mode='lines', line=dict(width=0),
-                    showlegend=False, hoverinfo='skip'
-                ))
-
-                # Lower bound trace with grey fill
-                fig.add_trace(go.Scatter(
-                    x=x_vals, y=lower,
-                    mode='lines', line=dict(width=0),
-                    fill='tonexty', fillcolor='rgba(128,128,128,0.2)',
-                    showlegend=False, hoverinfo='skip'
-                ))
 
             # Main line trace
             fig.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="lines+markers", line=dict(color=BLUE)))
