@@ -43,23 +43,22 @@ def _fmt_float_id(x: float, nd=4) -> str:
 
 
 def _canonicalize(raw):
-    """Build canonical key_id from raw params."""
+    """Build canonical key_id from raw params (matches fns.py logic)."""
     sc = float(raw["signal_cost"])
     sp = int(raw["scale_pay"])
     s = float(raw["scale_param"])
     ap = float(raw["ace_payout"])
 
-    # Normalize scale_param
-    if sp == 0:
-        s = 0.0
+    # Normalize scale_param: use 0 (int) when scale_pay is off
+    s_norm = s if sp == 1 else 0
 
-    norm = dict(signal_cost=sc, scale_pay=sp, scale_param=s, ace_payout=ap)
+    norm = dict(signal_cost=sc, scale_pay=sp, scale_param=s_norm, ace_payout=ap)
 
-    # Build key_id
-    sc_id = _fmt_float_id(sc)
+    # Build key_id: format as integer if it's an int type, otherwise format as float
+    sc_id = _fmt_float_id(sc) if isinstance(sc, float) else str(sc)
     sp_id = str(sp)
-    s_id = _fmt_float_id(s)
-    ap_id = _fmt_float_id(ap)
+    s_id = _fmt_float_id(s_norm) if isinstance(s_norm, float) else str(s_norm)
+    ap_id = _fmt_float_id(ap) if isinstance(ap, float) else str(ap)
     key_id = f"sc{sc_id}_sp{sp_id}_s{s_id}_ap{ap_id}"
 
     return norm, key_id
