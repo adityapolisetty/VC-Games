@@ -167,6 +167,8 @@ def stage_buy_signals(
     purchases: dict[int, list[int]],
     budget: float,
     catalog: pd.DataFrame | None = None,
+    *,
+    per_signal_cost: float | None = None,
 ) -> tuple[pd.DataFrame, float, float]:
     catalog = make_signal_catalog_manual() if catalog is None else catalog
     deck = deck.copy()
@@ -188,7 +190,8 @@ def stage_buy_signals(
         for s in sigs:
             if s not in catalog.index:
                 continue
-            c = float(catalog.loc[s, "cost"])
+            # Always use a fixed single-signal price when provided (new game version)
+            c = float(per_signal_cost) if per_signal_cost is not None else float(catalog.loc[s, "cost"])
             if spend + c > budget:
                 break
             deck.at[i, f"s{s}"] = str(reveal_signal(N, s))

@@ -4,7 +4,8 @@
       "Bash(python3:*)",
       "Bash(cp:*)",
       "Bash(mv:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "WebFetch(domain:code.claude.com)"
     ],
     "deny": [],
     "ask": []

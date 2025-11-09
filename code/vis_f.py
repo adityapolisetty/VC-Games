@@ -115,7 +115,7 @@ def load_frontier_npz(npz_path: str):
 # ==============================
 # FRONTIER PAGE
 # ==============================
-st.header("Information-Limited Mean-Variance Frontier")
+st.header("Mean-Variance Frontier")
 st.caption("Efficient frontiers showing mean vs. standard deviation of net returns")
 
 # Help text + shared y-range toggle

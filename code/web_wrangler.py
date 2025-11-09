@@ -167,6 +167,8 @@ def _results_page(stats: dict) -> str:
     # sys-wipe pretty label
     sw = stats.get("sys_wipe", "none")
     sw_label = {"none": "No", "blue": "Blue", "red": "Red", "both": "Blue & Red"}.get(sw, str(sw))
+    # summary: whether any ace was hit
+    hit_ace_label = "Yes" if (stats.get("ace_hits", 0) or 0) > 0 else "No"
 
     return f"""<!doctype html>
 <html lang="en">
@@ -202,6 +204,9 @@ def _results_page(stats: dict) -> str:
 
   .tab-content{{display:none}}
   .tab-content.active{{display:block}}
+
+  /* Narrower summary container */
+  .summary-box{{max-width:520px}}
 
   .stat-grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
   .stat{{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--b);border-radius:10px;background:#fafafa}}
@@ -251,15 +256,16 @@ def _results_page(stats: dict) -> str:
     <!-- Summary Tab -->
     <div id="summary-tab" class="tab-content active">
       <h3 style="margin-top:0;">Performance Summary</h3>
-      <div class="stat-grid">
-        <div class="stat"><div class="stat-label">Total invested</div><div class="stat-value">£{stats.get('invested',0):.2f}</div></div>
-        <div class="stat"><div class="stat-label">Spent on signals</div><div class="stat-value">£{stats.get('signals_spent',0):.2f}</div></div>
-        <div class="stat"><div class="stat-label">Net return</div><div class="stat-value">{stats.get('net_return_pct',0):.2f}%</div></div>
-        <div class="stat"><div class="stat-label">Cards invested</div><div class="stat-value">{stats.get('n_invested',0)}</div></div>
-        <div class="stat"><div class="stat-label">Invested cards wiped out</div><div class="stat-value">{stats.get('n_wiped',0)}</div></div>
-        <div class="stat"><div class="stat-label">Systemic wipe-out</div><div class="stat-value">{sw_label}</div></div>
-        <div class="stat"><div class="stat-label">Red cards invested</div><div class="stat-value">{stats.get('n_red_invested',0)}</div></div>
-        <div class="stat"><div class="stat-label">Avg signals per card</div><div class="stat-value">{stats.get('avg_signals',0):.2f}</div></div>
+      <div class="summary-box">
+        <div class="stat-grid">
+          <div class="stat"><div class="stat-label">Total invested</div><div class="stat-value">£{stats.get('invested',0):.2f}</div></div>
+          <div class="stat"><div class="stat-label">Net return</div><div class="stat-value">{stats.get('net_return_pct',0):.2f}%</div></div>
+          <div class="stat"><div class="stat-label">Spent on signals</div><div class="stat-value">£{stats.get('signals_spent',0):.2f}</div></div>
+          <div class="stat"><div class="stat-label">Piles invested</div><div class="stat-value">{stats.get('n_invested',0)}</div></div>
+          <div class="stat"><div class="stat-label">Hit an Ace</div><div class="stat-value">{hit_ace_label}</div></div>
+          <div class="stat"><div class="stat-label">Kings hit</div><div class="stat-value">{stats.get('king_hits',0)}</div></div>
+          <div class="stat"><div class="stat-label">Queens hit</div><div class="stat-value">{stats.get('queen_hits',0)}</div></div>
+        </div>
       </div>
     </div>
 

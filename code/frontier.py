@@ -30,16 +30,16 @@ import numpy as np
 from numpy.random import default_rng
 
 # Import shared functions and constants
-from sim_res import round_seed, _deal_cards_global_deck, _second_highest_rank
+from sim_res import round_seed, _deal_cards_global_deck
+from precomp import _second_highest_rank
 from fns import canonicalize_params, NUM_PILES, CARDS_PER_PILE, ACE_RANK, BUDGET
 
 # -----------------------
 # Constants / defaults
 # -----------------------
 
-# Posterior NPZs (same defaults as dynamic code, relative to this file)
-POST_NPZ_DEFAULT = "../output/post_mc.npz"
-POST_NPZ_JOINT_DEFAULT = "../output_joint/post_joint.npz"
+# Posterior NPZ (unified file with both marginal and joint posteriors)
+POST_NPZ_DEFAULT = "../precomp_output/post_mc.npz"
 
 # Fixed params per request
 SIGNAL_COST = 3.0
@@ -56,51 +56,62 @@ SD_STEP = 0.1  # percentage points
 # Functions imported from sim_res: round_seed, _deal_cards_global_deck, _second_highest_rank
 
 
-def _load_mc_posteriors(npz_path: str):
-    import pathlib
+def _load_posteriors(npz_path: str):
+    """
+    Load all posteriors from unified NPZ file (both marginal and joint).
 
+    Returns:
+        rmax_tables: dict with 'median' and 'top2' marginal posteriors P(Rmax|signal)
+        joint_tables: dict with 'median' and 'top2' joint posteriors P(Rmax|signal,R2)
+        prior_rmax: P(Rmax) prior distribution
+        r2_marginal: P(Rmax|R2) marginal distribution
+    """
     p = pathlib.Path(npz_path)
     if not p.exists():
         raise FileNotFoundError(f"post_npz not found: {p}")
+
     with np.load(p, allow_pickle=False) as z:
-        req = {"rmax_median_keys", "rmax_median_mat", "rmax_top2_keys", "rmax_top2_mat", "prior_rmax"}
+        # Check for required arrays from unified NPZ
+        req = {
+            "rmax_median_keys", "rmax_median_mat", "rmax_top2_keys", "rmax_top2_mat",
+            "joint_median_keys", "joint_median_mat", "joint_top2_keys", "joint_top2_mat",
+            "prior_rmax", "r2_marginal_mat"
+        }
         missing = [k for k in req if k not in z.files]
         if missing:
             raise ValueError(f"post_npz missing arrays: {missing}")
+
+        # Load marginal posteriors P(Rmax|signal)
         m_keys = np.asarray(z["rmax_median_keys"], int)
         m_mat = np.asarray(z["rmax_median_mat"], float)
         t_keys = np.asarray(z["rmax_top2_keys"], int)
         t_mat = np.asarray(z["rmax_top2_mat"], float)
-        prior = np.asarray(z["prior_rmax"], float)
-    rmax_median = {int(k): np.array(m_mat[i], float) for i, k in enumerate(m_keys)}
-    rmax_top2 = {int(k): np.array(t_mat[i], float) for i, k in enumerate(t_keys)}
-    return rmax_median, rmax_top2, prior
 
-
-def _load_joint_posteriors(npz_path: str):
-    import pathlib
-
-    p = pathlib.Path(npz_path)
-    if not p.exists():
-        raise FileNotFoundError(f"joint post_npz not found: {p}")
-    with np.load(p, allow_pickle=False) as z:
-        req = {"joint_median_keys", "joint_median_mat", "joint_top2_keys", "joint_top2_mat", "prior_rmax", "r2_marginal_mat"}
-        missing = [k for k in req if k not in z.files]
-        if missing:
-            raise ValueError(f"joint NPZ missing arrays: {missing}")
+        # Load joint posteriors P(Rmax|signal,R2)
         jm_keys = np.asarray(z["joint_median_keys"], int)
         jm_mat = np.asarray(z["joint_median_mat"], float)
         jt_keys = np.asarray(z["joint_top2_keys"], int)
         jt_mat = np.asarray(z["joint_top2_mat"], float)
+
+        # Load common arrays
         prior = np.asarray(z["prior_rmax"], float)
         r2_marg = np.asarray(z["r2_marginal_mat"], float)
+
+    # Build marginal posterior lookup dicts
+    rmax_median = {int(k): np.array(m_mat[i], float) for i, k in enumerate(m_keys)}
+    rmax_top2 = {int(k): np.array(t_mat[i], float) for i, k in enumerate(t_keys)}
+    rmax_tables = {"median": rmax_median, "top2": rmax_top2}
+
+    # Build joint posterior lookup with row mapping
     def _rowmap(keys: np.ndarray):
         return {int(k): int(i) for i, k in enumerate(keys.tolist())}
+
     joint_tables = {
         "median": (jm_keys, jm_mat, _rowmap(jm_keys)),
         "top2": (jt_keys, jt_mat, _rowmap(jt_keys)),
     }
-    return joint_tables, prior, r2_marg
+
+    return rmax_tables, joint_tables, prior, r2_marg
 
 
 def _hvals(scale_pay: int, scale_param: float, ace_payout: float, half: bool = False) -> np.ndarray:
@@ -191,7 +202,10 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         r = int(round_start) + int(i)
         # DETERMINISM: same base_seed and round r → same RNG state → same board
         rng = default_rng(round_seed(int(base_seed), r))
-        has_ace, has_king, has_queen, hands, medians, top2sum, max_rank = _deal_cards_global_deck(rng)
+        has_ace, hands, medians, top2sum, max_rank, min_rank = _deal_cards_global_deck(rng)
+        # Compute has_king and has_queen for premium card tracking
+        has_king = np.array([13 in np.asarray(h, int) for h in hands], dtype=bool)
+        has_queen = np.array([12 in np.asarray(h, int) for h in hands], dtype=bool)
         pi = rng.permutation(NUM_PILES)
         chosen_idx = pi[:n_sig]
         chosen_set = set(int(x) for x in np.asarray(chosen_idx, int))
@@ -311,11 +325,8 @@ def _save_bins_npz(out_path: pathlib.Path, sd_levels_by_n, best_means_by_n, best
 
 
 def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, stage1_alloc, out_dir: pathlib.Path, signal_type: str, debug_excel=False):
-    # Load posteriors and build tables
-    rmax_median, rmax_top2, prior_mc = _load_mc_posteriors(POST_NPZ_DEFAULT)
-    joint_tables, prior_joint, r2_marginal = _load_joint_posteriors(POST_NPZ_JOINT_DEFAULT)
-    prior_rmax = prior_joint if isinstance(prior_joint, np.ndarray) else prior_mc
-    rmax_tables = {"median": rmax_median, "top2": rmax_top2}
+    # Load all posteriors from unified NPZ file
+    rmax_tables, joint_tables, prior_rmax, r2_marginal = _load_posteriors(POST_NPZ_DEFAULT)
     sp = int(params["scale_pay"])
     scale_param = float(params["scale_param"]) if sp == 1 else 0.0
     st = str(signal_type)
@@ -420,7 +431,6 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
         best_queen_hits_by_n.append(np.array(best_queen_hits, int))
 
     # Save per (params, alpha, st)
-    from fns import canonicalize_params
     norm_params, key_tuple, key_id = canonicalize_params(params)
     a_tag = f"a{int(round(float(stage1_alloc)*10)):02d}"
     out_path = out_dir / f"{key_id}_{st}_{a_tag}.npz"
@@ -449,7 +459,6 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
             for s in SCALE_PARAMS:
                 for ap in ACE_PAYOUTS:
                     raw = dict(signal_cost=3.0, scale_pay=sp, scale_param=(s if sp == 1 else 0.0), ace_payout=ap)
-                    from fns import canonicalize_params
                     norm, key_tuple, key_id = canonicalize_params(raw)
                     for st in ("median", "top2"):
                         a_tag = f"a{int(round(float(alpha)*100)):03d}"  # 000, 005, 010, ..., 100
