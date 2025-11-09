@@ -349,9 +349,20 @@ def _render_posteriors_panel(tag: str, post_data: dict):
     # Row 2: Payoff scaling toggle (always shown)
     scale_pay = 1 if st.toggle("Payoff scaling", value=False, key=f"scale_pay_post_{tag}") else 0
 
-    # Row 3: Signal type selector (always shown, used by both Conditional and Joint Conditional)
-    signal_label = st.selectbox("Signal type", ["Median", "Top 2"], key=f"post_sig_{tag}")
-    signal_type = "median" if signal_label == "Median" else "top2"
+    # Row 3: Signal type selector (conditional on post_type)
+    if post_type == "Conditional":
+        signal_options = ["Median", "Top 2", "R2"]
+    else:  # Joint Conditional
+        signal_options = ["Median", "Top 2"]
+    signal_label = st.selectbox("Signal type", signal_options, key=f"post_sig_{tag}")
+
+    # Map signal label to internal type
+    if signal_label == "Median":
+        signal_type = "median"
+    elif signal_label == "Top 2":
+        signal_type = "top2"
+    else:  # R2
+        signal_type = "r2"
 
     # ========== CONDITIONAL POSTERIORS ==========
     if post_type == "Conditional":
@@ -367,10 +378,14 @@ def _render_posteriors_panel(tag: str, post_data: dict):
                 x_vals = post_data["cond_med_keys"]
                 y_vals = post_data["cond_med_mat"][:, rmax_idx]
                 sig_name = "Median"
-            else:  # top2
+            elif signal_type == "top2":
                 x_vals = post_data["cond_t2_keys"]
                 y_vals = post_data["cond_t2_mat"][:, rmax_idx]
                 sig_name = "Top 2"
+            else:  # r2
+                x_vals = np.arange(2, 14)  # R2 values from 2 to 13 (cannot be 14/Ace)
+                y_vals = post_data["r2_marginal_mat"][:, rmax_idx]
+                sig_name = "R2"
 
             title = f"P(Max rank = {max_rank_choice} | {sig_name} = x)"
             ylab_text = f"P(Max rank = {max_rank_choice} | signal)"
@@ -395,10 +410,14 @@ def _render_posteriors_panel(tag: str, post_data: dict):
                 x_vals = post_data["cond_med_keys"]
                 y_vals = post_data["cond_med_mat"][:, ace_idx]
                 sig_name = "Median"
-            else:  # top2
+            elif signal_type == "top2":
                 x_vals = post_data["cond_t2_keys"]
                 y_vals = post_data["cond_t2_mat"][:, ace_idx]
                 sig_name = "Top 2"
+            else:  # r2
+                x_vals = np.arange(2, 14)  # R2 values from 2 to 13 (cannot be 14/Ace)
+                y_vals = post_data["r2_marginal_mat"][:, ace_idx]
+                sig_name = "R2"
 
             title = f"P(Ace | {sig_name} = x)"
             st.plotly_chart(posterior_line(x_vals, y_vals, title, sig_name),
