@@ -29,8 +29,9 @@ from card_game import (round_seed, _deal_cards_global_deck, NUM_PILES, ACE_RANK)
 RMAX_DIM = 13  # ranks 2..14 map to 0..12
 
 def _second_highest_rank(arr: np.ndarray) -> int:
-    a = np.sort(np.asarray(arr, int))
-    return int(a[-2]) if a.size >= 2 else int(a[-1])
+    """Return the second-highest UNIQUE rank value (not second position)."""
+    unique_ranks = sorted(set(np.asarray(arr, int).tolist()), reverse=True)
+    return int(unique_ranks[1]) if len(unique_ranks) >= 2 else int(unique_ranks[0])
 
 def _print_bar(cur: int, total: int) -> None:
     cur = int(cur); total = max(1, int(total))

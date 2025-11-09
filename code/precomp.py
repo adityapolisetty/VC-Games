@@ -42,9 +42,9 @@ RMAX_DIM = 13
 
 
 def _second_highest_rank(arr: np.ndarray) -> int:
-    """Extract second-highest rank from a sorted pile."""
-    a = np.sort(np.asarray(arr, int))
-    return int(a[-2]) if a.size >= 2 else int(a[-1])
+    """Return the second-highest UNIQUE rank value (not second position)."""
+    unique_ranks = sorted(set(np.asarray(arr, int).tolist()), reverse=True)
+    return int(unique_ranks[1]) if len(unique_ranks) >= 2 else int(unique_ranks[0])
 
 
 def _print_bar(cur: int, total: int) -> None:
