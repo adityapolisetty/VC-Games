@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
+from streamlit_plotly_events import plotly_events
 
 
 # ==============================
@@ -24,8 +25,7 @@ st.markdown(
       .js-plotly-plot .plotly .main-svg { overflow: visible !important; }
       .js-plotly-plot .plotly .hoverlayer { overflow: visible !important; }
       .js-plotly-plot .plotly .hoverlayer .hovertext {
-        max-width: none !important;
-        white-space: nowrap !important;
+        max-width: 500px !important;
       }
     </style>
     """,
@@ -220,7 +220,7 @@ if fix_y_mv and (data_A is not None) and (data_B is not None):
 # Helper: build figure
 def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_override=None):
     if fd is None:
-        return None
+        return None, []
     fig = go.Figure()
     sd_by_n = fd["sd_levels_by_n"]
     mean_by_n = fd["best_means_by_n"]
@@ -234,6 +234,7 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
 
     points = []
     all_sum_sq_weights = []
+    all_custom_data = []  # Store metadata for all points across traces
     for n_sig in range(min(len(sd_by_n), max_n + 1)):
         sd_vals = sd_by_n[n_sig]
         mean_vals = mean_by_n[n_sig]
@@ -302,8 +303,9 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
         ys = mean_vals[keep_idx]
         cs = ssq[keep_idx]
 
-        # Build enhanced hover texts
+        # Build enhanced hover texts and customdata
         hover_texts = []
+        custom_data = []
         for idx_k, k in enumerate(keep_idx):
             # Basic metrics
             mean_val = ys[idx_k]
@@ -312,8 +314,11 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
 
             # Get weights - already sorted by Stage-1 EV (position 0 = highest EV)
             w_vec = np.asarray(weights_list[k], float)
-            # Show all 9 positions (MAX_SUPPORT positions have weights, rest are 0)
-            weights_str = " | ".join([f"Pile {i+1}: {w_vec[i]:.1%}" for i in range(9)])
+            # Show all 9 positions, split into 3 lines of 3 for readability
+            line1 = " | ".join([f"Pile {i+1}: {w_vec[i]:.1%}" for i in range(3)])
+            line2 = " | ".join([f"Pile {i+1}: {w_vec[i]:.1%}" for i in range(3, 6)])
+            line3 = " | ".join([f"Pile {i+1}: {w_vec[i]:.1%}" for i in range(6, 9)])
+            weights_str = f"{line1}<br>{line2}<br>{line3}"
 
             # Hit rates
             ace_hit = int(ace_hits_list[k]) if k < len(ace_hits_list) else 0
@@ -349,6 +354,25 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
                 f"</span>"
             )
             hover_texts.append(hover_text)
+
+            # Store metadata for click events
+            custom_data.append({
+                'n_sig': n_sig,
+                'mean': mean_val,
+                'sd': sd_val,
+                'sharpe': sharpe,
+                'weights': w_vec.tolist(),
+                'ace_hits': ace_hit,
+                'king_hits': king_hit,
+                'queen_hits': queen_hit,
+                'total_rounds': total_rounds,
+                'scale_pay': scale_pay,
+                'ssq': cs[idx_k]
+            })
+
+        #Store custom data for this trace
+        all_custom_data.extend(custom_data)
+
         fig.add_trace(go.Scatter(
             x=xs, y=ys, mode="markers+text", name=f"n={n_sig}",
             marker=dict(size=16, color=cs, colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
@@ -378,7 +402,7 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
             namelength=-1,  # Don't truncate
         ),
     )
-    return fig
+    return fig, all_custom_data
 
 # Compute global Σw² range across both datasets for consistent color mapping
 def _ssq_extents(fd, max_n):
@@ -403,16 +427,86 @@ if extA and extB:
 else:
     global_vmin, global_vmax = None, None
 
+# Helper function to render info box
+def _render_point_info(point_data):
+    if point_data is None:
+        st.markdown(
+            """
+            <div style='background-color: #f0f8ff; padding: 15px; border-radius: 6px; border-left: 4px solid #2b8cbe; margin-bottom: 15px; min-height: 80px;'>
+                <div style='font-size: 14px; color: #666;'>
+                    Click a point on the chart to see details
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        return
+
+    w = point_data['weights']
+    line1 = " | ".join([f"Pile {i+1}: {w[i]:.1%}" for i in range(3)])
+    line2 = " | ".join([f"Pile {i+1}: {w[i]:.1%}" for i in range(3, 6)])
+    line3 = " | ".join([f"Pile {i+1}: {w[i]:.1%}" for i in range(6, 9)])
+
+    if point_data['total_rounds']:
+        ace_rate = (point_data['ace_hits'] / point_data['total_rounds']) * 100
+        hit_info = f"Ace: {ace_rate:.1f}%"
+        if point_data['scale_pay'] == 1:
+            king_rate = (point_data['king_hits'] / point_data['total_rounds']) * 100
+            queen_rate = (point_data['queen_hits'] / point_data['total_rounds']) * 100
+            hit_info += f" | King: {king_rate:.1f}% | Queen: {queen_rate:.1f}%"
+    else:
+        hit_info = f"Ace: {point_data['ace_hits']}"
+        if point_data['scale_pay'] == 1:
+            hit_info += f" | King: {point_data['king_hits']} | Queen: {point_data['queen_hits']}"
+
+    st.markdown(
+        f"""
+        <div style='background-color: #f0f8ff; padding: 15px; border-radius: 6px; border-left: 4px solid #2b8cbe; margin-bottom: 15px;'>
+            <div style='font-size: 14px;'>
+                <b>n={point_data['n_sig']} signals</b> | Mean: {point_data['mean']:.2f}% | SD: {point_data['sd']:.2f}% | Sharpe: {point_data['sharpe']:.2f}<br/>
+                <b>Weights (sorted high to low by Stage-1 EV):</b><br/>
+                {line1}<br/>
+                {line2}<br/>
+                {line3}<br/>
+                <b>Σw²:</b> {point_data['ssq']:.3f} | <b>Hit Rates:</b> {hit_info}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
 # Render charts side-by-side
 colA, colB = st.columns(2)
+
+# Initialize session state for selected points
+if 'selected_point_A' not in st.session_state:
+    st.session_state.selected_point_A = None
+if 'selected_point_B' not in st.session_state:
+    st.session_state.selected_point_B = None
+
 with colA:
     if data_A is None:
         st.info(f"Frontier data not found: {file_A.name}")
         st.caption("Run frontier.py to generate frontier data.")
     else:
         st.markdown("**Fixed:** Signal cost=£3, Ace payoff=20X" + (", Scale param=0.25" if sp_A == 1 else ""))
-        figA = _build_fig(data_A, max_n_A, y_range, global_vmin, global_vmax)
-        st.plotly_chart(figA, use_container_width=True, key="mv_frontier_A")
+
+        # Info box above chart
+        _render_point_info(st.session_state.selected_point_A)
+
+        # Build figure and get metadata
+        figA, custom_data_A = _build_fig(data_A, max_n_A, y_range, global_vmin, global_vmax)
+
+        # Render with click events
+        selected_points_A = plotly_events(figA, click_event=True, hover_event=False, select_event=False, override_height=650, override_width="100%", key="chart_A")
+
+        # Update session state if point clicked
+        if selected_points_A and len(selected_points_A) > 0:
+            point_idx = selected_points_A[0]['pointIndex']
+            if point_idx < len(custom_data_A):
+                st.session_state.selected_point_A = custom_data_A[point_idx]
+                st.rerun()
 
 with colB:
     if data_B is None:
@@ -420,46 +514,38 @@ with colB:
         st.caption("Run frontier.py to generate frontier data.")
     else:
         st.markdown("**Fixed:** Signal cost=£3, Ace payoff=20X" + (", Scale param=0.25" if sp_B == 1 else ""))
-        figB = _build_fig(data_B, max_n_B, y_range, global_vmin, global_vmax)
-        st.plotly_chart(figB, use_container_width=True, key="mv_frontier_B")
+
+        # Info box above chart
+        _render_point_info(st.session_state.selected_point_B)
+
+        # Build figure and get metadata
+        figB, custom_data_B = _build_fig(data_B, max_n_B, y_range, global_vmin, global_vmax)
+
+        # Render with click events
+        selected_points_B = plotly_events(figB, click_event=True, hover_event=False, select_event=False, override_height=650, override_width="100%", key="chart_B")
+
+        # Update session state if point clicked
+        if selected_points_B and len(selected_points_B) > 0:
+            point_idx = selected_points_B[0]['pointIndex']
+            if point_idx < len(custom_data_B):
+                st.session_state.selected_point_B = custom_data_B[point_idx]
+                st.rerun()
 
 # Shared legend at bottom
 if (global_vmin is not None) and (global_vmax is not None):
     st.markdown("---")  # Visual separator
+    st.markdown(f"**Legend:** Σw² (portfolio concentration) — Light blue = diversified ({global_vmin:.2f}), Dark blue = concentrated ({global_vmax:.2f})")
 
-    # Create a gradient array with 100 steps for smooth colorbar
-    z_values = np.linspace(global_vmin, global_vmax, 100).reshape(1, -1)
-
-    legend_fig = go.Figure()
-    legend_fig.add_trace(
-        go.Heatmap(
-            z=z_values,
-            showscale=True,
-            colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
-            zmin=global_vmin,
-            zmax=global_vmax,
-            colorbar=dict(
-                title=dict(text="Σw² (portfolio concentration)", font=dict(size=13)),
-                orientation="h",
-                x=0.5, xanchor="center",
-                y=-0.8, yanchor="bottom",
-                len=0.7,
-                thickness=22,
-                tickfont=dict(size=12),
-                tickformat=".2f",
-            ),
-            hoverinfo="skip",
-            xgap=0,
-            ygap=0,
-        )
+    # Create a simple gradient bar using HTML/CSS for cleaner rendering
+    st.markdown(
+        f"""
+        <div style='width: 100%; max-width: 800px; margin: 20px auto;'>
+            <div style='height: 30px; background: linear-gradient(to right, #2b8cbe, #08306b); border: 1px solid #ccc; border-radius: 4px;'></div>
+            <div style='display: flex; justify-content: space-between; margin-top: 5px; font-size: 13px; color: #666;'>
+                <span>{global_vmin:.3f}</span>
+                <span>{global_vmax:.3f}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
-    legend_fig.update_layout(
-        template="plotly_white",
-        height=130,
-        margin=dict(l=50, r=50, t=5, b=70),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-    )
-    legend_fig.update_xaxes(visible=False, showgrid=False, zeroline=False)
-    legend_fig.update_yaxes(visible=False, showgrid=False, zeroline=False)
-    st.plotly_chart(legend_fig, use_container_width=True, key="mv_shared_legend")

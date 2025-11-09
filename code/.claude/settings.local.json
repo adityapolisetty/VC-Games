@@ -6,7 +6,8 @@
       "Bash(mv:*)",
       "Bash(cat:*)",
       "WebFetch(domain:code.claude.com)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(pip install:*)"
     ],
     "deny": [],
     "ask": []
