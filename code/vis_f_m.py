@@ -324,7 +324,7 @@ with colA:
     else:
         st.markdown("**Fixed:** Signal cost=£3, Ace payoff=20X" + (", Scale param=0.25" if sp_A == 1 else ""))
         figA = _build_fig(data_A, max_n_A, y_range, global_vmin, global_vmax)
-        st.plotly_chart(figA, use_container_width=stretch, key="mv_frontier_A")
+        st.plotly_chart(figA, use_container_width=True, key="mv_frontier_A")
 
 with colB:
     if data_B is None:
@@ -333,7 +333,7 @@ with colB:
     else:
         st.markdown("**Fixed:** Signal cost=£3, Ace payoff=20X" + (", Scale param=0.25" if sp_B == 1 else ""))
         figB = _build_fig(data_B, max_n_B, y_range, global_vmin, global_vmax)
-        st.plotly_chart(figB, use_container_width=stretch, key="mv_frontier_B")
+        st.plotly_chart(figB, use_container_width=True, key="mv_frontier_B")
 
 # Shared legend at bottom
 if (global_vmin is not None) and (global_vmax is not None):
