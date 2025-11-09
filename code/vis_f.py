@@ -399,8 +399,6 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
             bordercolor="#2b8cbe",
             align="left",
             namelength=-1,  # Don't truncate
-            yanchor="top",  # Anchor hover to top
-            y=1,  # Position at top of chart
         ),
     )
     return fig, all_custom_data
