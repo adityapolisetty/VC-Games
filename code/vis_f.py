@@ -22,6 +22,11 @@ st.markdown(
       .stSelectbox label, .stNumberInput label { font-size: 0.92rem; margin-bottom: .18rem; }
       .stSelectbox > div[data-baseweb="select"] { min-height: 36px; }
       .js-plotly-plot .plotly .main-svg { overflow: visible !important; }
+      .js-plotly-plot .plotly .hoverlayer { overflow: visible !important; }
+      .js-plotly-plot .plotly .hoverlayer .hovertext {
+        max-width: none !important;
+        white-space: nowrap !important;
+      }
     </style>
     """,
     unsafe_allow_html=True,
@@ -153,6 +158,7 @@ with ctlA:
         max_n_A = st.slider("Max signals", min_value=0, max_value=9, value=9, key="max_n_sig_frontier_A")
     with rowA[2]:
         st.empty()
+    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)  # Spacer
 
 with ctlB:
     st.markdown("### Panel B")
@@ -175,6 +181,7 @@ with ctlB:
         max_n_B = st.slider("Max signals", min_value=0, max_value=9, value=9, key="max_n_sig_frontier_B")
     with rowB[2]:
         st.empty()
+    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)  # Spacer
 
 # Resolve files
 frontier_dir = Path("frontier_output/").resolve()
@@ -359,9 +366,17 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
         font=dict(family="Roboto, Arial, sans-serif", size=15),
         xaxis=dict(title=dict(text="Standard Deviation (%)", font=dict(size=13)), tickfont=dict(size=16), showgrid=True, gridcolor="rgba(128,128,128,0.1)"),
         yaxis=yaxis_cfg,
-        height=600,
+        height=650,  # Increased height to accommodate hover
         hovermode="closest",
-        margin=dict(l=10, r=10, t=40, b=50),
+        margin=dict(l=10, r=10, t=60, b=50),  # More top margin for hover
+        hoverlabel=dict(
+            bgcolor="white",
+            font_size=16,
+            font_family="Roboto, Arial, sans-serif",
+            bordercolor="#2b8cbe",
+            align="left",
+            namelength=-1,  # Don't truncate
+        ),
     )
     return fig
 
@@ -411,22 +426,27 @@ with colB:
 # Shared legend at bottom
 if (global_vmin is not None) and (global_vmax is not None):
     st.markdown("---")  # Visual separator
+
+    # Create a gradient array with 100 steps for smooth colorbar
+    z_values = np.linspace(global_vmin, global_vmax, 100).reshape(1, -1)
+
     legend_fig = go.Figure()
     legend_fig.add_trace(
         go.Heatmap(
-            z=[[global_vmin, global_vmax]],
+            z=z_values,
             showscale=True,
             colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
             zmin=global_vmin,
             zmax=global_vmax,
             colorbar=dict(
-                title=dict(text="Σw² (portfolio concentration)", font=dict(size=12)),
+                title=dict(text="Σw² (portfolio concentration)", font=dict(size=13)),
                 orientation="h",
                 x=0.5, xanchor="center",
-                y=-0.5, yanchor="bottom",
-                len=0.6,
-                thickness=20,
-                tickfont=dict(size=11),
+                y=-0.8, yanchor="bottom",
+                len=0.7,
+                thickness=22,
+                tickfont=dict(size=12),
+                tickformat=".2f",
             ),
             hoverinfo="skip",
             xgap=0,
@@ -435,8 +455,8 @@ if (global_vmin is not None) and (global_vmax is not None):
     )
     legend_fig.update_layout(
         template="plotly_white",
-        height=120,
-        margin=dict(l=40, r=40, t=10, b=60),
+        height=130,
+        margin=dict(l=50, r=50, t=5, b=70),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
     )
