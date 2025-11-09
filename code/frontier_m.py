@@ -455,6 +455,7 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
         signal_type=st,
         params=norm_params,
         max_support=int(MAX_SUPPORT),  # Include MAX_SUPPORT in metadata
+        total_rounds=int(rounds),  # Total simulation rounds for hit rate calculations
     )
     _save_bins_npz(out_path, sd_levels_by_n, best_means_by_n, best_weights_by_n, best_ace_hits_by_n, best_king_hits_by_n, best_queen_hits_by_n, meta)
 

@@ -218,16 +218,35 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
     sd_by_n = fd["sd_levels_by_n"]
     mean_by_n = fd["best_means_by_n"]
     weights_by_n = fd["best_weights_by_n"]
+    ace_hits_by_n = fd.get("best_ace_hits_by_n", [])
+    king_hits_by_n = fd.get("best_king_hits_by_n", [])
+    queen_hits_by_n = fd.get("best_queen_hits_by_n", [])
+    meta = fd.get("meta", {})
+    total_rounds = meta.get("total_rounds", None)
+    scale_pay = meta.get("params", {}).get("scale_pay", 0)
+
     points = []
     all_sum_sq_weights = []
     for n_sig in range(min(len(sd_by_n), max_n + 1)):
         sd_vals = sd_by_n[n_sig]
         mean_vals = mean_by_n[n_sig]
         weights = weights_by_n[n_sig]
+        ace_hits = ace_hits_by_n[n_sig] if n_sig < len(ace_hits_by_n) else np.array([])
+        king_hits = king_hits_by_n[n_sig] if n_sig < len(king_hits_by_n) else np.array([])
+        queen_hits = queen_hits_by_n[n_sig] if n_sig < len(queen_hits_by_n) else np.array([])
         if len(sd_vals) == 0:
             continue
         sum_sq_weights = [float(np.sum(np.asarray(w_vec, float) ** 2)) for w_vec in weights]
-        points.append(dict(n=n_sig, sd=np.asarray(sd_vals, float), mean=np.asarray(mean_vals, float), ssq=np.asarray(sum_sq_weights, float)))
+        points.append(dict(
+            n=n_sig,
+            sd=np.asarray(sd_vals, float),
+            mean=np.asarray(mean_vals, float),
+            ssq=np.asarray(sum_sq_weights, float),
+            weights=weights,
+            ace_hits=ace_hits,
+            king_hits=king_hits,
+            queen_hits=queen_hits
+        ))
         all_sum_sq_weights.extend(sum_sq_weights)
 
     # Determine global frontier (Pareto-efficient) across all points
@@ -260,6 +279,11 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
         sd_vals = p["sd"]
         mean_vals = p["mean"]
         ssq = p["ssq"]
+        weights_list = p["weights"]
+        ace_hits_list = p["ace_hits"]
+        king_hits_list = p["king_hits"]
+        queen_hits_list = p["queen_hits"]
+
         # Keep all frontier points; keep every other interior point to reduce clutter
         keep_idx = []
         for j in range(len(sd_vals)):
@@ -270,13 +294,61 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
         xs = sd_vals[keep_idx]
         ys = mean_vals[keep_idx]
         cs = ssq[keep_idx]
-        hover_texts = [f"n={n_sig}<br>Mean: {ys[k]:.2f}%<br>SD: {xs[k]:.2f}%<br>Σw²: {cs[k]:.3f}" for k in range(len(keep_idx))]
+
+        # Build enhanced hover texts
+        hover_texts = []
+        for idx_k, k in enumerate(keep_idx):
+            # Basic metrics
+            mean_val = ys[idx_k]
+            sd_val = xs[idx_k]
+            sharpe = mean_val / sd_val if sd_val > 0.001 else 0.0
+
+            # Get weights - already sorted by Stage-1 EV (position 0 = highest EV)
+            w_vec = np.asarray(weights_list[k], float)
+            # Show all 9 positions (MAX_SUPPORT positions have weights, rest are 0)
+            weights_str = " | ".join([f"Pile {i+1}: {w_vec[i]:.1%}" for i in range(9)])
+
+            # Hit rates
+            ace_hit = int(ace_hits_list[k]) if k < len(ace_hits_list) else 0
+            king_hit = int(king_hits_list[k]) if k < len(king_hits_list) else 0
+            queen_hit = int(queen_hits_list[k]) if k < len(queen_hits_list) else 0
+
+            hit_rate_str = ""
+            if total_rounds and total_rounds > 0:
+                ace_pct = (ace_hit / total_rounds) * 100
+                hit_rate_str = f"<br><b>Hit Rates:</b><br>Ace: {ace_pct:.1f}%"
+                if scale_pay == 1:
+                    king_pct = (king_hit / total_rounds) * 100
+                    queen_pct = (queen_hit / total_rounds) * 100
+                    hit_rate_str += f", King: {king_pct:.1f}%, Queen: {queen_pct:.1f}%"
+            else:
+                hit_rate_str = f"<br><b>Hit Counts:</b><br>Ace: {ace_hit}"
+                if scale_pay == 1:
+                    hit_rate_str += f", King: {king_hit}, Queen: {queen_hit}"
+
+            # Simulations info
+            sim_str = f"<br>Simulations: {total_rounds:,}" if total_rounds else ""
+
+            hover_text = (
+                f"<span style='font-size: 16px;'>"
+                f"<b>n={n_sig} signals</b>{sim_str}<br>"
+                f"<b>Returns:</b><br>"
+                f"Mean: {mean_val:.2f}%, SD: {sd_val:.2f}%<br>"
+                f"Sharpe: {sharpe:.2f}<br>"
+                f"<b>Weights (sorted high to low by Stage-1 EV):</b><br>"
+                f"{weights_str}<br>"
+                f"Σw²: {cs[idx_k]:.3f}"
+                f"{hit_rate_str}"
+                f"</span>"
+            )
+            hover_texts.append(hover_text)
         fig.add_trace(go.Scatter(
             x=xs, y=ys, mode="markers+text", name=f"n={n_sig}",
             marker=dict(size=16, color=cs, colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
                         cmin=vmin_global, cmax=vmax_global, showscale=False, line=dict(width=0)),
             text=[str(n_sig)] * len(keep_idx), textposition="middle center", textfont=dict(size=11, color="white"),
-            hovertext=hover_texts, hoverinfo="text", showlegend=False, opacity=ALPHA,
+            hovertemplate="%{hovertext}<extra></extra>",
+            hovertext=hover_texts, showlegend=False, opacity=ALPHA,
         ))
 
     yaxis_cfg = dict(title=dict(text="Mean Return (%)", font=dict(size=13)), tickfont=dict(size=16), showgrid=True, gridcolor="rgba(128,128,128,0.1)")
@@ -306,6 +378,7 @@ def _ssq_extents(fd, max_n):
     if not vals:
         return None
     return (min(vals), max(vals))
+
 
 extA = _ssq_extents(data_A, max_n_A)
 extB = _ssq_extents(data_B, max_n_B)
@@ -337,6 +410,7 @@ with colB:
 
 # Shared legend at bottom
 if (global_vmin is not None) and (global_vmax is not None):
+    st.markdown("---")  # Visual separator
     legend_fig = go.Figure()
     legend_fig.add_trace(
         go.Heatmap(
@@ -346,24 +420,26 @@ if (global_vmin is not None) and (global_vmax is not None):
             zmin=global_vmin,
             zmax=global_vmax,
             colorbar=dict(
-                title=dict(text="Σw² (concentration)"),
+                title=dict(text="Σw² (portfolio concentration)", font=dict(size=12)),
                 orientation="h",
                 x=0.5, xanchor="center",
-                y=0.0, yanchor="bottom",
-                len=1.0,
-                thickness=16,
+                y=-0.5, yanchor="bottom",
+                len=0.6,
+                thickness=20,
+                tickfont=dict(size=11),
             ),
             hoverinfo="skip",
-            xgap=1,
-            ygap=1,
+            xgap=0,
+            ygap=0,
         )
     )
     legend_fig.update_layout(
         template="plotly_white",
-        height=80,
-        width=114,
-        margin=dict(l=6, r=6, t=0, b=6),
+        height=120,
+        margin=dict(l=40, r=40, t=10, b=60),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
     )
     legend_fig.update_xaxes(visible=False, showgrid=False, zeroline=False)
     legend_fig.update_yaxes(visible=False, showgrid=False, zeroline=False)
-    st.plotly_chart(legend_fig, use_container_width=False, key="mv_shared_legend")
+    st.plotly_chart(legend_fig, use_container_width=True, key="mv_shared_legend")
