@@ -7,7 +7,6 @@ from pathlib import Path
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
-from streamlit_plotly_events import plotly_events
 
 
 # ==============================
@@ -390,12 +389,12 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
         font=dict(family="Roboto, Arial, sans-serif", size=15),
         xaxis=dict(title=dict(text="Standard Deviation (%)", font=dict(size=13)), tickfont=dict(size=16), showgrid=True, gridcolor="rgba(128,128,128,0.1)"),
         yaxis=yaxis_cfg,
-        height=650,  # Increased height to accommodate hover
-        hovermode="closest",
-        margin=dict(l=10, r=10, t=60, b=50),  # More top margin for hover
+        height=750,  # Increased height for hover at top
+        hovermode="x unified",  # Keep hover at top
+        margin=dict(l=10, r=10, t=120, b=50),  # Large top margin for hover box
         hoverlabel=dict(
             bgcolor="white",
-            font_size=16,
+            font_size=15,
             font_family="Roboto, Arial, sans-serif",
             bordercolor="#2b8cbe",
             align="left",
@@ -427,63 +426,8 @@ if extA and extB:
 else:
     global_vmin, global_vmax = None, None
 
-# Helper function to render info box
-def _render_point_info(point_data):
-    if point_data is None:
-        st.markdown(
-            """
-            <div style='background-color: #f0f8ff; padding: 15px; border-radius: 6px; border-left: 4px solid #2b8cbe; margin-bottom: 15px; min-height: 80px;'>
-                <div style='font-size: 14px; color: #666;'>
-                    Click a point on the chart to see details
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-        return
-
-    w = point_data['weights']
-    line1 = " | ".join([f"Pile {i+1}: {w[i]:.1%}" for i in range(3)])
-    line2 = " | ".join([f"Pile {i+1}: {w[i]:.1%}" for i in range(3, 6)])
-    line3 = " | ".join([f"Pile {i+1}: {w[i]:.1%}" for i in range(6, 9)])
-
-    if point_data['total_rounds']:
-        ace_rate = (point_data['ace_hits'] / point_data['total_rounds']) * 100
-        hit_info = f"Ace: {ace_rate:.1f}%"
-        if point_data['scale_pay'] == 1:
-            king_rate = (point_data['king_hits'] / point_data['total_rounds']) * 100
-            queen_rate = (point_data['queen_hits'] / point_data['total_rounds']) * 100
-            hit_info += f" | King: {king_rate:.1f}% | Queen: {queen_rate:.1f}%"
-    else:
-        hit_info = f"Ace: {point_data['ace_hits']}"
-        if point_data['scale_pay'] == 1:
-            hit_info += f" | King: {point_data['king_hits']} | Queen: {point_data['queen_hits']}"
-
-    st.markdown(
-        f"""
-        <div style='background-color: #f0f8ff; padding: 15px; border-radius: 6px; border-left: 4px solid #2b8cbe; margin-bottom: 15px;'>
-            <div style='font-size: 14px;'>
-                <b>n={point_data['n_sig']} signals</b> | Mean: {point_data['mean']:.2f}% | SD: {point_data['sd']:.2f}% | Sharpe: {point_data['sharpe']:.2f}<br/>
-                <b>Weights (sorted high to low by Stage-1 EV):</b><br/>
-                {line1}<br/>
-                {line2}<br/>
-                {line3}<br/>
-                <b>Σw²:</b> {point_data['ssq']:.3f} | <b>Hit Rates:</b> {hit_info}
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-
 # Render charts side-by-side
 colA, colB = st.columns(2)
-
-# Initialize session state for selected points
-if 'selected_point_A' not in st.session_state:
-    st.session_state.selected_point_A = None
-if 'selected_point_B' not in st.session_state:
-    st.session_state.selected_point_B = None
 
 with colA:
     if data_A is None:
@@ -491,22 +435,8 @@ with colA:
         st.caption("Run frontier.py to generate frontier data.")
     else:
         st.markdown("**Fixed:** Signal cost=£3, Ace payoff=20X" + (", Scale param=0.25" if sp_A == 1 else ""))
-
-        # Info box above chart
-        _render_point_info(st.session_state.selected_point_A)
-
-        # Build figure and get metadata
-        figA, custom_data_A = _build_fig(data_A, max_n_A, y_range, global_vmin, global_vmax)
-
-        # Render with click events
-        selected_points_A = plotly_events(figA, click_event=True, hover_event=False, select_event=False, override_height=650, override_width="100%", key="chart_A")
-
-        # Update session state if point clicked
-        if selected_points_A and len(selected_points_A) > 0:
-            point_idx = selected_points_A[0]['pointIndex']
-            if point_idx < len(custom_data_A):
-                st.session_state.selected_point_A = custom_data_A[point_idx]
-                st.rerun()
+        figA, _ = _build_fig(data_A, max_n_A, y_range, global_vmin, global_vmax)
+        st.plotly_chart(figA, use_container_width=True, key="mv_frontier_A")
 
 with colB:
     if data_B is None:
@@ -514,27 +444,13 @@ with colB:
         st.caption("Run frontier.py to generate frontier data.")
     else:
         st.markdown("**Fixed:** Signal cost=£3, Ace payoff=20X" + (", Scale param=0.25" if sp_B == 1 else ""))
-
-        # Info box above chart
-        _render_point_info(st.session_state.selected_point_B)
-
-        # Build figure and get metadata
-        figB, custom_data_B = _build_fig(data_B, max_n_B, y_range, global_vmin, global_vmax)
-
-        # Render with click events
-        selected_points_B = plotly_events(figB, click_event=True, hover_event=False, select_event=False, override_height=650, override_width="100%", key="chart_B")
-
-        # Update session state if point clicked
-        if selected_points_B and len(selected_points_B) > 0:
-            point_idx = selected_points_B[0]['pointIndex']
-            if point_idx < len(custom_data_B):
-                st.session_state.selected_point_B = custom_data_B[point_idx]
-                st.rerun()
+        figB, _ = _build_fig(data_B, max_n_B, y_range, global_vmin, global_vmax)
+        st.plotly_chart(figB, use_container_width=True, key="mv_frontier_B")
 
 # Shared legend at bottom
 if (global_vmin is not None) and (global_vmax is not None):
     st.markdown("---")  # Visual separator
-    st.markdown(f"**Legend:** Σw² (portfolio concentration) — Light blue = diversified ({global_vmin:.2f}), Dark blue = concentrated ({global_vmax:.2f})")
+    st.markdown(f"**Legend:** Σw² (portfolio concentration)")
 
     # Create a simple gradient bar using HTML/CSS for cleaner rendering
     st.markdown(
