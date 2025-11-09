@@ -26,6 +26,7 @@ st.markdown(
       .block-container { padding-top: 1.25rem; padding-bottom: 1.0rem; }
       .stSelectbox label, .stNumberInput label { font-size: 0.92rem; margin-bottom: .18rem; }
       .stSelectbox > div[data-baseweb="select"] { min-height: 36px; }
+      .stSelectbox > div[data-baseweb="select"] > div { border: 1px solid #000000 !important; border-radius: 4px; }
       .stTabs [data-baseweb="tab-list"] { gap: .25rem; }
       .stTabs [data-baseweb="tab"] { padding: .5rem 1rem; font-size: 1.1rem; font-weight: 600; }
       .js-plotly-plot .plotly .main-svg { overflow: visible !important; }
@@ -91,7 +92,16 @@ def load_post_npz(npz_path: str):
                 st.caption("Re-run precomp.py to regenerate precomp_output/post_mc.npz.")
                 return None
 
-            return {
+            # Check for count arrays (optional, for confidence intervals)
+            has_counts = all(k in zset for k in [
+                "joint_median_counts", "joint_top2_counts",
+                "rmax_median_counts", "rmax_top2_counts", "r2_marginal_counts"
+            ])
+
+            if not has_counts:
+                st.warning("⚠️ NPZ file does not contain count data for confidence intervals. Re-run precomp.py to enable confidence bands.")
+
+            result = {
                 # Joint conditional: P(Rmax | signal, R2)
                 "joint_med_keys": np.asarray(z["joint_median_keys"], int),
                 "joint_med_mat": np.asarray(z["joint_median_mat"], float),  # [K, 13(R2), 13(Rmax)]
@@ -106,6 +116,26 @@ def load_post_npz(npz_path: str):
                 "r2_marginal_mat": np.asarray(z["r2_marginal_mat"], float),  # [13(R2), 13(Rmax)]
                 "prior_rmax": np.asarray(z["prior_rmax"], float),
             }
+
+            # Add counts if available
+            if has_counts:
+                result.update({
+                    "joint_med_counts": np.asarray(z["joint_median_counts"], int),
+                    "joint_t2_counts": np.asarray(z["joint_top2_counts"], int),
+                    "cond_med_counts": np.asarray(z["rmax_median_counts"], int),
+                    "cond_t2_counts": np.asarray(z["rmax_top2_counts"], int),
+                    "r2_marginal_counts": np.asarray(z["r2_marginal_counts"], int),
+                })
+            else:
+                result.update({
+                    "joint_med_counts": None,
+                    "joint_t2_counts": None,
+                    "cond_med_counts": None,
+                    "cond_t2_counts": None,
+                    "r2_marginal_counts": None,
+                })
+
+            return result
     except Exception as e:
         st.error(f"Failed to read posterior NPZ: {e}")
         return None
@@ -314,10 +344,53 @@ def value_of_info_plot(sig_grid, means, title, signal_cost=None, y_range=None):
     )
     return fig
 
-def posterior_line(x, y, title, xlab, ylab="P(Ace | Signals)"):
-    xs = np.asarray(x); ys = np.asarray(y)
+def posterior_line(x, y, title, xlab, ylab="P(Ace | Signals)", counts=None):
+    """Create a line plot for posterior probabilities with optional confidence intervals.
+
+    Args:
+        x: X-axis values
+        y: Y-axis values (probabilities)
+        title: Plot title
+        xlab: X-axis label
+        ylab: Y-axis label
+        counts: Optional count array for confidence intervals
+    """
+    xs = np.asarray(x)
+    ys = np.asarray(y)
     fig = go.Figure()
+
+    # Add confidence interval bands if counts provided
+    if counts is not None and np.any(counts):
+        # Compute sample sizes by summing counts across outcomes
+        # For marginal posteriors, counts is already the right shape
+        sample_sizes = np.asarray(counts, dtype=float)
+
+        # Compute confidence intervals
+        lower, upper = _compute_binomial_ci(ys, sample_sizes)
+
+        # Add upper bound trace (invisible line)
+        fig.add_trace(go.Scatter(
+            x=xs, y=upper,
+            mode='lines',
+            line=dict(width=0),
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+
+        # Add lower bound trace with fill to upper (creates grey band)
+        fig.add_trace(go.Scatter(
+            x=xs, y=lower,
+            mode='lines',
+            line=dict(width=0),
+            fill='tonexty',
+            fillcolor='rgba(128,128,128,0.2)',  # Grey with 20% opacity
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+
+    # Add main line trace (on top of confidence band)
     fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines+markers", line=dict(color=BLUE)))
+
     fig.update_layout(
         template="plotly_white",
         margin=dict(l=10, r=10, t=40, b=30),
@@ -328,6 +401,40 @@ def posterior_line(x, y, title, xlab, ylab="P(Ace | Signals)"):
         title=dict(text=title, y=0.99, x=0.0, xanchor="left", font=_DEF_FONT),
     )
     return fig
+
+def _compute_binomial_ci(p, n, confidence=0.95):
+    """Compute Wilson score confidence interval for binomial proportion.
+
+    Args:
+        p: Probability array (observed proportions)
+        n: Count array (total sample sizes for each probability)
+        confidence: Confidence level (default 0.95 for 95% CI)
+
+    Returns:
+        (lower_bound, upper_bound) arrays
+    """
+    import scipy.stats
+
+    p = np.asarray(p, dtype=float)
+    n = np.asarray(n, dtype=float)
+
+    # Z-score for the confidence level
+    z = scipy.stats.norm.ppf((1 + confidence) / 2)
+
+    # Wilson score interval formula
+    # Handles edge cases better than normal approximation
+    denominator = 1 + z**2 / n
+    center = (p + z**2 / (2*n)) / denominator
+    margin = z * np.sqrt((p * (1 - p) / n + z**2 / (4*n**2))) / denominator
+
+    # Handle zero sample size cases
+    mask = (n > 0)
+    lower = np.zeros_like(p)
+    upper = np.ones_like(p)
+    lower[mask] = np.clip(center[mask] - margin[mask], 0, 1)
+    upper[mask] = np.clip(center[mask] + margin[mask], 0, 1)
+
+    return lower, upper
 
 def _render_posteriors_panel(tag: str, post_data: dict):
     """Render a single posteriors panel with independent controls.
@@ -342,16 +449,17 @@ def _render_posteriors_panel(tag: str, post_data: dict):
         st.info("Load a valid posterior NPZ to see curves.")
         return
 
-    # Row 1: Posterior type selector (always shown)
-    post_type = st.radio("Posterior type", ["Conditional", "Joint Conditional"],
-                        horizontal=True, key=f"post_type_{tag}")
+    # Row 1: Posterior type + Payoff scaling (in 2 columns)
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        post_type = st.radio("Posterior type", ["Conditional", "Joint Conditional"],
+                            horizontal=True, key=f"post_type_{tag}")
+    with col2:
+        scale_pay = 1 if st.toggle("Payoff scaling", value=False, key=f"scale_pay_post_{tag}") else 0
 
-    # Row 2: Payoff scaling toggle (always shown)
-    scale_pay = 1 if st.toggle("Payoff scaling", value=False, key=f"scale_pay_post_{tag}") else 0
-
-    # Row 3: Signal type selector (conditional on post_type)
+    # Row 2: Signal type selector
     if post_type == "Conditional":
-        signal_options = ["Median", "Top 2", "R2"]
+        signal_options = ["Median", "Top 2", "Second rank (R2)"]
     else:  # Joint Conditional
         signal_options = ["Median", "Top 2"]
     signal_label = st.selectbox("Signal type", signal_options, key=f"post_sig_{tag}")
@@ -361,7 +469,7 @@ def _render_posteriors_panel(tag: str, post_data: dict):
         signal_type = "median"
     elif signal_label == "Top 2":
         signal_type = "top2"
-    else:  # R2
+    else:  # Second rank (R2)
         signal_type = "r2"
 
     # ========== CONDITIONAL POSTERIORS ==========
@@ -378,19 +486,45 @@ def _render_posteriors_panel(tag: str, post_data: dict):
                 x_vals = post_data["cond_med_keys"]
                 y_vals = post_data["cond_med_mat"][:, rmax_idx]
                 sig_name = "Median"
+                counts_mat = post_data["cond_med_counts"]
             elif signal_type == "top2":
                 x_vals = post_data["cond_t2_keys"]
                 y_vals = post_data["cond_t2_mat"][:, rmax_idx]
                 sig_name = "Top 2"
+                counts_mat = post_data["cond_t2_counts"]
             else:  # r2
                 x_vals = np.arange(2, 14)  # R2 values from 2 to 13 (cannot be 14/Ace)
                 y_vals = post_data["r2_marginal_mat"][:, rmax_idx]
-                sig_name = "R2"
+                sig_name = "Second rank (R2)"
+                counts_mat = post_data["r2_marginal_counts"]
 
             title = f"P(Max rank = {max_rank_choice} | {sig_name} = x)"
             ylab_text = f"P(Max rank = {max_rank_choice} | signal)"
 
             fig = go.Figure()
+
+            # Add confidence intervals if counts available
+            if counts_mat is not None:
+                # Compute sample sizes by summing across all Rmax values for each signal bucket
+                sample_sizes = counts_mat.sum(axis=1)
+                lower, upper = _compute_binomial_ci(y_vals, sample_sizes)
+
+                # Upper bound trace (invisible line)
+                fig.add_trace(go.Scatter(
+                    x=x_vals, y=upper,
+                    mode='lines', line=dict(width=0),
+                    showlegend=False, hoverinfo='skip'
+                ))
+
+                # Lower bound trace with grey fill
+                fig.add_trace(go.Scatter(
+                    x=x_vals, y=lower,
+                    mode='lines', line=dict(width=0),
+                    fill='tonexty', fillcolor='rgba(128,128,128,0.2)',
+                    showlegend=False, hoverinfo='skip'
+                ))
+
+            # Main line trace
             fig.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="lines+markers", line=dict(color=BLUE)))
             fig.update_layout(
                 template="plotly_white",
@@ -410,26 +544,42 @@ def _render_posteriors_panel(tag: str, post_data: dict):
                 x_vals = post_data["cond_med_keys"]
                 y_vals = post_data["cond_med_mat"][:, ace_idx]
                 sig_name = "Median"
+                counts_mat = post_data["cond_med_counts"]
             elif signal_type == "top2":
                 x_vals = post_data["cond_t2_keys"]
                 y_vals = post_data["cond_t2_mat"][:, ace_idx]
                 sig_name = "Top 2"
+                counts_mat = post_data["cond_t2_counts"]
             else:  # r2
                 x_vals = np.arange(2, 14)  # R2 values from 2 to 13 (cannot be 14/Ace)
                 y_vals = post_data["r2_marginal_mat"][:, ace_idx]
-                sig_name = "R2"
+                sig_name = "Second rank (R2)"
+                counts_mat = post_data["r2_marginal_counts"]
 
             title = f"P(Ace | {sig_name} = x)"
-            st.plotly_chart(posterior_line(x_vals, y_vals, title, sig_name),
+            # Compute sample sizes for confidence intervals
+            sample_counts = counts_mat.sum(axis=1) if counts_mat is not None else None
+            st.plotly_chart(posterior_line(x_vals, y_vals, title, sig_name, counts=sample_counts),
                           width="stretch", key=f"post_cond_{tag}")
 
     # ========== JOINT CONDITIONAL POSTERIORS ==========
     else:  # post_type == "Joint Conditional"
         # P(Rmax | signal, R2) - like 2-Stage mode
+
+        # Show Max Rank slider when payoff scaling is ON
+        if scale_pay == 1:
+            max_rank_choice = st.slider("Max Rank", min_value=2, max_value=14, value=14,
+                                       key=f"max_rank_joint_{tag}")
+            rmax_idx = max_rank_choice - 2
+            rank_label = f"Max rank = {max_rank_choice}"
+        else:
+            rmax_idx = ACE_RANK - 2  # Ace = 14, idx = 12
+            rank_label = "Ace"
+
         # X-axis selector
         col_x1, col_x2 = st.columns([1, 2])
         with col_x1:
-            x_axis_opts = [signal_label, "Second Rank"]
+            x_axis_opts = [signal_label, "Second rank (R2)"]
             x_axis_choice = st.selectbox("X-axis", x_axis_opts, key=f"x_axis_joint_{tag}")
 
         if x_axis_choice == signal_label:
@@ -441,22 +591,27 @@ def _render_posteriors_panel(tag: str, post_data: dict):
             # Extract data
             keys = post_data["joint_med_keys"] if signal_type == "median" else post_data["joint_t2_keys"]
             mat = post_data["joint_med_mat"] if signal_type == "median" else post_data["joint_t2_mat"]
+            counts_mat = post_data["joint_med_counts"] if signal_type == "median" else post_data["joint_t2_counts"]
 
-            # Slice for R2 and Ace
+            # Slice for R2 and selected max rank
             r2_idx = int(r2_val) - 2
-            ace_idx = ACE_RANK - 2
-            y_vals = mat[:, r2_idx, ace_idx]
+            y_vals = mat[:, r2_idx, rmax_idx]
             x_vals = keys
 
-            title = f"P(Ace | {signal_label} = x and R2 = {r2_val})"
+            # Compute sample sizes for confidence intervals
+            # For joint posteriors at fixed R2, sum across all Rmax values for each signal bucket
+            sample_counts = counts_mat[:, r2_idx, :].sum(axis=1) if counts_mat is not None else None
+
+            title = f"P({rank_label} | {signal_label} = x and R2 = {r2_val})"
             xlab = signal_label
-            st.plotly_chart(posterior_line(x_vals, y_vals, title, xlab),
+            st.plotly_chart(posterior_line(x_vals, y_vals, title, xlab, counts=sample_counts),
                           width="stretch", key=f"post_joint_{tag}")
 
-        else:  # "Second Rank" on X-axis
+        else:  # "Second rank (R2)" on X-axis
             # R2 on X-axis, signal as parameter
             keys = post_data["joint_med_keys"] if signal_type == "median" else post_data["joint_t2_keys"]
             mat = post_data["joint_med_mat"] if signal_type == "median" else post_data["joint_t2_mat"]
+            counts_mat = post_data["joint_med_counts"] if signal_type == "median" else post_data["joint_t2_counts"]
 
             with col_x2:
                 sig_val = st.slider(f"{signal_label} value",
@@ -471,13 +626,16 @@ def _render_posteriors_panel(tag: str, post_data: dict):
                 st.warning(f"No data for {signal_label} = {sig_val}")
             else:
                 bucket_idx = bucket_idx[0]
-                ace_idx = ACE_RANK - 2
-                y_vals = mat[bucket_idx, :, ace_idx]
-                x_vals = np.arange(2, 15)  # R2 values 2-14
+                y_vals = mat[bucket_idx, :, rmax_idx]
+                x_vals = np.arange(2, 14)  # Second rank values 2-13 (cannot be 14/Ace)
 
-                title = f"P(Ace | {signal_label} = {sig_val} and R2 = x)"
-                xlab = "Second Rank (R2)"
-                st.plotly_chart(posterior_line(x_vals, y_vals, title, xlab),
+                # Compute sample sizes for confidence intervals
+                # For fixed signal bucket, sum across all Rmax values for each R2
+                sample_counts = counts_mat[bucket_idx, :, :].sum(axis=1) if counts_mat is not None else None
+
+                title = f"P({rank_label} | {signal_label} = {sig_val} and R2 = x)"
+                xlab = "Second rank (R2)"
+                st.plotly_chart(posterior_line(x_vals, y_vals, title, xlab, counts=sample_counts),
                               width="stretch", key=f"post_joint_r2_{tag}")
 
 # ==============================

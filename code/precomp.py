@@ -191,7 +191,9 @@ def _accumulate(seed: int, rounds: int, procs: int):
         # Marginal posteriors
         marg_med_keys, marg_med_prob, marg_t2_keys, marg_t2_prob,
         # Common
-        prior_rmax, r2_marg_prob, stats
+        prior_rmax, r2_marg_prob, stats,
+        # Counts for confidence intervals
+        joint_med_counts, joint_t2_counts, marg_med_counts, marg_t2_counts, r2_marg_counts
     )
 
 def main():
@@ -206,7 +208,8 @@ def main():
     (
         joint_med_keys, joint_med_prob, joint_t2_keys, joint_t2_prob,
         marg_med_keys, marg_med_prob, marg_t2_keys, marg_t2_prob,
-        prior_rmax, r2_marg_prob, stats
+        prior_rmax, r2_marg_prob, stats,
+        joint_med_counts, joint_t2_counts, marg_med_counts, marg_t2_counts, r2_marg_counts
     ) = _accumulate(args.seed, args.rounds, args.procs)
 
     out_path = Path(args.out); out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -222,6 +225,12 @@ def main():
         prior_rmax=prior_rmax,
         r2_marginal_mat=r2_marg_prob,
         meta=stats,
+        # Counts for confidence intervals
+        joint_median_counts=joint_med_counts,
+        joint_top2_counts=joint_t2_counts,
+        rmax_median_counts=marg_med_counts,
+        rmax_top2_counts=marg_t2_counts,
+        r2_marginal_counts=r2_marg_counts,
     )
     print(f"\nWrote posteriors to {out_path} | rounds={args.rounds}, piles={stats['piles']}")
     print(f"  - Joint: {len(joint_med_keys)} median buckets, {len(joint_t2_keys)} top2 buckets")
