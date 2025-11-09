@@ -3,3 +3,4 @@ plotly
 numpy
 scipy
 pandas
+streamlit_plotly_events
