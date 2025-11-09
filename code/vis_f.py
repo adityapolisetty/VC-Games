@@ -340,8 +340,16 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
             # Simulations info
             sim_str = f"<br>Simulations: {total_rounds:,}" if total_rounds else ""
 
-            # Simple hover - just shows n, mean, SD
-            hover_text = f"n={n_sig} | Mean: {mean_val:.2f}% | SD: {sd_val:.2f}%"
+            # Detailed hover text
+            hover_text = (
+                f"<b>n={n_sig} signals</b>{sim_str}<br>"
+                f"<b>Returns:</b> Mean: {mean_val:.2f}%, SD: {sd_val:.2f}%<br>"
+                f"<b>Sharpe:</b> {sharpe:.2f}<br>"
+                f"<b>Weights (sorted high→low by Stage-1 EV):</b><br>"
+                f"{weights_str}<br>"
+                f"<b>Σw²:</b> {cs[idx_k]:.3f}"
+                f"{hit_rate_str}"
+            )
             hover_texts.append(hover_text)
 
             # Store metadata for click events
@@ -369,7 +377,6 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
             text=[str(n_sig)] * len(keep_idx), textposition="middle center", textfont=dict(size=11, color="white"),
             hovertemplate="%{hovertext}<extra></extra>",
             hovertext=hover_texts, showlegend=False, opacity=ALPHA,
-            customdata=custom_data,  # Store full data for info box lookup
         ))
 
     yaxis_cfg = dict(title=dict(text="Mean Return (%)", font=dict(size=13)), tickfont=dict(size=16), showgrid=True, gridcolor="rgba(128,128,128,0.1)")
@@ -380,14 +387,15 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
         font=dict(family="Roboto, Arial, sans-serif", size=15),
         xaxis=dict(title=dict(text="Standard Deviation (%)", font=dict(size=13)), tickfont=dict(size=16), showgrid=True, gridcolor="rgba(128,128,128,0.1)"),
         yaxis=yaxis_cfg,
-        height=600,  # Standard height
-        hovermode="closest",
-        margin=dict(l=10, r=10, t=10, b=50),  # Normal margins
+        height=600,
+        hovermode="x unified",  # Keeps hover info at top of chart
+        margin=dict(l=10, r=10, t=80, b=50),  # Extra top margin for hover
         hoverlabel=dict(
-            bgcolor="white",
+            bgcolor="rgba(255, 255, 255, 0.95)",
             font_size=13,
             font_family="Roboto, Arial, sans-serif",
             bordercolor="#2b8cbe",
+            align="left",
         ),
     )
     return fig, all_custom_data
@@ -415,58 +423,6 @@ if extA and extB:
 else:
     global_vmin, global_vmax = None, None
 
-# Initialize session state for hover info
-if 'hover_info_A' not in st.session_state:
-    st.session_state.hover_info_A = None
-if 'hover_info_B' not in st.session_state:
-    st.session_state.hover_info_B = None
-
-# Helper function to create info box HTML
-def create_info_box(info):
-    if info is None:
-        return "<div style='padding: 20px; background: #f8f9fa; border: 2px solid #dee2e6; border-radius: 8px; min-height: 180px; text-align: center; color: #6c757d;'><p style='margin-top: 60px;'>Hover over a marker to see details</p></div>"
-
-    # Build weights display
-    w_vec = np.array(info['weights'])
-    line1 = " | ".join([f"Pile {i+1}: {w_vec[i]:.1%}" for i in range(3)])
-    line2 = " | ".join([f"Pile {i+1}: {w_vec[i]:.1%}" for i in range(3, 6)])
-    line3 = " | ".join([f"Pile {i+1}: {w_vec[i]:.1%}" for i in range(6, 9)])
-
-    # Hit rates
-    hit_str = ""
-    if info['total_rounds'] and info['total_rounds'] > 0:
-        ace_pct = (info['ace_hits'] / info['total_rounds']) * 100
-        hit_str = f"<br><strong>Hit Rates:</strong> Ace: {ace_pct:.1f}%"
-        if info['scale_pay'] == 1:
-            king_pct = (info['king_hits'] / info['total_rounds']) * 100
-            queen_pct = (info['queen_hits'] / info['total_rounds']) * 100
-            hit_str += f", King: {king_pct:.1f}%, Queen: {queen_pct:.1f}%"
-
-    sim_str = f"{info['total_rounds']:,}" if info['total_rounds'] else "N/A"
-
-    return f"""
-    <div style='padding: 15px; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-                border: 2px solid #2b8cbe; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-        <h4 style='margin: 0 0 10px 0; color: #2b8cbe;'>Point Details: n={info['n_sig']} signals</h4>
-        <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;'>
-            <div><strong>Simulations:</strong> {sim_str}</div>
-            <div><strong>Sharpe Ratio:</strong> {info['sharpe']:.3f}</div>
-            <div><strong>Mean Return:</strong> {info['mean']:.2f}%</div>
-            <div><strong>Std Dev:</strong> {info['sd']:.2f}%</div>
-            <div style='grid-column: 1 / -1;'><strong>Σw²:</strong> {info['ssq']:.3f}</div>
-        </div>
-        <div style='margin-top: 10px; padding-top: 10px; border-top: 1px solid #dee2e6;'>
-            <strong>Weights (sorted high→low by Stage-1 EV):</strong><br>
-            <div style='font-family: monospace; font-size: 12px; line-height: 1.6;'>
-                {line1}<br>
-                {line2}<br>
-                {line3}
-            </div>
-            {hit_str}
-        </div>
-    </div>
-    """
-
 # Render charts side-by-side
 colA, colB = st.columns(2)
 
@@ -476,33 +432,8 @@ with colA:
         st.caption("Run frontier.py to generate frontier data.")
     else:
         st.markdown("**Fixed:** Signal cost=£3, Ace payoff=20X" + (", Scale param=0.25" if sp_A == 1 else ""))
-
-        # Info box above chart
-        st.markdown(create_info_box(st.session_state.hover_info_A), unsafe_allow_html=True)
-        st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)  # Spacer
-
-        figA, dataA = _build_fig(data_A, max_n_A, y_range, global_vmin, global_vmax)
-
-        # Add JavaScript to update info box on hover
-        figA.update_layout(
-            updatemenus=[dict(
-                type="buttons",
-                direction="left",
-                buttons=[],
-                visible=False
-            )]
-        )
-
-        selected = st.plotly_chart(figA, use_container_width=True, key="mv_frontier_A", on_select="rerun")
-
-        # Store data for next rerun when hovering
-        if selected and 'selection' in selected and 'points' in selected['selection']:
-            points = selected['selection']['points']
-            if points and len(points) > 0:
-                pt_idx = points[0].get('point_index', 0)
-                trace_idx = points[0].get('curve_number', 0)
-                if pt_idx < len(dataA):
-                    st.session_state.hover_info_A = dataA[pt_idx]
+        figA, _ = _build_fig(data_A, max_n_A, y_range, global_vmin, global_vmax)
+        st.plotly_chart(figA, use_container_width=True, key="mv_frontier_A")
 
 with colB:
     if data_B is None:
@@ -510,31 +441,8 @@ with colB:
         st.caption("Run frontier.py to generate frontier data.")
     else:
         st.markdown("**Fixed:** Signal cost=£3, Ace payoff=20X" + (", Scale param=0.25" if sp_B == 1 else ""))
-
-        # Info box above chart
-        st.markdown(create_info_box(st.session_state.hover_info_B), unsafe_allow_html=True)
-        st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)  # Spacer
-
-        figB, dataB = _build_fig(data_B, max_n_B, y_range, global_vmin, global_vmax)
-
-        figB.update_layout(
-            updatemenus=[dict(
-                type="buttons",
-                direction="left",
-                buttons=[],
-                visible=False
-            )]
-        )
-
-        selected = st.plotly_chart(figB, use_container_width=True, key="mv_frontier_B", on_select="rerun")
-
-        if selected and 'selection' in selected and 'points' in selected['selection']:
-            points = selected['selection']['points']
-            if points and len(points) > 0:
-                pt_idx = points[0].get('point_index', 0)
-                trace_idx = points[0].get('curve_number', 0)
-                if pt_idx < len(dataB):
-                    st.session_state.hover_info_B = dataB[pt_idx]
+        figB, _ = _build_fig(data_B, max_n_B, y_range, global_vmin, global_vmax)
+        st.plotly_chart(figB, use_container_width=True, key="mv_frontier_B")
 
 # Shared legend at bottom
 if (global_vmin is not None) and (global_vmax is not None):
