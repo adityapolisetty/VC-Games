@@ -24,7 +24,11 @@ st.markdown(
       .js-plotly-plot .plotly .main-svg { overflow: visible !important; }
       .js-plotly-plot .plotly .hoverlayer { overflow: visible !important; }
       .js-plotly-plot .plotly .hoverlayer .hovertext {
-        max-width: 500px !important;
+        max-width: 600px !important;
+        min-width: 400px !important;
+        white-space: normal !important;
+        padding: 12px !important;
+        line-height: 1.5 !important;
       }
     </style>
     """,
@@ -327,21 +331,27 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
             hit_rate_str = ""
             if total_rounds and total_rounds > 0:
                 ace_pct = (ace_hit / total_rounds) * 100
-                hit_rate_str = f"<br><b>Hit Rates:</b><br>Ace: {ace_pct:.1f}%"
+                hit_rate_str = f"<br><br><b>Hit Rates:</b><br>Ace: {ace_pct:.1f}%"
                 if scale_pay == 1:
                     king_pct = (king_hit / total_rounds) * 100
                     queen_pct = (queen_hit / total_rounds) * 100
                     hit_rate_str += f", King: {king_pct:.1f}%, Queen: {queen_pct:.1f}%"
-            else:
-                hit_rate_str = f"<br><b>Hit Counts:</b><br>Ace: {ace_hit}"
-                if scale_pay == 1:
-                    hit_rate_str += f", King: {king_hit}, Queen: {queen_hit}"
 
             # Simulations info
             sim_str = f"<br>Simulations: {total_rounds:,}" if total_rounds else ""
 
-            # Simple hover - just basics
-            hover_text = f"n={n_sig} | Mean: {mean_val:.2f}% | SD: {sd_val:.2f}%"
+            # Detailed hover text with all information
+            hover_text = (
+                f"<b>Signals: n={n_sig}</b><br>"
+                f"<b>Simulations:</b> {total_rounds:,}<br>"
+                f"<b>Mean Return:</b> {mean_val:.2f}%<br>"
+                f"<b>Std Dev:</b> {sd_val:.2f}%<br>"
+                f"<b>Sharpe Ratio:</b> {sharpe:.2f}<br>"
+                f"<b>Σw²:</b> {cs[idx_k]:.3f}<br>"
+                f"<br><b>Weights (sorted high→low by Stage-1 EV):</b><br>"
+                f"{line1}<br>{line2}<br>{line3}"
+                f"{hit_rate_str}"
+            )
             hover_texts.append(hover_text)
 
             # Store metadata for click events
@@ -384,9 +394,11 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
         margin=dict(l=10, r=10, t=10, b=50),
         hoverlabel=dict(
             bgcolor="white",
-            font_size=13,
+            font_size=14,
             font_family="Roboto, Arial, sans-serif",
             bordercolor="#2b8cbe",
+            align="left",
+            namelength=-1,
         ),
     )
     return fig, all_custom_data
