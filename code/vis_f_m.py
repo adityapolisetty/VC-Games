@@ -177,7 +177,7 @@ with ctlB:
         st.empty()
 
 # Resolve files
-frontier_dir = Path("frontier_output/").resolve()
+frontier_dir = Path("frontier_output_m/").resolve()
 raw_A = dict(signal_cost=3.0, scale_pay=sp_A, scale_param=(0.25 if sp_A == 1 else 0.0), ace_payout=20.0)
 raw_B = dict(signal_cost=3.0, scale_pay=sp_B, scale_param=(0.25 if sp_B == 1 else 0.0), ace_payout=20.0)
 _, key_A = _canonicalize(raw_A)

@@ -29,89 +29,122 @@ from typing import Dict, List, Tuple
 import numpy as np
 from numpy.random import default_rng
 
-# Import shared functions and constants
-from sim_res import round_seed, _deal_cards_global_deck
-from precomp import _second_highest_rank
-from fns import canonicalize_params, NUM_PILES, CARDS_PER_PILE, ACE_RANK, BUDGET
-
 # -----------------------
 # Constants / defaults
 # -----------------------
+NUM_PILES = 9
+CARDS_PER_PILE = 5
+ACE_RANK = 14
+BUDGET = 100.0
 
-# Posterior NPZ (unified file with both marginal and joint posteriors)
-POST_NPZ_DEFAULT = "../precomp_output/post_mc.npz"
+# Posterior NPZs (same defaults as dynamic code, relative to this file)
+POST_NPZ_DEFAULT = "../output/post_mc.npz"
+POST_NPZ_JOINT_DEFAULT = "../output_joint/post_joint.npz"
 
 # Fixed params per request
 SIGNAL_COST = 3.0
 ACE_PAYOUT = 20.0
 SCALE_PARAM_ON = 0.25
-ALPHA_GRID = np.linspace(0, 1.0, 11) 
-UNITS = 10  
-SD_STEP = 1  # percentage points
+ALPHA_GRID = np.linspace(0.1, 1.0, 10)  # 0.0..1.0 step 0.1
+UNITS = 20  # 0.05 granularity
+MAX_SUPPORT = 3  # support size m ∈ {1,2,3} - concentrate investment in top 3 piles
+SD_STEP = 0.1  # percentage points
 
 
 # -----------------------
 # Helpers (synced with dynamic code)
 # -----------------------
-# Functions imported from sim_res: round_seed, _deal_cards_global_deck, _second_highest_rank
+def round_seed(base_seed: int, r: int) -> int:
+    import zlib
+
+    s = f"{int(base_seed)}|round|{int(r)}".encode("utf-8")
+    return int(np.uint32(zlib.adler32(s)))
 
 
-def _load_posteriors(npz_path: str):
-    """
-    Load all posteriors from unified NPZ file (both marginal and joint).
+def _deal_cards_global_deck(rng):
+    special_cards = np.array([ACE_RANK, 13, 13, 12, 12], dtype=int)
+    if special_cards.size:
+        rng.shuffle(special_cards)
+    hands = [[] for _ in range(NUM_PILES)]
+    for card in special_cards:
+        available = [i for i in range(NUM_PILES) if len(hands[i]) < CARDS_PER_PILE]
+        if not available:
+            break
+        pile_idx = int(rng.choice(available))
+        hands[pile_idx].append(int(card))
+    pool = np.repeat(np.arange(2, 12, dtype=int), 4)
+    for i in range(NUM_PILES):
+        need = CARDS_PER_PILE - len(hands[i])
+        if need > 0:
+            if need > pool.shape[0]:
+                need = int(pool.shape[0])
+            idx = rng.choice(pool.shape[0], size=need, replace=False)
+            draw = pool[idx]
+            hands[i].extend(draw.tolist())
+            pool = np.delete(pool, idx)
+    has_ace = np.zeros(NUM_PILES, dtype=bool)
+    medians = np.empty(NUM_PILES, dtype=int)
+    top2sum = np.empty(NUM_PILES, dtype=int)
+    max_rank = np.empty(NUM_PILES, dtype=int)
+    for i in range(NUM_PILES):
+        arr = np.array(sorted(hands[i]), dtype=int)
+        has_ace[i] = bool(np.any(arr == ACE_RANK))
+        medians[i] = int(arr[CARDS_PER_PILE // 2])
+        top2sum[i] = int(arr[-1] + arr[-2])
+        max_rank[i] = int(arr[-1])
+    return has_ace, [np.array(sorted(h), int) for h in hands], medians, top2sum, max_rank
 
-    Returns:
-        rmax_tables: dict with 'median' and 'top2' marginal posteriors P(Rmax|signal)
-        joint_tables: dict with 'median' and 'top2' joint posteriors P(Rmax|signal,R2)
-        prior_rmax: P(Rmax) prior distribution
-        r2_marginal: P(Rmax|R2) marginal distribution
-    """
+
+def _second_highest_rank(pile: np.ndarray) -> int:
+    arr = np.sort(np.asarray(pile, int))
+    return int(arr[-2]) if arr.size >= 2 else int(arr[-1])
+
+
+def _load_mc_posteriors(npz_path: str):
+    import pathlib
+
     p = pathlib.Path(npz_path)
     if not p.exists():
         raise FileNotFoundError(f"post_npz not found: {p}")
-
     with np.load(p, allow_pickle=False) as z:
-        # Check for required arrays from unified NPZ
-        req = {
-            "rmax_median_keys", "rmax_median_mat", "rmax_top2_keys", "rmax_top2_mat",
-            "joint_median_keys", "joint_median_mat", "joint_top2_keys", "joint_top2_mat",
-            "prior_rmax", "r2_marginal_mat"
-        }
+        req = {"rmax_median_keys", "rmax_median_mat", "rmax_top2_keys", "rmax_top2_mat", "prior_rmax"}
         missing = [k for k in req if k not in z.files]
         if missing:
             raise ValueError(f"post_npz missing arrays: {missing}")
-
-        # Load marginal posteriors P(Rmax|signal)
         m_keys = np.asarray(z["rmax_median_keys"], int)
         m_mat = np.asarray(z["rmax_median_mat"], float)
         t_keys = np.asarray(z["rmax_top2_keys"], int)
         t_mat = np.asarray(z["rmax_top2_mat"], float)
+        prior = np.asarray(z["prior_rmax"], float)
+    rmax_median = {int(k): np.array(m_mat[i], float) for i, k in enumerate(m_keys)}
+    rmax_top2 = {int(k): np.array(t_mat[i], float) for i, k in enumerate(t_keys)}
+    return rmax_median, rmax_top2, prior
 
-        # Load joint posteriors P(Rmax|signal,R2)
+
+def _load_joint_posteriors(npz_path: str):
+    import pathlib
+
+    p = pathlib.Path(npz_path)
+    if not p.exists():
+        raise FileNotFoundError(f"joint post_npz not found: {p}")
+    with np.load(p, allow_pickle=False) as z:
+        req = {"joint_median_keys", "joint_median_mat", "joint_top2_keys", "joint_top2_mat", "prior_rmax", "r2_marginal_mat"}
+        missing = [k for k in req if k not in z.files]
+        if missing:
+            raise ValueError(f"joint NPZ missing arrays: {missing}")
         jm_keys = np.asarray(z["joint_median_keys"], int)
         jm_mat = np.asarray(z["joint_median_mat"], float)
         jt_keys = np.asarray(z["joint_top2_keys"], int)
         jt_mat = np.asarray(z["joint_top2_mat"], float)
-
-        # Load common arrays
         prior = np.asarray(z["prior_rmax"], float)
         r2_marg = np.asarray(z["r2_marginal_mat"], float)
-
-    # Build marginal posterior lookup dicts
-    rmax_median = {int(k): np.array(m_mat[i], float) for i, k in enumerate(m_keys)}
-    rmax_top2 = {int(k): np.array(t_mat[i], float) for i, k in enumerate(t_keys)}
-    rmax_tables = {"median": rmax_median, "top2": rmax_top2}
-
-    # Build joint posterior lookup with row mapping
     def _rowmap(keys: np.ndarray):
         return {int(k): int(i) for i, k in enumerate(keys.tolist())}
-
     joint_tables = {
         "median": (jm_keys, jm_mat, _rowmap(jm_keys)),
         "top2": (jt_keys, jt_mat, _rowmap(jt_keys)),
     }
-
-    return rmax_tables, joint_tables, prior, r2_marg
+    return joint_tables, prior, r2_marg
 
 
 def _hvals(scale_pay: int, scale_param: float, ace_payout: float, half: bool = False) -> np.ndarray:
@@ -150,23 +183,44 @@ def _weight_splits(units: int, m: int) -> np.ndarray:
     return (np.asarray(out, float) / float(units)).reshape((-1, m))
 
 
-def _concat_stats(stats: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    # Extract statistics directly (m=NUM_PILES=9 hardcoded, no concatenation needed)
-    g1 = stats["sum_g1"]
-    g2 = stats["sum_g2"]
-    g1sq = stats["sum_g1_sq"]
-    g2sq = stats["sum_g2_sq"]
-    g12 = stats["sum_g12"]
-    ace_hits = stats["ace_hits"]
-    king_hits = stats["king_hits"]
-    queen_hits = stats["queen_hits"]
-    cnt = int(stats["count"])
-    # Weight template is already in (43758, NUM_PILES) format
-    rank9 = stats.get("Wm_template", _weight_splits(UNITS, NUM_PILES))
-    return g1, g2, g1sq, g2sq, g12, cnt, rank9, ace_hits, king_hits, queen_hits
+def _concat_stats(stats_by_m: Dict[int, Dict[str, np.ndarray]]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, np.ndarray]:
+    # Concatenate across m in consistent order and return also an index-to-rank9 mapping
+    parts_g1 = []
+    parts_g2 = []
+    parts_g1sq = []
+    parts_g2sq = []
+    parts_g12 = []
+    parts_count = []
+    rank9_weights = []
+    for m in sorted(stats_by_m.keys()):
+        st = stats_by_m[m]
+        parts_g1.append(st["sum_g1"]) ; parts_g2.append(st["sum_g2"]) ; parts_g1sq.append(st["sum_g1_sq"]) ; parts_g2sq.append(st["sum_g2_sq"]) ; parts_g12.append(st["sum_g12"]) ; parts_count.append(int(st["count"]))
+        # Build rank-ordered 9-vector templates for this m once
+        Wm = st.get("Wm_template", None)
+        if Wm is None:
+            # reconstruct from shapes: sum_g1 length = num_splits
+            # regenerate splits deterministically
+            Wm = _weight_splits(UNITS, m)
+        for row in Wm:
+            v = np.zeros((NUM_PILES,), float)
+            v[:m] = row
+            rank9_weights.append(v)
+    g1 = np.concatenate(parts_g1) if parts_g1 else np.zeros((0,), float)
+    g2 = np.concatenate(parts_g2) if parts_g2 else np.zeros((0,), float)
+    g1sq = np.concatenate(parts_g1sq) if parts_g1sq else np.zeros((0,), float)
+    g2sq = np.concatenate(parts_g2sq) if parts_g2sq else np.zeros((0,), float)
+    g12 = np.concatenate(parts_g12) if parts_g12 else np.zeros((0,), float)
+    # all counts equal; take first nonzero
+    cnt = 0
+    for c in parts_count:
+        if c > 0:
+            cnt = c
+            break
+    rank9 = np.vstack(rank9_weights) if rank9_weights else np.zeros((0, NUM_PILES), float)
+    return g1, g2, g1sq, g2sq, g12, cnt, rank9
 
 
-def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, sp, scale_param, rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel=False):
+def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, sp, scale_param, rmax_tables, joint_tables, prior_rmax, r2_marginal):
     """
     Worker for IL frontier computation with deterministic round seeding.
 
@@ -177,21 +231,20 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
     - Different chosen_idx based on n_sig (first n_sig from same permutation)
     - Different rankings based on which piles were observed
     """
-    # Prepare per-chunk accumulators (m=NUM_PILES=9 hardcoded)
-    Wm = _weight_splits(UNITS, NUM_PILES)
-    Ns = Wm.shape[0]
-    stats = dict(
-        sum_g1=np.zeros(Ns, float),
-        sum_g2=np.zeros(Ns, float),
-        sum_g1_sq=np.zeros(Ns, float),
-        sum_g2_sq=np.zeros(Ns, float),
-        sum_g12=np.zeros(Ns, float),
-        ace_hits=np.zeros(Ns, int),  # Count rounds where strategy invested in ace-containing piles
-        king_hits=np.zeros(Ns, int),  # Count rounds where strategy invested in king-containing piles
-        queen_hits=np.zeros(Ns, int),  # Count rounds where strategy invested in queen-containing piles
-        count=0,
-        Wm_template=Wm,
-    )
+    # Prepare per-chunk accumulators by support size
+    stats = {}
+    W_by_m = {m: _weight_splits(UNITS, m) for m in range(1, MAX_SUPPORT + 1)}
+    for m, Wm in W_by_m.items():
+        Ns = Wm.shape[0]
+        stats[m] = dict(
+            sum_g1=np.zeros(Ns, float),
+            sum_g2=np.zeros(Ns, float),
+            sum_g1_sq=np.zeros(Ns, float),
+            sum_g2_sq=np.zeros(Ns, float),
+            sum_g12=np.zeros(Ns, float),
+            count=0,
+            Wm_template=Wm,
+        )
 
     h1 = _hvals(sp, scale_param, ACE_PAYOUT, half=False)
     h2 = _hvals(sp, scale_param, ACE_PAYOUT, half=True)
@@ -202,10 +255,7 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         r = int(round_start) + int(i)
         # DETERMINISM: same base_seed and round r → same RNG state → same board
         rng = default_rng(round_seed(int(base_seed), r))
-        has_ace, hands, medians, top2sum, max_rank, min_rank = _deal_cards_global_deck(rng)
-        # Compute has_king and has_queen for premium card tracking
-        has_king = np.array([13 in np.asarray(h, int) for h in hands], dtype=bool)
-        has_queen = np.array([12 in np.asarray(h, int) for h in hands], dtype=bool)
+        _, hands, medians, top2sum, max_rank = _deal_cards_global_deck(rng)
         pi = rng.permutation(NUM_PILES)
         chosen_idx = pi[:n_sig]
         chosen_set = set(int(x) for x in np.asarray(chosen_idx, int))
@@ -218,52 +268,39 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         order1 = np.argsort(-s1)
         R2 = np.array([_second_highest_rank(h) for h in hands], int)
         p_real = _per_dollar_realized(np.asarray(max_rank, int), sp, scale_param, ACE_PAYOUT)
-        p_real_stage2 = 0.5 * p_real  # Stage 2 receives 0.5x payoff per pound
 
-        # Investment in all NUM_PILES companies with various weight strategies
-        top_idx = order1  # All 9 companies in ranked order
-        p_m = p_real[top_idx]
-        p_m_stage2 = p_real_stage2[top_idx]
-        # Stage-2 expected ordering within support
-        s2_m = np.zeros(NUM_PILES, float)
-        for jj, k in enumerate(top_idx):
-            r2k = int(R2[k]) - 2
-            if k in chosen_set:
-                b = int(buckets[k])
-                if (b in rowmap) and (0 <= r2k < 13):
-                    vec = np.asarray(mat3d[rowmap[b], r2k, :], float)
+        for m, Wm in W_by_m.items():
+            top_idx = order1[:m]
+            p_m = p_real[top_idx]
+            # Stage-2 expected ordering within support
+            s2_m = np.zeros(m, float)
+            for jj, k in enumerate(top_idx):
+                r2k = int(R2[k]) - 2
+                if k in chosen_set:
+                    b = int(buckets[k])
+                    if (b in rowmap) and (0 <= r2k < 13):
+                        vec = np.asarray(mat3d[rowmap[b], r2k, :], float)
+                    else:
+                        vec = prior_vec
                 else:
-                    vec = prior_vec
-            else:
-                vec = np.asarray(r2_marginal[r2k, :], float) if (0 <= r2k < 13) else prior_vec
-            s2_m[jj] = float(np.dot(h2, vec))
-        perm2 = np.argsort(-s2_m)
-        g1 = Wm @ p_m
-        g2 = Wm[:, perm2] @ p_m_stage2  # Use Stage 2 payouts (0.5x)
-        stats["sum_g1"] += g1
-        stats["sum_g2"] += g2
-        stats["sum_g1_sq"] += g1 * g1
-        stats["sum_g2_sq"] += g2 * g2
-        stats["sum_g12"] += g1 * g2
-
-        # Track premium card hits: which strategies invested in piles containing aces/kings/queens
-        has_ace_ranked = has_ace[top_idx]  # Boolean array for ranked positions
-        has_king_ranked = has_king[top_idx]
-        has_queen_ranked = has_queen[top_idx]
-        ace_hit_mask = np.any((Wm > 0) & has_ace_ranked, axis=1)  # True if strategy invested in any ace pile
-        king_hit_mask = np.any((Wm > 0) & has_king_ranked, axis=1)
-        queen_hit_mask = np.any((Wm > 0) & has_queen_ranked, axis=1)
-        stats["ace_hits"] += ace_hit_mask.astype(int)
-        stats["king_hits"] += king_hit_mask.astype(int)
-        stats["queen_hits"] += queen_hit_mask.astype(int)
-
-        stats["count"] += 1
+                    vec = np.asarray(r2_marginal[r2k, :], float) if (0 <= r2k < 13) else prior_vec
+                s2_m[jj] = float(np.dot(h2, vec))
+            perm2 = np.argsort(-s2_m)
+            g1 = Wm @ p_m
+            g2 = Wm[:, perm2] @ p_m
+            st = stats[m]
+            st["sum_g1"] += g1
+            st["sum_g2"] += g2
+            st["sum_g1_sq"] += g1 * g1
+            st["sum_g2_sq"] += g2 * g2
+            st["sum_g12"] += g1 * g2
+            st["count"] += 1
 
     return stats
 
 
 def _collect_stats_il(seed: int, rounds: int, procs: int, signal_type: str, n_sig: int, sp: int, scale_param: float,
-                      rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel=False):
+                      rmax_tables, joint_tables, prior_rmax, r2_marginal):
     if procs and int(procs) > 1 and int(rounds) > 1:
         W = int(procs); base = int(rounds) // W; rem = int(rounds) % W
         chunk_sizes = [base + (1 if i < rem else 0) for i in range(W)]
@@ -280,7 +317,7 @@ def _collect_stats_il(seed: int, rounds: int, procs: int, signal_type: str, n_si
                 ex.submit(
                     _worker_chunk_il,
                     int(seed), int(start), int(sz), signal_type, int(n_sig), int(sp), float(scale_param),
-                    rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel,
+                    rmax_tables, joint_tables, prior_rmax, r2_marginal,
                 ) for (start, sz) in starts
             ]
             for fut in futs:
@@ -288,25 +325,22 @@ def _collect_stats_il(seed: int, rounds: int, procs: int, signal_type: str, n_si
                 if out_stats is None:
                     out_stats = st
                 else:
-                    for k in ("sum_g1","sum_g2","sum_g1_sq","sum_g2_sq","sum_g12","ace_hits","king_hits","queen_hits"):
-                        out_stats[k] += st[k]
-                    out_stats["count"] += st["count"]
-
+                    for m in out_stats.keys():
+                        for k in ("sum_g1","sum_g2","sum_g1_sq","sum_g2_sq","sum_g12"):
+                            out_stats[m][k] += st[m][k]
+                        out_stats[m]["count"] += st[m]["count"]
         return out_stats
     else:
-        return _worker_chunk_il(int(seed), 0, int(rounds), signal_type, int(n_sig), int(sp), float(scale_param), rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel)
+        return _worker_chunk_il(int(seed), 0, int(rounds), signal_type, int(n_sig), int(sp), float(scale_param), rmax_tables, joint_tables, prior_rmax, r2_marginal)
     
 
 
-def _save_bins_npz(out_path: pathlib.Path, sd_levels_by_n, best_means_by_n, best_weights_by_n, best_ace_hits_by_n, best_king_hits_by_n, best_queen_hits_by_n, meta: dict):
+def _save_bins_npz(out_path: pathlib.Path, sd_levels_by_n, best_means_by_n, best_weights_by_n, meta: dict):
     payload = dict(
         sd_step=float(SD_STEP),
         sd_levels_by_n=np.array(sd_levels_by_n, dtype=object),
         best_means_by_n=np.array(best_means_by_n, dtype=object),
         best_weights_by_n=np.array(best_weights_by_n, dtype=object),
-        best_ace_hits_by_n=np.array(best_ace_hits_by_n, dtype=object),
-        best_king_hits_by_n=np.array(best_king_hits_by_n, dtype=object),
-        best_queen_hits_by_n=np.array(best_queen_hits_by_n, dtype=object),
         meta=json.dumps(meta),
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -324,79 +358,47 @@ def _save_bins_npz(out_path: pathlib.Path, sd_levels_by_n, best_means_by_n, best
         raise
 
 
-def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, stage1_alloc, out_dir: pathlib.Path, signal_type: str, debug_excel=False):
-    # Load all posteriors from unified NPZ file
-    rmax_tables, joint_tables, prior_rmax, r2_marginal = _load_posteriors(POST_NPZ_DEFAULT)
+def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, stage1_alloc, out_dir: pathlib.Path, signal_type: str):
+    # Load posteriors and build tables
+    rmax_median, rmax_top2, prior_mc = _load_mc_posteriors(POST_NPZ_DEFAULT)
+    joint_tables, prior_joint, r2_marginal = _load_joint_posteriors(POST_NPZ_JOINT_DEFAULT)
+    prior_rmax = prior_joint if isinstance(prior_joint, np.ndarray) else prior_mc
+    rmax_tables = {"median": rmax_median, "top2": rmax_top2}
     sp = int(params["scale_pay"])
     scale_param = float(params["scale_param"]) if sp == 1 else 0.0
     st = str(signal_type)
     # For each n, collect stats across rounds
     stats_by_n = {}
-    debug_data_by_n = {}  # Collect debug data per n_sig
     for n_sig in range(int(max_signals) + 1):
-        # Validate: skip if cannot afford n_sig signals with this stage1_alloc
-        budget1 = float(stage1_alloc) * BUDGET
-        signal_cost_total = float(n_sig) * SIGNAL_COST
-        if budget1 < signal_cost_total:
-            # Cannot afford signals - skip simulation entirely
-            stats_by_n[n_sig] = None
-            debug_data_by_n[n_sig] = None
-            continue
-
-        result = _collect_stats_il(
+        stats_by_n[n_sig] = _collect_stats_il(
             seed=int(seed_int), rounds=int(rounds), procs=int(procs), signal_type=st, n_sig=int(n_sig), sp=sp, scale_param=scale_param,
-            rmax_tables=rmax_tables, joint_tables=joint_tables, prior_rmax=prior_rmax, r2_marginal=r2_marginal, debug_excel=debug_excel,
+            rmax_tables=rmax_tables, joint_tables=joint_tables, prior_rmax=prior_rmax, r2_marginal=r2_marginal,
         )
-        if debug_excel:
-            stats_by_n[n_sig], debug_data_by_n[n_sig] = result
-        else:
-            stats_by_n[n_sig] = result
-            debug_data_by_n[n_sig] = None
 
     # For this alpha, compute bins per n and save
     sd_levels_by_n = []
     best_means_by_n = []
     best_weights_by_n = []
-    best_ace_hits_by_n = []
-    best_king_hits_by_n = []
-    best_queen_hits_by_n = []
 
     for n_sig in range(int(max_signals) + 1):
         stats = stats_by_n[n_sig]
-        # Skip configurations where signals were unaffordable
-        if stats is None:
-            sd_levels_by_n.append(np.array([], float))
-            best_means_by_n.append(np.array([], float))
-            best_weights_by_n.append(np.zeros((0, NUM_PILES), float))
-            best_ace_hits_by_n.append(np.array([], int))
-            best_king_hits_by_n.append(np.array([], int))
-            best_queen_hits_by_n.append(np.array([], int))
-            continue
-        g1, g2, g1sq, g2sq, g12, cnt, rank9, ace_hits, king_hits, queen_hits = _concat_stats(stats)
+        g1, g2, g1sq, g2sq, g12, cnt, rank9 = _concat_stats(stats)
         if cnt <= 1 or g1.size == 0:
             sd_levels_by_n.append(np.array([], float))
             best_means_by_n.append(np.array([], float))
             best_weights_by_n.append(np.zeros((0, NUM_PILES), float))
-            best_ace_hits_by_n.append(np.array([], int))
-            best_king_hits_by_n.append(np.array([], int))
-            best_queen_hits_by_n.append(np.array([], int))
             continue
         budget1 = float(stage1_alloc) * BUDGET
         investable1 = max(0.0, budget1 - float(n_sig) * SIGNAL_COST)
         budget2 = max(0.0, BUDGET - budget1)
         c1 = investable1 / BUDGET
-        # Stage 2 can only invest in piles that Stage 1 invested in
-        if investable1 <= 0:
-            c2 = 0.0
-        else:
-            c2 = budget2 / BUDGET  # Full budget2 (0.5x payoff already in g2)
+        c2 = 0.5 * budget2 / BUDGET
         mean_g1 = g1 / cnt
         mean_g2 = g2 / cnt
         var_g1 = g1sq / cnt - mean_g1 ** 2
         var_g2 = g2sq / cnt - mean_g2 ** 2
         cov_g12 = g12 / cnt - (mean_g1 * mean_g2)
-        # Account for uninvested cash (1.0x return): only invested portions contribute to excess returns
-        mean_net = 100.0 * (c1 * (mean_g1 - 1.0) + c2 * (mean_g2 - 1.0))
+        mean_net = 100.0 * (c1 * mean_g1 + c2 * mean_g2 - 1.0)
         var_net = (100.0 ** 2) * ((c1 ** 2) * np.clip(var_g1, 0, np.inf) + (c2 ** 2) * np.clip(var_g2, 0, np.inf) + 2.0 * c1 * c2 * cov_g12)
         sd_net = np.sqrt(np.clip(var_net, 0.0, np.inf))
 
@@ -407,9 +409,6 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
         sd_levels = []
         best_means = []
         best_weights = []
-        best_ace_hits = []
-        best_king_hits = []
-        best_queen_hits = []
         if max_bin >= 0:
             for b in range(max_bin + 1):
                 mask = (bins == b)
@@ -420,17 +419,12 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
                 sd_levels.append(float(b) * SD_STEP)
                 best_means.append(float(mean_net[sel]))
                 best_weights.append(rank9[sel])
-                best_ace_hits.append(int(ace_hits[sel]))
-                best_king_hits.append(int(king_hits[sel]))
-                best_queen_hits.append(int(queen_hits[sel]))
         sd_levels_by_n.append(np.array(sd_levels, float))
         best_means_by_n.append(np.array(best_means, float))
         best_weights_by_n.append(np.array(best_weights, float))
-        best_ace_hits_by_n.append(np.array(best_ace_hits, int))
-        best_king_hits_by_n.append(np.array(best_king_hits, int))
-        best_queen_hits_by_n.append(np.array(best_queen_hits, int))
 
     # Save per (params, alpha, st)
+    from fns import canonicalize_params
     norm_params, key_tuple, key_id = canonicalize_params(params)
     a_tag = f"a{int(round(float(stage1_alloc)*10)):02d}"
     out_path = out_dir / f"{key_id}_{st}_{a_tag}.npz"
@@ -440,11 +434,11 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
         signal_type=st,
         params=norm_params,
     )
-    _save_bins_npz(out_path, sd_levels_by_n, best_means_by_n, best_weights_by_n, best_ace_hits_by_n, best_king_hits_by_n, best_queen_hits_by_n, meta)
+    _save_bins_npz(out_path, sd_levels_by_n, best_means_by_n, best_weights_by_n, meta)
 
 
 def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
-              sweep_index=None, sweep_stride=1, skip_existing=False, debug_excel=False):
+              sweep_index=None, sweep_stride=1, skip_existing=False):
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -452,16 +446,18 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
     SCALE_PARAMS = [0.25]
     SCALE_PAYS = [0, 1]
     ACE_PAYOUTS = [20.0]
+    STAGE1_ALLOC = [i / 10.0 for i in range(11)]
 
     combos = []
-    for alpha in ALPHA_GRID:
+    for alpha in STAGE1_ALLOC:
         for sp in SCALE_PAYS:
             for s in SCALE_PARAMS:
                 for ap in ACE_PAYOUTS:
                     raw = dict(signal_cost=3.0, scale_pay=sp, scale_param=(s if sp == 1 else 0.0), ace_payout=ap)
+                    from fns import canonicalize_params
                     norm, key_tuple, key_id = canonicalize_params(raw)
                     for st in ("median", "top2"):
-                        a_tag = f"a{int(round(float(alpha)*100)):03d}"  # 000, 005, 010, ..., 100
+                        a_tag = f"a{int(round(float(alpha)*10)):02d}"
                         outfile = out_dir / f"{key_id}_{st}_{a_tag}.npz"
                         combos.append((raw, alpha, st, outfile))
 
@@ -479,7 +475,7 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
     for raw, alpha, st, outfile in combos:
         simulate_and_save_frontier(
             seed_int=int(base_seed), rounds=int(rounds), max_signals=int(max_signals), procs=int(procs_inner),
-            params=raw, stage1_alloc=float(alpha), out_dir=out_dir, signal_type=st, debug_excel=debug_excel,
+            params=raw, stage1_alloc=float(alpha), out_dir=out_dir, signal_type=st,
         )
 
 
@@ -505,9 +501,6 @@ def main():
     ap.add_argument("--sweep_stride", type=int, default=1, help="Array job stride")
     ap.add_argument("--skip_existing", action="store_true", help="Skip existing output files")
 
-    # Debug options
-    ap.add_argument("--debug_excel", action="store_true", help="Generate Excel files with round-by-round debug data for 3 sample strategies")
-
     args = ap.parse_args()
 
     if not args.sweep:
@@ -516,7 +509,6 @@ def main():
     run_sweep(
         base_seed=int(args.seed), rounds=int(args.rounds), max_signals=int(args.max_signals), procs_inner=int(args.procs),
         out_dir=args.sweep_out, sweep_index=args.sweep_index, sweep_stride=args.sweep_stride, skip_existing=bool(args.skip_existing),
-        debug_excel=bool(args.debug_excel),
     )
 
 

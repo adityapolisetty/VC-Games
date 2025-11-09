@@ -469,6 +469,7 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
     stage1_invested: list of card_ids that were invested in Stage 1 (for Stage 2 restrictions)
     stage_history: list of dicts with 'signals' and 'stakes' for each completed stage
     """
+    import os
     global _ACTIONS
     _ACTIONS = None
     _POSTED.clear()
@@ -500,13 +501,18 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
         "stage_history": stage_history or [],  # history of previous stages
     }
 
+    # Use PORT from environment (Railway) or fallback to default
+    # Bind to 0.0.0.0 for Railway (not 127.0.0.1)
+    port = int(os.environ.get("PORT", port))
+    host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+
     # Bind server; if requested port is busy, fall back to an ephemeral port
     try:
-        srv = HTTPServer(("127.0.0.1", port), _H)
+        srv = HTTPServer((host, port), _H)
     except OSError as e:
         # Address in use — fallback
         try:
-            srv = HTTPServer(("127.0.0.1", 0), _H)
+            srv = HTTPServer((host, 0), _H)
         except OSError:
             raise e
     srv.ctx = ctx

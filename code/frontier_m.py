@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """
-frontier.py — Information‑limited (IL) mean‑variance frontier
+frontier_m.py — Information‑limited (IL) mean‑variance frontier with portfolio concentration
 
-Brute‑force within‑stage allocations at 0.05 granularity (20 units) using
+Similar to frontier.py but with configurable MAX_SUPPORT parameter to restrict investment
+to only the top-m piles by Stage-1 expected value (portfolio concentration constraint).
+
+Key difference from frontier.py:
+- MAX_SUPPORT controls how many piles receive investment (e.g., MAX_SUPPORT=3 for top 3 only)
+- All other parameters and behavior identical to frontier.py
+
+Brute‑force within‑stage allocations at 0.10 granularity (10 units) using
 posterior expectations and Stage‑2 updating, with Stage‑2 restricted to the
 Stage‑1 support. Stage‑1/Stage‑2 budget split α is swept on a 0.1 grid.
 
@@ -10,15 +17,15 @@ Scope (fixed params per request)
 - signal_type ∈ {median, top2}
 - scale_pay ∈ {0, 1}; when 1, scale_param=0.25; signal_cost=3; ace_payout=20
 - stage1_alloc α ∈ {0.0, 0.1, …, 1.0}
-- within‑stage weights use support size m ∈ {1, 2, 3, 4, 5} over top‑m piles by Stage‑1
-  expected value; weights on those m piles split in 0.05 increments (20 units).
+- within‑stage weights use support size m=MAX_SUPPORT over top‑m piles by Stage‑1
+  expected value; weights on those m piles split in 0.10 increments (10 units).
   Stage‑2 reassigns Stage‑1 weights within support according to updated Stage‑2
   expected values (a permutation within support).
 
 Output files (no stdout)
 - For each (scale_pay, signal_type, stage1_alloc), writes one NPZ in
   frontier_output/ containing, for every n∈[0..max_signals], the Stage‑1 weight
-  (over rank positions 1..9) with highest mean for each SD bin (0.1 pp).
+  (over rank positions 1..9) with highest mean for each SD bin (5 pp).
 """
 
 import argparse
@@ -45,9 +52,12 @@ POST_NPZ_DEFAULT = "../precomp_output/post_mc.npz"
 SIGNAL_COST = 3.0
 ACE_PAYOUT = 20.0
 SCALE_PARAM_ON = 0.25
-ALPHA_GRID = np.linspace(0, 1.0, 11) 
-UNITS = 10  
-SD_STEP = 1  # percentage points
+ALPHA_GRID = np.linspace(0, 1.0, 11)
+UNITS = 10
+SD_STEP = 0.1  # percentage points
+
+# Portfolio concentration: invest only in top MAX_SUPPORT piles by Stage-1 expected value
+MAX_SUPPORT = 3
 
 
 # -----------------------
@@ -151,7 +161,7 @@ def _weight_splits(units: int, m: int) -> np.ndarray:
 
 
 def _concat_stats(stats: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    # Extract statistics directly (m=NUM_PILES=9 hardcoded, no concatenation needed)
+    # Extract statistics directly (m=MAX_SUPPORT, may be padded to NUM_PILES in output)
     g1 = stats["sum_g1"]
     g2 = stats["sum_g2"]
     g1sq = stats["sum_g1_sq"]
@@ -161,8 +171,8 @@ def _concat_stats(stats: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray,
     king_hits = stats["king_hits"]
     queen_hits = stats["queen_hits"]
     cnt = int(stats["count"])
-    # Weight template is already in (43758, NUM_PILES) format
-    rank9 = stats.get("Wm_template", _weight_splits(UNITS, NUM_PILES))
+    # Weight template: strategies have MAX_SUPPORT-sized weights, will be padded when saving
+    rank9 = stats.get("Wm_template", _weight_splits(UNITS, MAX_SUPPORT))
     return g1, g2, g1sq, g2sq, g12, cnt, rank9, ace_hits, king_hits, queen_hits
 
 
@@ -176,9 +186,11 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
     - Same permutation (pi)
     - Different chosen_idx based on n_sig (first n_sig from same permutation)
     - Different rankings based on which piles were observed
+
+    Portfolio concentration: Only top MAX_SUPPORT piles by Stage-1 EV receive investment
     """
-    # Prepare per-chunk accumulators (m=NUM_PILES=9 hardcoded)
-    Wm = _weight_splits(UNITS, NUM_PILES)
+    # Prepare per-chunk accumulators (m=MAX_SUPPORT for portfolio concentration)
+    Wm = _weight_splits(UNITS, MAX_SUPPORT)
     Ns = Wm.shape[0]
     stats = dict(
         sum_g1=np.zeros(Ns, float),
@@ -220,12 +232,12 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         p_real = _per_dollar_realized(np.asarray(max_rank, int), sp, scale_param, ACE_PAYOUT)
         p_real_stage2 = 0.5 * p_real  # Stage 2 receives 0.5x payoff per pound
 
-        # Investment in all NUM_PILES companies with various weight strategies
-        top_idx = order1  # All 9 companies in ranked order
+        # Portfolio concentration: invest only in top MAX_SUPPORT companies by Stage-1 EV
+        top_idx = order1[:MAX_SUPPORT]
         p_m = p_real[top_idx]
         p_m_stage2 = p_real_stage2[top_idx]
         # Stage-2 expected ordering within support
-        s2_m = np.zeros(NUM_PILES, float)
+        s2_m = np.zeros(MAX_SUPPORT, float)
         for jj, k in enumerate(top_idx):
             r2k = int(R2[k]) - 2
             if k in chosen_set:
@@ -247,7 +259,7 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         stats["sum_g12"] += g1 * g2
 
         # Track premium card hits: which strategies invested in piles containing aces/kings/queens
-        has_ace_ranked = has_ace[top_idx]  # Boolean array for ranked positions
+        has_ace_ranked = has_ace[top_idx]  # Boolean array for ranked positions (top MAX_SUPPORT)
         has_king_ranked = has_king[top_idx]
         has_queen_ranked = has_queen[top_idx]
         ace_hit_mask = np.any((Wm > 0) & has_ace_ranked, axis=1)  # True if strategy invested in any ace pile
@@ -295,7 +307,7 @@ def _collect_stats_il(seed: int, rounds: int, procs: int, signal_type: str, n_si
         return out_stats
     else:
         return _worker_chunk_il(int(seed), 0, int(rounds), signal_type, int(n_sig), int(sp), float(scale_param), rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel)
-    
+
 
 
 def _save_bins_npz(out_path: pathlib.Path, sd_levels_by_n, best_means_by_n, best_weights_by_n, best_ace_hits_by_n, best_king_hits_by_n, best_queen_hits_by_n, meta: dict):
@@ -419,7 +431,10 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
                 sel = np.flatnonzero(mask)[idx]
                 sd_levels.append(float(b) * SD_STEP)
                 best_means.append(float(mean_net[sel]))
-                best_weights.append(rank9[sel])
+                # Expand MAX_SUPPORT-sized weights to NUM_PILES for output consistency
+                weight_full = np.zeros(NUM_PILES, float)
+                weight_full[:MAX_SUPPORT] = rank9[sel]
+                best_weights.append(weight_full)
                 best_ace_hits.append(int(ace_hits[sel]))
                 best_king_hits.append(int(king_hits[sel]))
                 best_queen_hits.append(int(queen_hits[sel]))
@@ -439,6 +454,7 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
         stage1_alloc=float(stage1_alloc),
         signal_type=st,
         params=norm_params,
+        max_support=int(MAX_SUPPORT),  # Include MAX_SUPPORT in metadata
     )
     _save_bins_npz(out_path, sd_levels_by_n, best_means_by_n, best_weights_by_n, best_ace_hits_by_n, best_king_hits_by_n, best_queen_hits_by_n, meta)
 
@@ -485,12 +501,16 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
 
 def main():
     """
-    Information-limited frontier computation with deterministic round seeding.
+    Information-limited frontier computation with deterministic round seeding and portfolio concentration.
 
     DETERMINISM GUARANTEE:
     For a given (base_seed, round_number), the board deal and pile permutation are
     IDENTICAL across all parameter combinations (n_sig, alpha, scale_pay, etc).
     This ensures fair comparison: different strategies see the same underlying boards.
+
+    PORTFOLIO CONCENTRATION:
+    Only top MAX_SUPPORT piles by Stage-1 expected value receive investment.
+    Set MAX_SUPPORT=3 for smooth parabolic frontiers, MAX_SUPPORT=9 for full diversification.
     """
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, required=True, help="Base seed for deterministic rounds")
