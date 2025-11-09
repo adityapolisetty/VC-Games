@@ -53,11 +53,11 @@ SIGNAL_COST = 3.0
 ACE_PAYOUT = 20.0
 SCALE_PARAM_ON = 0.25
 ALPHA_GRID = np.linspace(0, 1.0, 11)
-UNITS = 10
-SD_STEP = 0.1  # percentage points
+UNITS = 20
+SD_STEP = 0.001  # percentage points
 
 # Portfolio concentration: invest only in top MAX_SUPPORT piles by Stage-1 expected value
-MAX_SUPPORT = 3
+MAX_SUPPORT = 5
 
 
 # -----------------------
