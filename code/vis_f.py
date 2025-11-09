@@ -337,13 +337,13 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
                     queen_pct = (queen_hit / total_rounds) * 100
                     hit_rate_str += f", King: {king_pct:.1f}%, Queen: {queen_pct:.1f}%"
 
-            # Simulations info
-            sim_str = f"<br>Simulations: {total_rounds:,}" if total_rounds else ""
+            # Format simulations count
+            sim_display = f"{total_rounds:,}" if total_rounds else "N/A"
 
             # Detailed hover text with all information
             hover_text = (
                 f"<b>Signals: n={n_sig}</b><br>"
-                f"<b>Simulations:</b> {total_rounds:,}<br>"
+                f"<b>Simulations:</b> {sim_display}<br>"
                 f"<b>Mean Return:</b> {mean_val:.2f}%<br>"
                 f"<b>Std Dev:</b> {sd_val:.2f}%<br>"
                 f"<b>Sharpe Ratio:</b> {sharpe:.2f}<br>"
