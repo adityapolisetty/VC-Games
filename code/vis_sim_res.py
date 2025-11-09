@@ -349,11 +349,12 @@ def _render_posteriors_panel(tag: str, post_data: dict):
     # Row 2: Payoff scaling toggle (always shown)
     scale_pay = 1 if st.toggle("Payoff scaling", value=False, key=f"scale_pay_post_{tag}") else 0
 
+    # Row 3: Signal type selector (always shown, used by both Conditional and Joint Conditional)
+    signal_label = st.selectbox("Signal type", ["Median", "Top 2"], key=f"post_sig_{tag}")
+    signal_type = "median" if signal_label == "Median" else "top2"
+
     # ========== CONDITIONAL POSTERIORS ==========
     if post_type == "Conditional":
-        # Row 2: Signal type selector (only for Conditional)
-        signal_label = st.selectbox("Signal type", ["Median", "Top 2"], key=f"post_sig_cond_{tag}")
-        signal_type = "median" if signal_label == "Median" else "top2"
 
         # P(Rmax | signal) - like one-off mode
         if scale_pay == 1:
