@@ -183,8 +183,8 @@ raw_A = dict(signal_cost=3.0, scale_pay=sp_A, scale_param=(0.25 if sp_A == 1 els
 raw_B = dict(signal_cost=3.0, scale_pay=sp_B, scale_param=(0.25 if sp_B == 1 else 0.0), ace_payout=20.0)
 _, key_A = _canonicalize(raw_A)
 _, key_B = _canonicalize(raw_B)
-tag_A = f"a{int(round(float(alpha_A)*100)):03d}"
-tag_B = f"a{int(round(float(alpha_B)*100)):03d}"
+tag_A = f"a{int(round(float(alpha_A)*10)):02d}"
+tag_B = f"a{int(round(float(alpha_B)*10)):02d}"
 file_A = frontier_dir / f"{key_A}_{sig_A}_{tag_A}.npz"
 file_B = frontier_dir / f"{key_B}_{sig_B}_{tag_B}.npz"
 
