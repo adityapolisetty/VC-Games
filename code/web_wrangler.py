@@ -168,61 +168,155 @@ def _results_page(stats: dict) -> str:
     sw = stats.get("sys_wipe", "none")
     sw_label = {"none": "No", "blue": "Blue", "red": "Red", "both": "Blue & Red"}.get(sw, str(sw))
 
-    return f"""<!doctype html><html><head>
-<meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>
-<title>Performance</title>
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Performance - VC Card Games</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js" charset="utf-8"></script>
 <style>
-:root{{--bg:#0f172a;--panel:#0b1220;--b:#1f2937;--cta:#f59e0b;--ctat:#111827;--fg:#e5e7eb}}
-*{{box-sizing:border-box}} body{{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial}}
-.brandbar{{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--b);background:#0a1020}}
-.brand-left{{position:absolute;left:12px;font-weight:900}}
-header{{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-bottom:1px solid var(--b);background:var(--panel)}}
-.hdr-right{{text-align:right}}
-.hdr-right .meta{{font-size:12px;opacity:.85;line-height:1.3}}
-.wrap{{max-width:960px;margin:20px auto;padding:0 20px}}
-.card{{background:var(--panel);border:1px solid var(--b);border-radius:12px;padding:16px;margin:10px 0}}
-.btn{{padding:14px 16px;font-weight:800;border-radius:12px;border:2px solid var(--cta);background:var(--cta);color:var(--ctat);cursor:pointer;transition:filter .15s,transform .15s,box-shadow .15s}}
-.btn:hover{{filter:brightness(1.07) saturate(1.06);transform:translateY(-1px);box-shadow:0 6px 16px rgba(0,0,0,.35)}}
-.grid2{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
-.stat{{display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--b);border-radius:10px}}
-.stat div:first-child{{opacity:.8}}
-.overlay{{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:50}}
-.overlay .box{{background:var(--panel);border:1px solid var(--b);border-radius:12px;padding:20px 24px;font-weight:800}}
-</style></head><body>
-<div class='brandbar'><div class='brand-left'>Imperial</div><div>{stats.get('player','')}</div></div>
+  @font-face{{font-family:'Source Sans Pro'; font-style:normal; font-weight:400; font-display:swap; src: local('Source Sans Pro Regular'), local('SourceSansPro-Regular'), url('/assets/SourceSansPro-Regular.woff2') format('woff2'), url('/assets/SourceSansPro-Regular.ttf.woff2') format('woff2');}}
+  @font-face{{font-family:'Source Sans Pro'; font-style:normal; font-weight:600; font-display:swap; src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url('/assets/SourceSansPro-Semibold.woff2') format('woff2'), url('/assets/SourceSansPro-Semibold.ttf.woff2') format('woff2');}}
+  :root {{ --blue:#2b6cb0; --red:#c53030; --green:#059669; --bg:#ffffff; --panel:#ffffff; --cta:#f59e0b; --ctatxt:#111827; --b:#e5e7eb; --infoW:72px; }}
+  *{{box-sizing:border-box}}
+  body{{margin:0;font-family:"Source Sans Pro", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif; background:var(--bg); color:#111827; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale}}
 
-<header>
-  <div style='font-weight:800'>Performance</div>
-  <div class='hdr-right'>
-    <div class='meta'>
-      Invested £{stats.get('invested',0):.2f} •
-      Signals £{stats.get('signals_spent',0):.2f} •
-      Remaining £{stats.get('wallet_left',0):.2f}
-    </div>
+  .brandbar{{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--b);background:var(--panel);position:sticky;top:0;z-index:20;font-size:22px}}
+  .brand-center{{font-weight:900}}
+
+  header.nav{{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--b);background:var(--panel);position:sticky;top:40px;z-index:10}}
+  .nav .title{{font-weight:600;font-size:14px;color:#111827}}
+  .right{{display:flex;gap:16px}}
+  .budget{{font-weight:700}}
+  .muted{{color:#4b5563}}
+
+  .wrap{{display:grid;grid-template-columns:1fr calc(420px - 170px + (var(--infoW)/2));gap:20px;padding:40px 20px 20px;margin-left:72px}}
+
+  .content-panel{{border:1px solid var(--b);border-radius:12px;padding:20px;background:var(--panel)}}
+
+  .tab-nav{{display:flex;gap:8px;margin-bottom:20px;border-bottom:2px solid var(--b);padding-bottom:8px}}
+  .tab-btn{{padding:10px 16px;background:transparent;border:none;color:#6b7280;font-weight:600;cursor:pointer;border-radius:6px 6px 0 0;transition:all .15s}}
+  .tab-btn:hover{{background:#f3f4f6;color:#111827}}
+  .tab-btn.active{{background:#111827;color:#e5e7eb}}
+
+  .tab-content{{display:none}}
+  .tab-content.active{{display:block}}
+
+  .stat-grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
+  .stat{{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--b);border-radius:10px;background:#fafafa}}
+  .stat-label{{color:#6b7280;font-size:14px}}
+  .stat-value{{font-weight:700;color:#111827}}
+
+  aside{{position:sticky;top:104px;height:fit-content;border:1px solid var(--b);border-radius:12px;padding:16px;background:var(--panel)}}
+
+  .btn, .btn-cta, .btn-cta-sm, .btn-ghost {{cursor:pointer}}
+  .btn{{padding:10px 14px;border-radius:10px;border:1px solid var(--b);background:#111827;color:#e5e7eb;transition:transform .15s, filter .15s, box-shadow .15s;font-weight:700}}
+  .btn[disabled]{{opacity:.5;cursor:not-allowed}}
+  .btn-cta, .btn-cta-sm, .btn-ghost{{padding:10px 14px;border-radius:10px;border:1px solid var(--b);background:#111827;color:#e5e7eb;width:auto;font-weight:700}}
+  .btn-ghost{{min-width:50px;text-align:center;background:#ffffff;color:#111827;margin-left:16px}}
+  .btn:hover, .btn-cta:hover, .btn-cta-sm:hover, .btn-ghost:hover{{transform:translateY(-1px);filter:brightness(1.1) saturate(1.1);box-shadow:0 6px 16px rgba(0,0,0,.18)}}
+  .btn:active, .btn-cta:active, .btn-cta-sm:active, .btn-ghost:active{{transform:none;filter:none;box-shadow:none}}
+
+  .overlay{{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:50}}
+  .overlay .msg{{background:var(--panel);border:1px solid var(--b);border-radius:14px;padding:24px 28px;font-weight:800}}
+
+  #frontierChart{{width:100%;height:600px}}
+  .js-plotly-plot .plotly .main-svg{{overflow:visible !important}}
+</style>
+</head>
+<body>
+
+<div class="brandbar">
+  <div class="brand-center">{stats.get('player','')} • Performance</div>
+</div>
+
+<header class="nav">
+  <div class="title">End of Game</div>
+  <div class="right">
+    <div class="budget">Invested £{stats.get('invested',0):.2f}</div>
+    <div class="budget">Signals £{stats.get('signals_spent',0):.2f}</div>
+    <div class="budget">Remaining £{stats.get('wallet_left',0):.2f}</div>
   </div>
 </header>
 
-<div class='wrap'>
-  <div class='card'>
-    <h3>Summary</h3>
-    <div class='grid2'>
-      <div class='stat'><div>Total invested</div><div>£{stats.get('invested',0):.2f}</div></div>
-      <div class='stat'><div>Spent on signals</div><div>£{stats.get('signals_spent',0):.2f}</div></div>
-      <div class='stat'><div>Net return %</div><div>{stats.get('net_return_pct',0):.2f}%</div></div>
-      <div class='stat'><div>Cards invested</div><div>{stats.get('n_invested',0)}</div></div>
-      <div class='stat'><div>Invested cards wiped out</div><div>{stats.get('n_wiped',0)}</div></div>
-      <div class='stat'><div>Systemic wipe-out</div><div>{sw_label}</div></div>
-      <div class='stat'><div>Red cards invested</div><div>{stats.get('n_red_invested',0)}</div></div>
-      <div class='stat'><div>Avg signals per invested card</div><div>{stats.get('avg_signals',0):.2f}</div></div>
+<div class="wrap">
+  <section class="content-panel">
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="summary">Summary</button>
+      <button class="tab-btn" data-tab="frontier">Frontier Analysis</button>
     </div>
-  </div>
 
-  <button id='endBtn' class='btn' style='width:100%'>End Game</button>
+    <!-- Summary Tab -->
+    <div id="summary-tab" class="tab-content active">
+      <h3 style="margin-top:0;">Performance Summary</h3>
+      <div class="stat-grid">
+        <div class="stat"><div class="stat-label">Total invested</div><div class="stat-value">£{stats.get('invested',0):.2f}</div></div>
+        <div class="stat"><div class="stat-label">Spent on signals</div><div class="stat-value">£{stats.get('signals_spent',0):.2f}</div></div>
+        <div class="stat"><div class="stat-label">Net return</div><div class="stat-value">{stats.get('net_return_pct',0):.2f}%</div></div>
+        <div class="stat"><div class="stat-label">Cards invested</div><div class="stat-value">{stats.get('n_invested',0)}</div></div>
+        <div class="stat"><div class="stat-label">Invested cards wiped out</div><div class="stat-value">{stats.get('n_wiped',0)}</div></div>
+        <div class="stat"><div class="stat-label">Systemic wipe-out</div><div class="stat-value">{sw_label}</div></div>
+        <div class="stat"><div class="stat-label">Red cards invested</div><div class="stat-value">{stats.get('n_red_invested',0)}</div></div>
+        <div class="stat"><div class="stat-label">Avg signals per card</div><div class="stat-value">{stats.get('avg_signals',0):.2f}</div></div>
+      </div>
+    </div>
+
+    <!-- Frontier Tab -->
+    <div id="frontier-tab" class="tab-content">
+      <h3 style="margin-top:0;">Mean-Variance Frontier</h3>
+      <div id="frontierChart"></div>
+
+      <!-- Detail panel -->
+      <div id="detailPanel" style="margin-top:16px;padding:16px;border:1px solid var(--b);border-radius:8px;background:#f9fafb;display:none;">
+        <h4 style="margin:0 0 12px 0;color:#111827;">Strategy Details</h4>
+        <div style="margin-bottom:8px;"><strong>Signals:</strong> <span id="detailSignals">-</span></div>
+        <div style="margin-bottom:8px;"><strong>Portfolio Weights:</strong></div>
+        <div id="detailWeights" style="font-family:monospace;font-size:13px;color:#6b7280;margin-bottom:12px;"></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          <div style="padding:8px;background:white;border-radius:6px;text-align:center;">
+            <div style="font-size:12px;color:#6b7280;">Ace hits</div>
+            <div id="detailAce" style="font-size:18px;font-weight:700;color:#111827;">-</div>
+          </div>
+          <div style="padding:8px;background:white;border-radius:6px;text-align:center;">
+            <div style="font-size:12px;color:#6b7280;">King hits</div>
+            <div id="detailKing" style="font-size:18px;font-weight:700;color:#111827;">-</div>
+          </div>
+          <div style="padding:8px;background:white;border-radius:6px;text-align:center;">
+            <div style="font-size:12px;color:#6b7280;">Queen hits</div>
+            <div id="detailQueen" style="font-size:18px;font-weight:700;color:#111827;">-</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside>
+    <h3 style="margin:0 0 16px 0;">Actions</h3>
+    <button id="endBtn" class="btn">End Game</button>
+  </aside>
 </div>
 
-<div id="ov" class="overlay"><div class="box">Hope you enjoyed the game</div></div>
+<div id="ov" class="overlay"><div class="msg">Hope you enjoyed the game</div></div>
 
 <script>
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {{
+  btn.addEventListener('click', () => {{
+    const targetTab = btn.dataset.tab;
+
+    // Update buttons
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    // Update content
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById(targetTab + '-tab').classList.add('active');
+  }});
+}});
+
+// End game button
 document.getElementById('endBtn').onclick = () => {{
   const btn = document.getElementById('endBtn');
   btn.disabled = true;
@@ -230,8 +324,135 @@ document.getElementById('endBtn').onclick = () => {{
   fetch('/end', {{method:'POST'}}).catch(()=>{{}});
   setTimeout(()=>{{ window.close(); }}, 3000);
 }};
+
+// Create Plotly frontier chart (matching vis_f.py formatting)
+function createFrontierChart() {{
+  // Mockup frontier data (n=0 to n=5 signals)
+  const frontierData = [
+    {{ n: 0, sd: [15, 16, 17, 18, 19], mean: [5, 8, 10, 11, 12], weights: [[11,11,11,11,11,11,11,11,12], [11,11,11,11,11,11,11,11,12], [11,11,11,11,11,11,11,11,12], [11,11,11,11,11,11,11,11,12], [11,11,11,11,11,11,11,11,12]], ace: 0, king: 0, queen: 0 }},
+    {{ n: 1, sd: [14, 15, 16, 17], mean: [12, 15, 17, 18], weights: [[20,15,15,10,10,10,10,5,5], [20,15,15,10,10,10,10,5,5], [20,15,15,10,10,10,10,5,5], [20,15,15,10,10,10,10,5,5]], ace: 1, king: 2, queen: 1 }},
+    {{ n: 2, sd: [13, 14, 15], mean: [18, 22, 24], weights: [[25,20,15,12,10,8,5,3,2], [25,20,15,12,10,8,5,3,2], [25,20,15,12,10,8,5,3,2]], ace: 1, king: 3, queen: 2 }},
+    {{ n: 3, sd: [12, 13], mean: [25, 28], weights: [[28,22,18,12,8,6,3,2,1], [28,22,18,12,8,6,3,2,1]], ace: 2, king: 3, queen: 2 }},
+    {{ n: 4, sd: [11, 12], mean: [30, 32], weights: [[30,25,18,12,8,4,2,1,0], [30,25,18,12,8,4,2,1,0]], ace: 2, king: 4, queen: 3 }},
+  ];
+
+  // Player data
+  const playerWeights = {stats.get('player_weights', '[0,0,0,0,0,0,0,0,0]')};
+  const playerAce = {stats.get('ace_hits', 0)};
+  const playerKing = {stats.get('king_hits', 0)};
+  const playerQueen = {stats.get('queen_hits', 0)};
+
+  // Calculate player position (mockup - place near middle)
+  const playerSD = 13.5;
+  const playerMean = 20;
+
+  // Calculate color values (concentration measure)
+  function calcConcentration(weights) {{
+    return weights.reduce((sum, w) => sum + w*w, 0) / 10000; // Normalize to [0,1]
+  }}
+
+  const traces = [];
+  const ALPHA = 0.7;
+
+  // Add frontier traces
+  frontierData.forEach(series => {{
+    const colors = series.weights.map(w => calcConcentration(w));
+
+    traces.push({{
+      x: series.sd,
+      y: series.mean,
+      mode: 'markers+text',
+      name: `n=${{series.n}}`,
+      marker: {{
+        size: 16,
+        color: colors,
+        colorscale: [[0, '#2b8cbe'], [1, '#08306b']],
+        showscale: false,
+        line: {{ width: 0 }}
+      }},
+      text: Array(series.sd.length).fill(String(series.n)),
+      textposition: 'middle center',
+      textfont: {{ size: 11, color: 'white' }},
+      hovertemplate: `n=${{series.n}}<br>Mean: %{{y:.2f}}%<br>SD: %{{x:.2f}}%<extra></extra>`,
+      showlegend: false,
+      opacity: ALPHA,
+      customdata: series.weights.map((w, i) => ({{ weights: w, n: series.n, ace: series.ace, king: series.king, queen: series.queen }}))
+    }});
+  }});
+
+  // Add player marker (red)
+  traces.push({{
+    x: [playerSD],
+    y: [playerMean],
+    mode: 'markers+text',
+    name: 'You',
+    marker: {{
+      size: 20,
+      color: '#c53030',
+      line: {{ width: 2, color: '#fff' }}
+    }},
+    text: ['You'],
+    textposition: 'middle center',
+    textfont: {{ size: 11, color: 'white', weight: 700 }},
+    hovertemplate: 'Your Strategy<br>Mean: %{{y:.2f}}%<br>SD: %{{x:.2f}}%<extra></extra>',
+    showlegend: false,
+    opacity: 0.9,
+    customdata: [{{ weights: playerWeights, n: 'Player', ace: playerAce, king: playerKing, queen: playerQueen }}]
+  }});
+
+  const layout = {{
+    template: 'plotly_white',
+    font: {{ family: 'Roboto, Arial, sans-serif', size: 15 }},
+    xaxis: {{
+      title: {{ text: 'Standard Deviation (%)', font: {{ size: 13 }} }},
+      tickfont: {{ size: 16 }},
+      showgrid: true,
+      gridcolor: 'rgba(128,128,128,0.1)'
+    }},
+    yaxis: {{
+      title: {{ text: 'Mean Return (%)', font: {{ size: 13 }} }},
+      tickfont: {{ size: 16 }},
+      showgrid: true,
+      gridcolor: 'rgba(128,128,128,0.1)'
+    }},
+    height: 600,
+    hovermode: 'closest',
+    margin: {{ l: 60, r: 10, t: 40, b: 50 }},
+    plot_bgcolor: '#fafafa'
+  }};
+
+  const config = {{ responsive: true, displayModeBar: false }};
+
+  Plotly.newPlot('frontierChart', traces, layout, config);
+
+  // Add click handler for showing details
+  document.getElementById('frontierChart').on('plotly_click', function(data) {{
+    if (data.points.length > 0) {{
+      const point = data.points[0];
+      const customData = point.customdata;
+
+      if (customData) {{
+        const detailPanel = document.getElementById('detailPanel');
+        document.getElementById('detailSignals').textContent = customData.n === 'Player' ? 'Your Strategy' : customData.n;
+        document.getElementById('detailWeights').innerHTML = customData.weights.map((w, i) => `Pile ${{i+1}}: £${{w.toFixed(2)}}`).join('<br>');
+        document.getElementById('detailAce').textContent = customData.ace;
+        document.getElementById('detailKing').textContent = customData.king;
+        document.getElementById('detailQueen').textContent = customData.queen;
+        detailPanel.style.display = 'block';
+      }}
+    }}
+  }});
+}}
+
+// Create chart when frontier tab is visible
+document.querySelector('[data-tab="frontier"]').addEventListener('click', function() {{
+  if (!document.getElementById('frontierChart').innerHTML) {{
+    createFrontierChart();
+  }}
+}});
 </script>
-</body></html>"""
+</body>
+</html>"""
 
 def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None = None,
            port: int = 8765, open_browser: bool = False,

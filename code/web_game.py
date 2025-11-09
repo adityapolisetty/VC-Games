@@ -320,6 +320,31 @@ if __name__ == "__main__":
     net_return_pct = (net_return_abs / total_invest * 100.0) if total_invest > 0 else 0.0
     sys_tag = "both" if (sys_blue and sys_red) else ("blue" if sys_blue else ("red" if sys_red else "none"))
 
+    # Calculate player portfolio weights (all 9 piles)
+    player_weights = []
+    for idx in range(9):
+        if idx < len(df):
+            inv_amt = float(inv_sum.iloc[idx]) if idx < len(inv_sum) else 0.0
+            player_weights.append(round(inv_amt, 2))
+        else:
+            player_weights.append(0.0)
+
+    # Count ace/king/queen hits in surviving invested cards
+    ace_hits = 0
+    king_hits = 0
+    queen_hits = 0
+    if len(pay) > 0:
+        for _, row in pay.iterrows():
+            card_inv = float(row.get("stake", 0))
+            if card_inv > 0:
+                max_rank = int(row.get("N", 0))
+                if max_rank == 14:  # Ace
+                    ace_hits += 1
+                elif max_rank == 13:  # King
+                    king_hits += 1
+                elif max_rank == 12:  # Queen
+                    queen_hits += 1
+
     stats = {
         "player": "",                # filled by UI
         "wallet_left": wallet,       # remaining budget
@@ -332,6 +357,10 @@ if __name__ == "__main__":
         "sys_wipe": sys_tag,                       # "none" | "blue" | "red" | "both"
         "n_red_invested": n_red_invested,
         "avg_signals": avg_signals,
+        "player_weights": player_weights,         # [9 pile weights]
+        "ace_hits": ace_hits,
+        "king_hits": king_hits,
+        "queen_hits": queen_hits,
     }
 
     # ---- Show Results (triggered from Stage 2) ----

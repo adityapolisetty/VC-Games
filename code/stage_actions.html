@@ -240,7 +240,13 @@ window.__enterClick = function(){
         <div id="pickInfo" class="muted"></div>
       </div>
 
-      <div id="idle" class="muted" style="margin-top:8px;">Click a card.</div>
+      <div id="idle" style="margin-top:8px;">
+        <div class="muted">Click a card.</div>
+        <div style="margin-top:16px; font-size:14px; color:#6b7280;">
+          If you don't want to invest in this stage
+        </div>
+        <button id="skipStage" class="btn-cta-sm" style="margin-top:8px; width:100%;">Skip Stage</button>
+      </div>
 
       <div id="panel" style="display:none;margin-top:8px;">
         <div class="space-between"><strong>Signals</strong><span id="sigNote"></span></div>
@@ -286,6 +292,8 @@ window.__enterClick = function(){
 
 <div id="sigModal" class="modal"><div class="box"><span class="close" data-x="sigModal">✕</span><h3 id="sigTitle">Signal</h3><p id="sigDesc" class="muted"></p></div></div>
 <div id="budgetAlertModal" class="modal"><div class="box"><span class="close" data-x="budgetAlertModal">✕</span><h3>Budget Alert</h3><p id="budgetAlertMsg" class="muted"></p><button class="btn" onclick="document.getElementById('budgetAlertModal').style.display='none'">OK</button></div></div>
+
+<div id="performanceModal" class="modal"><div class="box"><span class="close" data-x="performanceModal">✕</span><h3>Stage Complete</h3><p class="muted" style="margin:16px 0;">Your investment performance can be viewed here</p><button id="showPerformanceBtn" class="btn" style="width:100%;">Show performance</button></div></div>
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
@@ -718,10 +726,9 @@ document.addEventListener("DOMContentLoaded", () => {
     fetch("/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
       .then(()=>{
         if (STAGE === 2) {
-          // Stage 2: go directly to results
-          overlayMsg.textContent = "Preparing results…";
-          overlay.style.display = "flex";
-          setTimeout(()=>{ location.href = "/results"; }, 600);
+          // Stage 2: show performance modal
+          const performanceModal = document.getElementById("performanceModal");
+          if (performanceModal) performanceModal.style.display = "flex";
         } else {
           // Stage 1: advance to Stage 2
           overlayMsg.textContent = "Your investments are hard at work…";
@@ -732,10 +739,53 @@ document.addEventListener("DOMContentLoaded", () => {
       .catch(()=>alert("POST failed. Is Python running?"));
   });
 
+  // Skip Stage button
+  const skipStageBtn = document.getElementById("skipStage");
+  if (skipStageBtn) {
+    skipStageBtn.addEventListener("click", () => {
+      // Submit with empty purchases and investments
+      const payload = {
+        stage: STAGE,
+        player_name: localStorage.getItem("player_name") || "",
+        risk_percentile: Number(localStorage.getItem("risk_pct") || ""),
+        purchases: {},
+        invest: {},
+        client_spent_signals: 0,
+        client_spent_invest: 0,
+        client_budget_remaining: budget
+      };
+
+      fetch("/submit", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)})
+        .then(() => {
+          if (STAGE === 2) {
+            overlayMsg.textContent = "Preparing results…";
+            overlay.style.display = "flex";
+            setTimeout(() => { location.href = "/results"; }, 600);
+          } else {
+            overlayMsg.textContent = "Your investments are hard at work…";
+            overlay.style.display = "flex";
+            setTimeout(() => { location.href = "/"; }, 5000);
+          }
+        })
+        .catch(() => alert("POST failed. Is Python running?"));
+    });
+  }
+
+  // Show performance button in modal
+  const showPerformanceBtn = document.getElementById("showPerformanceBtn");
+  if (showPerformanceBtn) {
+    showPerformanceBtn.addEventListener("click", () => {
+      overlayMsg.textContent = "Preparing results…";
+      overlay.style.display = "flex";
+      document.getElementById("performanceModal").style.display = "none";
+      setTimeout(() => { location.href = "/results"; }, 600);
+    });
+  }
+
   // modals
   document.querySelectorAll(".close").forEach(x=>x.onclick=()=>{ document.getElementById(x.dataset.x).style.display="none"; });
   document.getElementById("rulesLink").onclick=(e)=>{e.preventDefault();rulesModal.style.display="flex";};
-  [rulesModal,tipsModal,wonkModal,budgetAlertModal].forEach(m=>m.addEventListener("click",(e)=>{ if(e.target===m) m.style.display="none"; }));
+  [rulesModal,tipsModal,wonkModal,budgetAlertModal,performanceModal].forEach(m=>m.addEventListener("click",(e)=>{ if(e.target===m) m.style.display="none"; }));
 
   // view toggles
   function showLogin(){ brandbar.style.display="none"; loginSection.style.display="grid"; appView.style.display="none"; dashCenter.textContent=""; }

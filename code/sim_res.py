@@ -189,7 +189,9 @@ def _deal_cards_global_deck(rng):
         arr = np.array(sorted(hands[i]), dtype=int)
         has_ace[i]   = bool(np.any(arr == ACE_RANK))
         medians[i]   = int(arr[CARDS_PER_PILE//2])
-        top2sum[i]   = int(arr[-1] + arr[-2])
+        # Top2sum: sum of top 2 unique ranks
+        unique_ranks = sorted(set(arr.tolist()), reverse=True)
+        top2sum[i]   = int(unique_ranks[0] + unique_ranks[1]) if len(unique_ranks) >= 2 else int(unique_ranks[0] * 2)
         max_rank[i]  = int(arr[-1])
         min_rank[i]  = int(arr[0])
 
@@ -242,8 +244,9 @@ def realize_payout(hands, w, scale_pay, scale_param, ace_payout,
 # ===============================
 
 def _second_highest_rank(pile: np.ndarray) -> int:
-    arr = np.sort(np.asarray(pile, int))
-    return int(arr[-2]) if arr.size >= 2 else int(arr[-1])
+    """Return the second-highest UNIQUE rank value (not second position)."""
+    unique_ranks = sorted(set(np.asarray(pile, int).tolist()), reverse=True)
+    return int(unique_ranks[1]) if len(unique_ranks) >= 2 else int(unique_ranks[0])
 
 def _weights_max(sc: np.ndarray) -> np.ndarray:
     p = np.array(sc, float); mx = np.max(p)

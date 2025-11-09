@@ -45,9 +45,9 @@ POST_NPZ_JOINT_DEFAULT = "../output_joint/post_joint.npz"
 SIGNAL_COST = 3.0
 ACE_PAYOUT = 20.0
 SCALE_PARAM_ON = 0.25
-ALPHA_GRID = np.linspace(0, 1.0, 21)  # 0.0..1.0 step 0.05
-UNITS = 15  # 6.67% granularity, ~490k strategies, ~7.5 hrs for 2 combos @ 6 cores
-SD_STEP = 1  # percentage points
+ALPHA_GRID = np.linspace(0, 1.0, 11)  # 0.0..1.0 step 0.05
+UNITS = 10  # 10%
+SD_STEP = 0.1  # percentage points
 
 
 # -----------------------
@@ -93,14 +93,17 @@ def _deal_cards_global_deck(rng):
         has_king[i] = bool(np.any(arr == 13))
         has_queen[i] = bool(np.any(arr == 12))
         medians[i] = int(arr[CARDS_PER_PILE // 2])
-        top2sum[i] = int(arr[-1] + arr[-2])
+        # Top2sum: sum of top 2 unique ranks
+        unique_ranks = sorted(set(arr.tolist()), reverse=True)
+        top2sum[i] = int(unique_ranks[0] + unique_ranks[1]) if len(unique_ranks) >= 2 else int(unique_ranks[0] * 2)
         max_rank[i] = int(arr[-1])
     return has_ace, has_king, has_queen, [np.array(sorted(h), int) for h in hands], medians, top2sum, max_rank
 
 
 def _second_highest_rank(pile: np.ndarray) -> int:
-    arr = np.sort(np.asarray(pile, int))
-    return int(arr[-2]) if arr.size >= 2 else int(arr[-1])
+    """Return the second-highest UNIQUE rank value (not second position)."""
+    unique_ranks = sorted(set(np.asarray(pile, int).tolist()), reverse=True)
+    return int(unique_ranks[1]) if len(unique_ranks) >= 2 else int(unique_ranks[0])
 
 
 def _load_mc_posteriors(npz_path: str):
