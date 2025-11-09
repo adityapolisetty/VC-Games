@@ -340,16 +340,8 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
             # Simulations info
             sim_str = f"<br>Simulations: {total_rounds:,}" if total_rounds else ""
 
-            # Detailed hover text
-            hover_text = (
-                f"<b>n={n_sig} signals</b>{sim_str}<br>"
-                f"<b>Returns:</b> Mean: {mean_val:.2f}%, SD: {sd_val:.2f}%<br>"
-                f"<b>Sharpe:</b> {sharpe:.2f}<br>"
-                f"<b>Weights (sorted high→low by Stage-1 EV):</b><br>"
-                f"{weights_str}<br>"
-                f"<b>Σw²:</b> {cs[idx_k]:.3f}"
-                f"{hit_rate_str}"
-            )
+            # Simple hover - just basics
+            hover_text = f"n={n_sig} | Mean: {mean_val:.2f}% | SD: {sd_val:.2f}%"
             hover_texts.append(hover_text)
 
             # Store metadata for click events
@@ -388,14 +380,13 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
         xaxis=dict(title=dict(text="Standard Deviation (%)", font=dict(size=13)), tickfont=dict(size=16), showgrid=True, gridcolor="rgba(128,128,128,0.1)"),
         yaxis=yaxis_cfg,
         height=600,
-        hovermode="x unified",  # Keeps hover info at top of chart
-        margin=dict(l=10, r=10, t=80, b=50),  # Extra top margin for hover
+        hovermode="closest",
+        margin=dict(l=10, r=10, t=10, b=50),
         hoverlabel=dict(
-            bgcolor="rgba(255, 255, 255, 0.95)",
+            bgcolor="white",
             font_size=13,
             font_family="Roboto, Arial, sans-serif",
             bordercolor="#2b8cbe",
-            align="left",
         ),
     )
     return fig, all_custom_data
