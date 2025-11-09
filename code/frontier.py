@@ -195,7 +195,7 @@ def _concat_stats(stats: Dict[str, np.ndarray]) -> Tuple[np.ndarray, np.ndarray,
     return g1, g2, g1sq, g2sq, g12, cnt, rank9
 
 
-def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, sp, scale_param, rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel=False):
+def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, sp, scale_param, rmax_tables, joint_tables, prior_rmax, r2_marginal):
     """
     Worker for IL frontier computation with deterministic round seeding.
 
@@ -218,14 +218,6 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         count=0,
         Wm_template=Wm,
     )
-
-    # Select debug strategies if Excel output enabled
-    if debug_excel:
-        debug_strategies = _select_debug_strategies(Wm)
-        debug_data = {idx: [] for idx in debug_strategies}
-    else:
-        debug_strategies = []
-        debug_data = {}
 
     h1 = _hvals(sp, scale_param, ACE_PAYOUT, half=False)
     h2 = _hvals(sp, scale_param, ACE_PAYOUT, half=True)
@@ -278,20 +270,11 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         stats["sum_g12"] += g1 * g2
         stats["count"] += 1
 
-        # Collect debug data if enabled
-        if debug_excel:
-            round_debug = _collect_round_debug_data(debug_strategies, r, g1, g2, Wm, max_rank, order1, n_sig)
-            for strategy_idx, data in round_debug.items():
-                debug_data[strategy_idx].append(data)
-
-    if debug_excel:
-        return stats, debug_data
-    else:
-        return stats
+    return stats
 
 
 def _collect_stats_il(seed: int, rounds: int, procs: int, signal_type: str, n_sig: int, sp: int, scale_param: float,
-                      rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel=False):
+                      rmax_tables, joint_tables, prior_rmax, r2_marginal):
     if procs and int(procs) > 1 and int(rounds) > 1:
         W = int(procs); base = int(rounds) // W; rem = int(rounds) % W
         chunk_sizes = [base + (1 if i < rem else 0) for i in range(W)]
@@ -302,28 +285,17 @@ def _collect_stats_il(seed: int, rounds: int, procs: int, signal_type: str, n_si
                 starts.append((s, c))
                 s += c
         out_stats = None
-        out_debug_data = {}
         from concurrent.futures import ProcessPoolExecutor
         with ProcessPoolExecutor(max_workers=len(starts)) as ex:
             futs = [
                 ex.submit(
                     _worker_chunk_il,
                     int(seed), int(start), int(sz), signal_type, int(n_sig), int(sp), float(scale_param),
-                    rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel,
+                    rmax_tables, joint_tables, prior_rmax, r2_marginal,
                 ) for (start, sz) in starts
             ]
             for fut in futs:
-                result = fut.result()
-                if debug_excel:
-                    st, debug_data = result
-                    # Merge debug data
-                    for strategy_idx, rounds_list in debug_data.items():
-                        if strategy_idx not in out_debug_data:
-                            out_debug_data[strategy_idx] = []
-                        out_debug_data[strategy_idx].extend(rounds_list)
-                else:
-                    st = result
-
+                st = fut.result()
                 if out_stats is None:
                     out_stats = st
                 else:
@@ -331,12 +303,9 @@ def _collect_stats_il(seed: int, rounds: int, procs: int, signal_type: str, n_si
                         out_stats[k] += st[k]
                     out_stats["count"] += st["count"]
 
-        if debug_excel:
-            return out_stats, out_debug_data
-        else:
-            return out_stats
+        return out_stats
     else:
-        return _worker_chunk_il(int(seed), 0, int(rounds), signal_type, int(n_sig), int(sp), float(scale_param), rmax_tables, joint_tables, prior_rmax, r2_marginal, debug_excel)
+        return _worker_chunk_il(int(seed), 0, int(rounds), signal_type, int(n_sig), int(sp), float(scale_param), rmax_tables, joint_tables, prior_rmax, r2_marginal)
     
 
 
@@ -466,15 +435,6 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
         params=norm_params,
     )
     _save_bins_npz(out_path, sd_levels_by_n, best_means_by_n, best_weights_by_n, meta)
-
-    # Write debug Excel if enabled
-    if debug_excel:
-        excel_dir = out_dir / "frontier_excel"
-        excel_dir.mkdir(parents=True, exist_ok=True)
-        for n_sig in range(int(max_signals) + 1):
-            if debug_data_by_n[n_sig] is not None and stats_by_n[n_sig] is not None:
-                excel_path = excel_dir / f"{key_id}_{st}_{a_tag}_n{n_sig}_debug.xlsx"
-                _write_debug_excel(debug_data_by_n[n_sig], stats_by_n[n_sig]["Wm_template"], stats_by_n[n_sig], excel_path)
 
 
 def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,

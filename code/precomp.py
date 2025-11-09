@@ -15,6 +15,7 @@ Outputs
 - ace_top2_probs:   float[T]           last column of rmax_top2_mat
 - ace_max_probs:    float[M]           last column of rmax_max_mat
 - ace_min_probs:    float[N]           last column of rmax_min_mat
+- r2_marginal_mat:  float[13(R2), 13(Rmax)]  P(Rmax | second rank)
 - prior_rmax:      float[13]           unconditional P(Rmax)
 - meta:            dict                seed, rounds, piles, procs
 
@@ -40,6 +41,12 @@ from card_game import (round_seed, _deal_cards_global_deck, NUM_PILES, ACE_RANK)
 RMAX_DIM = 13
 
 
+def _second_highest_rank(arr: np.ndarray) -> int:
+    """Extract second-highest rank from a sorted pile."""
+    a = np.sort(np.asarray(arr, int))
+    return int(a[-2]) if a.size >= 2 else int(a[-1])
+
+
 def _print_bar(cur: int, total: int) -> None:
     """Simple textual progress bar (updates in-place)."""
     cur = int(cur); total = max(1, int(total))
@@ -57,6 +64,7 @@ def _accumulate_chunk(seed: int, start: int, rounds_chunk: int):
     max_counts: dict[int, np.ndarray] = {}
     min_counts: dict[int, np.ndarray] = {}
     prior_counts = np.zeros(RMAX_DIM, dtype=np.int64)
+    r2_marginal = np.zeros((RMAX_DIM, RMAX_DIM), dtype=np.int64)  # [R2, Rmax]
     piles = 0
 
     for i in range(int(rounds_chunk)):
@@ -65,6 +73,8 @@ def _accumulate_chunk(seed: int, start: int, rounds_chunk: int):
         has_ace, hands, medians, top2sum, max_rank, min_rank = _deal_cards_global_deck(rng)
         for j in range(NUM_PILES):
             m = int(medians[j]); t = int(top2sum[j]); rmax = int(max_rank[j]); mx = int(max_rank[j]); mn = int(min_rank[j])
+            R2 = _second_highest_rank(hands[j])
+            r2k = int(R2) - 2
             piles += 1
             idx = rmax - 2
             med_counts.setdefault(m, np.zeros(RMAX_DIM, dtype=np.int64))[idx] += 1
@@ -72,7 +82,8 @@ def _accumulate_chunk(seed: int, start: int, rounds_chunk: int):
             max_counts.setdefault(mx, np.zeros(RMAX_DIM, dtype=np.int64))[idx] += 1
             min_counts.setdefault(mn, np.zeros(RMAX_DIM, dtype=np.int64))[idx] += 1
             prior_counts[idx] += 1
-    return med_counts, t2_counts, max_counts, min_counts, prior_counts, piles
+            r2_marginal[r2k, idx] += 1
+    return med_counts, t2_counts, max_counts, min_counts, prior_counts, r2_marginal, piles
 
 
 def _merge_counts(parts: list[dict[int, np.ndarray]]) -> dict[int, np.ndarray]:
@@ -93,12 +104,12 @@ def _accumulate(seed: int, rounds: int, procs: int):
         base, rem = divmod(int(rounds), W)
         chunks = [(sum([base + (1 if i < rem else 0) for i in range(j)]), base + (1 if j < rem else 0)) for j in range(W)]
         chunks = [(s, c) for (s, c) in chunks if c > 0]
-        med_parts, t2_parts, max_parts, min_parts, prior_parts, piles_total = [], [], [], [], [], 0
+        med_parts, t2_parts, max_parts, min_parts, prior_parts, r2_parts, piles_total = [], [], [], [], [], [], 0
         with ProcessPoolExecutor(max_workers=len(chunks)) as ex:
             futs = [ex.submit(_accumulate_chunk, int(seed), int(start), int(sz)) for (start, sz) in chunks]
             for (start, sz), fut in zip(chunks, futs):
-                m, t2, mx, mn, pcounts, piles = fut.result()
-                med_parts.append(m); t2_parts.append(t2); max_parts.append(mx); min_parts.append(mn); prior_parts.append(pcounts); piles_total += int(piles)
+                m, t2, mx, mn, pcounts, r2_marg, piles = fut.result()
+                med_parts.append(m); t2_parts.append(t2); max_parts.append(mx); min_parts.append(mn); prior_parts.append(pcounts); r2_parts.append(r2_marg); piles_total += int(piles)
                 processed += int(sz)
                 _print_bar(processed, rounds)
         med_counts = _merge_counts(med_parts)
@@ -106,6 +117,7 @@ def _accumulate(seed: int, rounds: int, procs: int):
         max_counts = _merge_counts(max_parts)
         min_counts = _merge_counts(min_parts)
         prior_counts = np.sum(np.stack(prior_parts, axis=0), axis=0) if prior_parts else np.zeros(RMAX_DIM, np.int64)
+        r2_marginal_counts = np.sum(np.stack(r2_parts, axis=0), axis=0) if r2_parts else np.zeros((RMAX_DIM, RMAX_DIM), np.int64)
         total_piles = piles_total
     else:
         med_counts: dict[int, np.ndarray] = {}
@@ -113,17 +125,19 @@ def _accumulate(seed: int, rounds: int, procs: int):
         max_counts: dict[int, np.ndarray] = {}
         min_counts: dict[int, np.ndarray] = {}
         prior_counts = np.zeros(RMAX_DIM, dtype=np.int64)
+        r2_marginal_counts = np.zeros((RMAX_DIM, RMAX_DIM), dtype=np.int64)
         total_piles = 0
         # Manually inline the chunk loop to allow progress updates
         for i in range(int(rounds)):
             r = i
-            m, t2, mx, mn, pcounts, piles = _accumulate_chunk(int(seed), int(r), 1)
+            m, t2, mx, mn, pcounts, r2_marg, piles = _accumulate_chunk(int(seed), int(r), 1)
             # Merge per-iteration results
             for d_src, d_dst in ((m, med_counts), (t2, t2_counts), (mx, max_counts), (mn, min_counts)):
                 for k, v in d_src.items():
                     d_dst.setdefault(k, np.zeros(RMAX_DIM, dtype=np.int64))
                     d_dst[k] += v
             prior_counts += pcounts
+            r2_marginal_counts += r2_marg
             total_piles += int(piles)
             processed += 1
             if (processed % step_overall == 0) or (processed == int(rounds)):
@@ -191,6 +205,9 @@ def _accumulate(seed: int, rounds: int, procs: int):
     ace_min_probs    = min_mat_prob[:,  ace_col] if min_mat_prob.size  else np.zeros((0,), float)
     prior_rmax = (prior_counts / float(prior_counts.sum())) if prior_counts.sum() > 0 else np.zeros(RMAX_DIM, float)
 
+    # Normalize R2 marginal matrix: rows are P(Rmax | R2=r2)
+    r2_marginal_prob = _row_normalize(r2_marginal_counts)
+
     stats = dict(seed=int(seed), rounds=int(rounds), piles=int(total_piles), procs=int(procs))
 
     return (
@@ -199,6 +216,7 @@ def _accumulate(seed: int, rounds: int, procs: int):
         max_keys, max_mat_prob,
         min_keys, min_mat_prob,
         ace_median_probs, ace_top2_probs, ace_max_probs, ace_min_probs,
+        r2_marginal_prob,
         prior_rmax,
         stats,
     )
@@ -223,6 +241,7 @@ def main():
         max_keys, max_mat_prob,
         min_keys, min_mat_prob,
         ace_median_probs, ace_top2_probs, ace_max_probs, ace_min_probs,
+        r2_marginal_prob,
         prior_rmax,
         stats,
     ) = _accumulate(args.seed, args.rounds, args.procs)
@@ -247,6 +266,7 @@ def main():
         ace_top2_probs=ace_top2_probs,
         ace_max_probs=ace_max_probs,
         ace_min_probs=ace_min_probs,
+        r2_marginal_mat=r2_marginal_prob,
         prior_rmax=prior_rmax,
         meta=stats,
     )
