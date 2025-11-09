@@ -343,18 +343,16 @@ def _render_posteriors_panel(tag: str, post_data: dict, scale_pay: int):
         st.info("Load a valid posterior NPZ to see curves.")
         return
 
-    # Row 1: Posterior type selector + Signal type
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        post_type = st.radio("Posterior type", ["Conditional", "Joint Conditional"],
-                            horizontal=True, key=f"post_type_{tag}")
-    with col2:
-        signal_label = st.selectbox("Signal type", ["Median", "Top 2"], key=f"post_sig_{tag}")
-
-    signal_type = "median" if signal_label == "Median" else "top2"
+    # Row 1: Posterior type selector (always shown)
+    post_type = st.radio("Posterior type", ["Conditional", "Joint Conditional"],
+                        horizontal=True, key=f"post_type_{tag}")
 
     # ========== CONDITIONAL POSTERIORS ==========
     if post_type == "Conditional":
+        # Row 2: Signal type selector (only for Conditional)
+        signal_label = st.selectbox("Signal type", ["Median", "Top 2"], key=f"post_sig_cond_{tag}")
+        signal_type = "median" if signal_label == "Median" else "top2"
+
         # P(Rmax | signal) - like one-off mode
         if scale_pay == 1:
             # Payoff scaling ON: show P(Max rank = k | signal)
@@ -568,82 +566,85 @@ def _panel_controls(tag: str):
 view = st.radio("View", ["Simulation Results", "Posteriors"], horizontal=True, key="top_view")
 
 # ==============================
-# PANEL CONTROLS (SHARED ACROSS BOTH VIEWS)
-# ==============================
-
-# Collect panel configurations (must come before path resolution)
-left, right = st.columns(2)
-with left:
-    cfgA, regimeA, modeA, alphaA, outputA = _panel_controls("A")
-with right:
-    cfgB, regimeB, modeB, alphaB, outputB = _panel_controls("B")
-
-# Build and check paths
-def _resolve_npz(cfg, output_dir, mode, alpha):
-    p, norm, kid = _file_for_params(cfg, output_dir, mode, alpha)
-    return p, norm, kid
-
-try:
-    pathA, normA, _ = _resolve_npz(cfgA, outputA, modeA, alphaA)
-    pathB, normB, _ = _resolve_npz(cfgB, outputB, modeB, alphaB)
-except Exception as e:
-    st.error(str(e))
-    st.stop()
-
-if not pathA.exists():
-    st.error(f"Missing NPZ: {pathA}")
-if not pathB.exists():
-    st.error(f"Missing NPZ: {pathB}")
-if not (pathA.exists() and pathB.exists()):
-    st.stop()
-
-# ==============================
-# Load summaries
-# ==============================
-def _summary_keys_for(regime, pct_key):
-    return (
-        "sig_grid", "budget",
-        f"mean_{pct_key}_{regime}_max", f"mean_{pct_key}_{regime}_linear", f"mean_{pct_key}_{regime}_top5",
-        f"sd_{pct_key}_{regime}_max",   f"sd_{pct_key}_{regime}_linear",   f"sd_{pct_key}_{regime}_top5",
-        "post_median_x", "post_median_y",
-        "post_top2_x",   "post_top2_y",
-        "params_norm", "params_raw"
-    )
-
-dataA = load_keys(str(pathA), _summary_keys_for(regimeA, pct_key), str(outputA))
-dataB = load_keys(str(pathB), _summary_keys_for(regimeB, pct_key), str(outputB))
-
-def _extract_summary(data, regime, pct_key):
-    sig_grid = np.asarray(data["sig_grid"], int)
-    budget   = float(data["budget"]) if data["budget"] is not None else 100.0
-    mean_triplet = (
-        np.asarray(data[f"mean_{pct_key}_{regime}_max"], float),
-        np.asarray(data[f"mean_{pct_key}_{regime}_linear"], float),
-        np.asarray(data[f"mean_{pct_key}_{regime}_top5"], float),
-    )
-    sd_triplet = (
-        np.asarray(data[f"sd_{pct_key}_{regime}_max"], float),
-        np.asarray(data[f"sd_{pct_key}_{regime}_linear"], float),
-        np.asarray(data[f"sd_{pct_key}_{regime}_top5"], float),
-    )
-    try:
-        params_norm = json.loads(str(data["params_norm"].astype(str)))
-    except Exception:
-        params_norm = {}
-    return sig_grid, mean_triplet, sd_triplet, params_norm, budget
-
-sigA, meanA, sdA, pnA, budA = _extract_summary(dataA, regimeA, pct_key)
-sigB, meanB, sdB, pnB, budB = _extract_summary(dataB, regimeB, pct_key)
-
-# Net returns are already in percentages from NPZ
-meanA_u = meanA; sdA_u = sdA
-meanB_u = meanB; sdB_u = sdB
-
-# ==============================
 # CONDITIONAL RENDERING: SIMULATION RESULTS vs POSTERIORS
 # ==============================
 
 if view == "Simulation Results":
+    # ==============================
+    # PANEL CONTROLS (SIMULATION RESULTS ONLY)
+    # ==============================
+
+    # Collect panel configurations (must come before path resolution)
+    left, right = st.columns(2)
+    with left:
+        cfgA, regimeA, modeA, alphaA, outputA = _panel_controls("A")
+    with right:
+        cfgB, regimeB, modeB, alphaB, outputB = _panel_controls("B")
+
+    # Build and check paths
+    def _resolve_npz(cfg, output_dir, mode, alpha):
+        p, norm, kid = _file_for_params(cfg, output_dir, mode, alpha)
+        return p, norm, kid
+
+    try:
+        pathA, normA, _ = _resolve_npz(cfgA, outputA, modeA, alphaA)
+        pathB, normB, _ = _resolve_npz(cfgB, outputB, modeB, alphaB)
+    except Exception as e:
+        st.error(str(e))
+        st.stop()
+
+    if not pathA.exists():
+        st.error(f"Missing NPZ: {pathA}")
+    if not pathB.exists():
+        st.error(f"Missing NPZ: {pathB}")
+    if not (pathA.exists() and pathB.exists()):
+        st.stop()
+
+    # ==============================
+    # Load summaries
+    # ==============================
+    def _summary_keys_for(regime, pct_key):
+        return (
+            "sig_grid", "budget",
+            f"mean_{pct_key}_{regime}_max", f"mean_{pct_key}_{regime}_linear", f"mean_{pct_key}_{regime}_top5",
+            f"sd_{pct_key}_{regime}_max",   f"sd_{pct_key}_{regime}_linear",   f"sd_{pct_key}_{regime}_top5",
+            "post_median_x", "post_median_y",
+            "post_top2_x",   "post_top2_y",
+            "params_norm", "params_raw"
+        )
+
+    dataA = load_keys(str(pathA), _summary_keys_for(regimeA, pct_key), str(outputA))
+    dataB = load_keys(str(pathB), _summary_keys_for(regimeB, pct_key), str(outputB))
+
+    def _extract_summary(data, regime, pct_key):
+        sig_grid = np.asarray(data["sig_grid"], int)
+        budget   = float(data["budget"]) if data["budget"] is not None else 100.0
+        mean_triplet = (
+            np.asarray(data[f"mean_{pct_key}_{regime}_max"], float),
+            np.asarray(data[f"mean_{pct_key}_{regime}_linear"], float),
+            np.asarray(data[f"mean_{pct_key}_{regime}_top5"], float),
+        )
+        sd_triplet = (
+            np.asarray(data[f"sd_{pct_key}_{regime}_max"], float),
+            np.asarray(data[f"sd_{pct_key}_{regime}_linear"], float),
+            np.asarray(data[f"sd_{pct_key}_{regime}_top5"], float),
+        )
+        try:
+            params_norm = json.loads(str(data["params_norm"].astype(str)))
+        except Exception:
+            params_norm = {}
+        return sig_grid, mean_triplet, sd_triplet, params_norm, budget
+
+    sigA, meanA, sdA, pnA, budA = _extract_summary(dataA, regimeA, pct_key)
+    sigB, meanB, sdB, pnB, budB = _extract_summary(dataB, regimeB, pct_key)
+
+    # Net returns are already in percentages from NPZ
+    meanA_u = meanA; sdA_u = sdA
+    meanB_u = meanB; sdB_u = sdB
+
+    # ==============================
+    # SIMULATION RESULTS TABS
+    # ==============================
     # Simulation Results view: Frontier + Value of Info tabs
     tabs = st.tabs(["Mean-Variances", "Value of Info"])
 
@@ -732,12 +733,22 @@ else:  # view == "Posteriors"
     post_npz_path = Path("precomp_output/post_mc.npz").resolve()
     post_data = load_post_npz(str(post_npz_path))
 
+    # Simple payoff scaling controls for posteriors view
+    st.markdown("### Payoff Scaling Setting")
+    col1, col2 = st.columns(2)
+    with col1:
+        scale_pay_A = 1 if st.toggle("Payoff scaling (Panel A)", value=False, key="scale_pay_post_A") else 0
+    with col2:
+        scale_pay_B = 1 if st.toggle("Payoff scaling (Panel B)", value=False, key="scale_pay_post_B") else 0
+
+    st.markdown("---")
+
     c = st.columns(2)
 
     # Panel A
     with c[0]:
-        _render_posteriors_panel("A", post_data, pnA.get("scale_pay", 0))
+        _render_posteriors_panel("A", post_data, scale_pay_A)
 
     # Panel B
     with c[1]:
-        _render_posteriors_panel("B", post_data, pnB.get("scale_pay", 0))
+        _render_posteriors_panel("B", post_data, scale_pay_B)
