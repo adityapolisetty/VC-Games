@@ -185,28 +185,32 @@ if __name__ == "__main__":
     open_first = args.open_browser
     ace_pay = ACE_PAYOUT
 
-    # Initialize database
+    # Initialize database (once at startup)
     init_db()
 
-    # 9 piles
-    game_seed = 42
-    df = draw_deck(n_cards=9, seed=game_seed)
-    for c in ("inv1", "inv2"):
-        if c not in df.columns:
-            df[c] = 0.0
+    # Game loop - restart after each game ends
+    print("[game] Starting game server. Press Ctrl+C to stop.")
+    while True:
+        try:
+            # 9 piles
+            game_seed = 42
+            df = draw_deck(n_cards=9, seed=game_seed)
+            for c in ("inv1", "inv2"):
+                if c not in df.columns:
+                    df[c] = 0.0
 
-    wallet = WALLET0
-    stage_history = []  # Track stage-wise stats
-    total_signal_cost_stage1 = 0.0  # Explicit tracker for Stage 1 signals
-    total_signal_cost_stage2 = 0.0  # Explicit tracker for Stage 2 signals
+            wallet = WALLET0
+            stage_history = []  # Track stage-wise stats
+            total_signal_cost_stage1 = 0.0  # Explicit tracker for Stage 1 signals
+            total_signal_cost_stage2 = 0.0  # Explicit tracker for Stage 2 signals
 
-    # Create database session (team name will be updated after Stage 1)
-    session_id = create_session(
-        team_name="",  # Will be filled from UI
-        seed=game_seed,
-        signal_mode=mode,
-        signal_cost=cost
-    )
+            # Create database session (team name will be updated after Stage 1)
+            session_id = create_session(
+                team_name="",  # Will be filled from UI
+                seed=game_seed,
+                signal_mode=mode,
+                signal_cost=cost
+            )
 
     # ---- Stage 1 ----
     act = run_ui(1, df, wallet, open_browser=open_first, signal_mode=mode, signal_cost=cost)
