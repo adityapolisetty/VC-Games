@@ -1139,6 +1139,9 @@ elif view == "Efficient Frontiers":
             signal_cost_B = st.select_slider("Signal cost", options=[0, 3, 9], value=3, format_func=lambda v: f"£{v}", key="signal_cost_B")
         with rowB[2]:
             sd_step_B = st.select_slider("SD binning", options=[0.1, 1, 2, 5], value=5, format_func=lambda v: f"{v}pp bin", key="sd_step_B")
+        rowB2 = st.columns([1])
+        with rowB2[0]:
+            n_signals_B = st.select_slider("Number of signals", options=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, "All"], value="All", format_func=lambda v: "All" if v == "All" else str(v), key="n_signals_B")
         st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
 
     # Resolve files
@@ -1182,7 +1185,7 @@ elif view == "Efficient Frontiers":
             st.caption("Run frontier.py to generate frontier data.")
         else:
             st.markdown(f"**Fixed:** Ace payoff=20X" + (", Scale param=0.25" if sp_A == 1 else ""))
-            figA = _build_frontier_fig(data_A, sd_step_A, y_range, global_vmin, global_vmax)
+            figA = _build_frontier_fig(data_A, sd_step_A, y_range, global_vmin, global_vmax, n_signals_A)
             st.plotly_chart(figA, use_container_width=True, key="mv_frontier_A")
 
     with colB:
@@ -1191,7 +1194,7 @@ elif view == "Efficient Frontiers":
             st.caption("Run frontier.py to generate frontier data.")
         else:
             st.markdown(f"**Fixed:** Ace payoff=20X" + (", Scale param=0.25" if sp_B == 1 else ""))
-            figB = _build_frontier_fig(data_B, sd_step_B, y_range, global_vmin, global_vmax)
+            figB = _build_frontier_fig(data_B, sd_step_B, y_range, global_vmin, global_vmax, n_signals_B)
             st.plotly_chart(figB, use_container_width=True, key="mv_frontier_B")
 
     # Shared legend at bottom
