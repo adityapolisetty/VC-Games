@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -l select=1:ncpus=12:mem=5gb
-#PBS -l walltime=02:00:00
+#PBS -l walltime=01:00:00
 #PBS -J 0-39
 #PBS -N il_frontier_array
 #PBS -o ../logs/il_frontier.out
@@ -26,7 +26,7 @@ ID="${PBS_ARRAY_INDEX:-0}"
 
 # Parameterization (keep a constant base seed across array tasks like dynamic)
 SEED=${SEED:-12345}
-ROUNDS=${ROUNDS:-300000}
+ROUNDS=${ROUNDS:-100000}
 MAX_SIGNALS=${MAX_SIGNALS:-9}
 
 STRIDE=${STRIDE:-40}  # Total number of tasks

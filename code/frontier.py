@@ -42,11 +42,10 @@ from fns import canonicalize_params, NUM_PILES, CARDS_PER_PILE, ACE_RANK, BUDGET
 POST_NPZ_DEFAULT = "../precomp_output/post_mc.npz"
 
 # Fixed params per request
-SIGNAL_COST = 3.0
 ACE_PAYOUT = 20.0
 SCALE_PARAM_ON = 0.25
 ALPHA_GRID = np.linspace(0, 1.0, 11) 
-UNITS = 10  
+UNITS = 9
 SD_STEP = 5  # percentage points
 
 
@@ -336,7 +335,8 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
     for n_sig in range(int(max_signals) + 1):
         # Validate: skip if cannot afford n_sig signals with this stage1_alloc
         budget1 = float(stage1_alloc) * BUDGET
-        signal_cost_total = float(n_sig) * SIGNAL_COST
+        signal_cost = float(params.get('signal_cost', 3.0))
+        signal_cost_total = float(n_sig) * signal_cost
         if budget1 < signal_cost_total:
             # Cannot afford signals - skip simulation entirely
             stats_by_n[n_sig] = None
@@ -382,7 +382,8 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
             best_queen_hits_by_n.append(np.array([], int))
             continue
         budget1 = float(stage1_alloc) * BUDGET
-        investable1 = max(0.0, budget1 - float(n_sig) * SIGNAL_COST)
+        signal_cost = float(params.get('signal_cost', 3.0))
+        investable1 = max(0.0, budget1 - float(n_sig) * signal_cost)
         budget2 = max(0.0, BUDGET - budget1)
         c1 = investable1 / BUDGET
         # Stage 2 can only invest in piles that Stage 1 invested in
@@ -449,21 +450,23 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Grids per request
+    SIGNAL_COSTS = [0, 3, 7]
     SCALE_PARAMS = [0.25]
     SCALE_PAYS = [0, 1]
     ACE_PAYOUTS = [20.0]
 
     combos = []
     for alpha in ALPHA_GRID:
-        for sp in SCALE_PAYS:
-            for s in SCALE_PARAMS:
-                for ap in ACE_PAYOUTS:
-                    raw = dict(signal_cost=3.0, scale_pay=sp, scale_param=(s if sp == 1 else 0.0), ace_payout=ap)
-                    norm, key_tuple, key_id = canonicalize_params(raw)
-                    for st in ("median", "top2"):
-                        a_tag = f"a{int(round(float(alpha)*100)):03d}"  # 000, 005, 010, ..., 100
-                        outfile = out_dir / f"{key_id}_{st}_{a_tag}.npz"
-                        combos.append((raw, alpha, st, outfile))
+        for sc in SIGNAL_COSTS:
+            for sp in SCALE_PAYS:
+                for s in SCALE_PARAMS:
+                    for ap in ACE_PAYOUTS:
+                        raw = dict(signal_cost=float(sc), scale_pay=sp, scale_param=(s if sp == 1 else 0.0), ace_payout=ap)
+                        norm, key_tuple, key_id = canonicalize_params(raw)
+                        for st in ("median", "top2"):
+                            a_tag = f"a{int(round(float(alpha)*100)):03d}"  # 000, 005, 010, ..., 100
+                            outfile = out_dir / f"{key_id}_{st}_{a_tag}.npz"
+                            combos.append((raw, alpha, st, outfile))
 
     # Slice combos by stride/index
     if sweep_index is not None:

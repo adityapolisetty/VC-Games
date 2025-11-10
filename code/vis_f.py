@@ -160,7 +160,7 @@ with ctlA:
     with rowA[1]:
         max_n_A = st.slider("Max signals", min_value=0, max_value=9, value=9, key="max_n_sig_frontier_A")
     with rowA[2]:
-        st.empty()
+        signal_cost_A = st.select_slider("Signal cost", options=[0, 3, 7], value=3, format_func=lambda v: f"£{v}", key="signal_cost_A")
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)  # Spacer
 
 with ctlB:
@@ -183,13 +183,13 @@ with ctlB:
     with rowB[1]:
         max_n_B = st.slider("Max signals", min_value=0, max_value=9, value=9, key="max_n_sig_frontier_B")
     with rowB[2]:
-        st.empty()
+        signal_cost_B = st.select_slider("Signal cost", options=[0, 3, 7], value=3, format_func=lambda v: f"£{v}", key="signal_cost_B")
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)  # Spacer
 
 # Resolve files
 frontier_dir = Path("frontier_output/").resolve()
-raw_A = dict(signal_cost=3.0, scale_pay=sp_A, scale_param=(0.25 if sp_A == 1 else 0.0), ace_payout=20.0)
-raw_B = dict(signal_cost=3.0, scale_pay=sp_B, scale_param=(0.25 if sp_B == 1 else 0.0), ace_payout=20.0)
+raw_A = dict(signal_cost=float(signal_cost_A), scale_pay=sp_A, scale_param=(0.25 if sp_A == 1 else 0.0), ace_payout=20.0)
+raw_B = dict(signal_cost=float(signal_cost_B), scale_pay=sp_B, scale_param=(0.25 if sp_B == 1 else 0.0), ace_payout=20.0)
 _, key_A = _canonicalize(raw_A)
 _, key_B = _canonicalize(raw_B)
 tag_A = f"a{int(round(float(alpha_A)*10)):02d}"
@@ -434,7 +434,7 @@ with colA:
         st.info(f"Frontier data not found: {file_A.name}")
         st.caption("Run frontier.py to generate frontier data.")
     else:
-        st.markdown("**Fixed:** Signal cost=£3, Ace payoff=20X" + (", Scale param=0.25" if sp_A == 1 else ""))
+        st.markdown(f"**Fixed:** Signal cost=£{signal_cost_A}, Ace payoff=20X" + (", Scale param=0.25" if sp_A == 1 else ""))
         figA, _ = _build_fig(data_A, max_n_A, y_range, global_vmin, global_vmax)
         st.plotly_chart(figA, use_container_width=True, key="mv_frontier_A")
 
@@ -443,7 +443,7 @@ with colB:
         st.info(f"Frontier data not found: {file_B.name}")
         st.caption("Run frontier.py to generate frontier data.")
     else:
-        st.markdown("**Fixed:** Signal cost=£3, Ace payoff=20X" + (", Scale param=0.25" if sp_B == 1 else ""))
+        st.markdown(f"**Fixed:** Signal cost=£{signal_cost_B}, Ace payoff=20X" + (", Scale param=0.25" if sp_B == 1 else ""))
         figB, _ = _build_fig(data_B, max_n_B, y_range, global_vmin, global_vmax)
         st.plotly_chart(figB, use_container_width=True, key="mv_frontier_B")
 
