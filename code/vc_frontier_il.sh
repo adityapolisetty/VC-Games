@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -l select=1:ncpus=12:mem=5gb
-#PBS -l walltime=01:00:00
+#PBS -l walltime=02:00:00
 #PBS -J 0-39
 #PBS -N il_frontier_array
 #PBS -o ../logs/il_frontier.out

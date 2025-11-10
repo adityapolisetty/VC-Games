@@ -158,9 +158,9 @@ with ctlA:
                                    format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}",
                                    key="frontier_alpha_A")
     with rowA[1]:
-        max_n_A = st.slider("Max signals", min_value=0, max_value=9, value=9, key="max_n_sig_frontier_A")
-    with rowA[2]:
         signal_cost_A = st.select_slider("Signal cost", options=[0, 3, 7], value=3, format_func=lambda v: f"£{v}", key="signal_cost_A")
+    with rowA[2]:
+        sd_step_A = st.select_slider("SD step", options=[0.1, 1, 2, 5], value=0.1, format_func=lambda v: f"±{v}pp", key="sd_step_A")
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)  # Spacer
 
 with ctlB:
@@ -181,9 +181,9 @@ with ctlB:
                                    format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}",
                                    key="frontier_alpha_B")
     with rowB[1]:
-        max_n_B = st.slider("Max signals", min_value=0, max_value=9, value=9, key="max_n_sig_frontier_B")
-    with rowB[2]:
         signal_cost_B = st.select_slider("Signal cost", options=[0, 3, 7], value=3, format_func=lambda v: f"£{v}", key="signal_cost_B")
+    with rowB[2]:
+        sd_step_B = st.select_slider("SD step", options=[0.1, 1, 2, 5], value=0.1, format_func=lambda v: f"±{v}pp", key="sd_step_B")
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)  # Spacer
 
 # Resolve files
@@ -201,12 +201,12 @@ data_A = load_frontier_npz(str(file_A))
 data_B = load_frontier_npz(str(file_B))
 
 # Helper: gather means for y-range
-def _gather_means(fd, max_n):
+def _gather_means(fd):
     if fd is None:
         return []
     means = []
     mean_by_n = fd["best_means_by_n"]
-    for n_sig in range(min(len(mean_by_n), max_n + 1)):
+    for n_sig in range(len(mean_by_n)):
         mv = mean_by_n[n_sig]
         if len(mv) > 0:
             means.append(np.asarray(mv, float))
@@ -214,14 +214,59 @@ def _gather_means(fd, max_n):
 
 y_range = None
 if fix_y_mv and (data_A is not None) and (data_B is not None):
-    all_means = [*_gather_means(data_A, max_n_A), *_gather_means(data_B, max_n_B)]
+    all_means = [*_gather_means(data_A), *_gather_means(data_B)]
     if len(all_means) > 0:
         y_min = float(min(np.min(a) for a in all_means))
         y_max = float(max(np.max(a) for a in all_means))
         y_range = _padded_range(y_min, y_max)
 
+# Helper: coarsen frontier data by SD binning
+def _coarsen_frontier(sd_vals, mean_vals, weights, ace_hits, king_hits, queen_hits, sd_step):
+    """
+    Re-bin frontier data to coarser SD granularity.
+    Within each bin, select the point with highest mean return.
+    """
+    if len(sd_vals) == 0:
+        return sd_vals, mean_vals, weights, ace_hits, king_hits, queen_hits
+
+    # Bin by floor(sd / sd_step)
+    bins = np.floor(np.asarray(sd_vals, float) / sd_step).astype(int)
+    max_bin = int(np.max(bins))
+
+    # For each bin, pick index with highest mean
+    coarse_sd = []
+    coarse_mean = []
+    coarse_weights = []
+    coarse_ace = []
+    coarse_king = []
+    coarse_queen = []
+
+    for b in range(max_bin + 1):
+        mask = (bins == b)
+        if not np.any(mask):
+            continue
+        indices = np.flatnonzero(mask)
+        means_in_bin = np.asarray(mean_vals, float)[mask]
+        best_idx_in_bin = np.argmax(means_in_bin)
+        best_idx = indices[best_idx_in_bin]
+
+        coarse_sd.append(float(sd_vals[best_idx]))
+        coarse_mean.append(float(mean_vals[best_idx]))
+        coarse_weights.append(weights[best_idx])
+        if len(ace_hits) > 0:
+            coarse_ace.append(ace_hits[best_idx])
+        if len(king_hits) > 0:
+            coarse_king.append(king_hits[best_idx])
+        if len(queen_hits) > 0:
+            coarse_queen.append(queen_hits[best_idx])
+
+    return (np.array(coarse_sd), np.array(coarse_mean), coarse_weights,
+            np.array(coarse_ace) if len(coarse_ace) > 0 else np.array([]),
+            np.array(coarse_king) if len(coarse_king) > 0 else np.array([]),
+            np.array(coarse_queen) if len(coarse_queen) > 0 else np.array([]))
+
 # Helper: build figure
-def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_override=None):
+def _build_fig(fd, sd_step, y_range_override=None, cmin_override=None, cmax_override=None):
     if fd is None:
         return None, []
     fig = go.Figure()
@@ -238,7 +283,7 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
     points = []
     all_sum_sq_weights = []
     all_custom_data = []  # Store metadata for all points across traces
-    for n_sig in range(min(len(sd_by_n), max_n + 1)):
+    for n_sig in range(len(sd_by_n)):
         sd_vals = sd_by_n[n_sig]
         mean_vals = mean_by_n[n_sig]
         weights = weights_by_n[n_sig]
@@ -247,6 +292,11 @@ def _build_fig(fd, max_n, y_range_override=None, cmin_override=None, cmax_overri
         queen_hits = queen_hits_by_n[n_sig] if n_sig < len(queen_hits_by_n) else np.array([])
         if len(sd_vals) == 0:
             continue
+
+        # Apply SD coarsening
+        sd_vals, mean_vals, weights, ace_hits, king_hits, queen_hits = _coarsen_frontier(
+            sd_vals, mean_vals, weights, ace_hits, king_hits, queen_hits, sd_step
+        )
         sum_sq_weights = [float(np.sum(np.asarray(w_vec, float) ** 2)) for w_vec in weights]
         points.append(dict(
             n=n_sig,
@@ -435,7 +485,7 @@ with colA:
         st.caption("Run frontier.py to generate frontier data.")
     else:
         st.markdown(f"**Fixed:** Signal cost=£{signal_cost_A}, Ace payoff=20X" + (", Scale param=0.25" if sp_A == 1 else ""))
-        figA, _ = _build_fig(data_A, max_n_A, y_range, global_vmin, global_vmax)
+        figA, _ = _build_fig(data_A, sd_step_A, y_range, global_vmin, global_vmax)
         st.plotly_chart(figA, use_container_width=True, key="mv_frontier_A")
 
 with colB:
@@ -444,7 +494,7 @@ with colB:
         st.caption("Run frontier.py to generate frontier data.")
     else:
         st.markdown(f"**Fixed:** Signal cost=£{signal_cost_B}, Ace payoff=20X" + (", Scale param=0.25" if sp_B == 1 else ""))
-        figB, _ = _build_fig(data_B, max_n_B, y_range, global_vmin, global_vmax)
+        figB, _ = _build_fig(data_B, sd_step_B, y_range, global_vmin, global_vmax)
         st.plotly_chart(figB, use_container_width=True, key="mv_frontier_B")
 
 # Shared legend at bottom

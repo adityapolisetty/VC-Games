@@ -367,8 +367,10 @@ if __name__ == "__main__":
     }
 
     # ---- Show Results (triggered from Stage 2) ----
-    # The UI will redirect to /results when Stage 2's "Show performance" is clicked
-    _ = run_ui(2, df, wallet, results=stats, signal_mode=mode, signal_cost=cost)
+    # Start a persistent server to serve /results page
+    # This server will keep running until user clicks "End Game"
+    print("[web] Results ready. Server will stay up until 'End Game' is clicked.")
+    _ = run_ui(stage=3, df=df, wallet=wallet, results=stats, signal_mode=mode, signal_cost=cost)
 
 
     # Optional console dump

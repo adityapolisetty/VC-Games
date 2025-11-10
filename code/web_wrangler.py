@@ -6,15 +6,20 @@ import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import socket
+import uuid
 
 import pandas as pd
 
 HTTPServer.allow_reuse_address = True
 _BROWSER_OPENED = False  # guard to open browser only once per process
 
-_ACTIONS = None
-_POSTED = threading.Event()
-_END_EVENT = threading.Event()
+# Session management - use dict to track per-session events
+_SESSIONS = {}  # {session_id: {'actions': data, 'posted': Event, 'ended': Event}}
+_CURRENT_SESSION = None  # Track current active session
+
+_ACTIONS = None  # Backward compatibility
+_POSTED = threading.Event()  # Backward compatibility
+_END_EVENT = threading.Event()  # Backward compatibility
 
 _HTML = pathlib.Path(__file__).with_name("stage_actions.html")
 
@@ -48,7 +53,19 @@ def _prev_invest_map(df: pd.DataFrame) -> dict[int, float]:
 
 
 class _H(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        """Suppress default logging to reduce noise"""
+        pass
+
     def do_GET(self):
+        # Health check endpoint for Railway
+        if self.path == "/health":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+            return
+
         if self.path == "/favicon.ico":
             # Quietly satisfy browsers without error spam
             self.send_response(204)
@@ -143,19 +160,40 @@ class _H(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self):
-        global _ACTIONS
+        global _ACTIONS, _CURRENT_SESSION
         if self.path == "/submit":
             n = int(self.headers.get("Content-Length", "0"))
-            _ACTIONS = json.loads(self.rfile.read(n).decode("utf-8"))
-            _POSTED.set()
+            data = json.loads(self.rfile.read(n).decode("utf-8"))
+            _ACTIONS = data  # Backward compatibility
+
+            # Update session-specific event
+            if _CURRENT_SESSION and _CURRENT_SESSION in _SESSIONS:
+                _SESSIONS[_CURRENT_SESSION]['actions'] = data
+                _SESSIONS[_CURRENT_SESSION]['posted'].set()
+
+            _POSTED.set()  # Backward compatibility
             if isinstance(self.server.ctx.get("results"), dict):
-                self.server.ctx["results"]["player"] = _ACTIONS.get("player_name") or ""
+                self.server.ctx["results"]["player"] = data.get("player_name") or ""
             self.send_response(200)
             self.end_headers()
             return
 
         if self.path == "/end":
-            _END_EVENT.set()
+            # Signal end and clean up session
+            if _CURRENT_SESSION and _CURRENT_SESSION in _SESSIONS:
+                _SESSIONS[_CURRENT_SESSION]['ended'].set()
+            _END_EVENT.set()  # Backward compatibility
+            self.send_response(200)
+            self.end_headers()
+            return
+
+        if self.path == "/reset":
+            # Reset session for new game
+            global _SESSIONS
+            _SESSIONS.clear()
+            _ACTIONS = None
+            _POSTED.clear()
+            _END_EVENT.clear()
             self.send_response(200)
             self.end_headers()
             return
@@ -327,8 +365,21 @@ document.getElementById('endBtn').onclick = () => {{
   const btn = document.getElementById('endBtn');
   btn.disabled = true;
   document.getElementById('ov').style.display = 'flex';
-  fetch('/end', {{method:'POST'}}).catch(()=>{{}});
-  setTimeout(()=>{{ window.close(); }}, 3000);
+
+  // Send end signal and reset session
+  fetch('/end', {{method:'POST'}})
+    .then(() => fetch('/reset', {{method:'POST'}}))
+    .catch(()=>{{}});
+
+  // Clear localStorage to reset game state
+  localStorage.removeItem('player_name');
+  localStorage.removeItem('game_type');
+  localStorage.removeItem('activity_v1');
+
+  // Redirect to landing page after 2 seconds
+  setTimeout(()=>{{
+    window.location.href = '/';
+  }}, 2000);
 }};
 
 // Create Plotly frontier chart (matching vis_f.py formatting)
@@ -470,10 +521,21 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
     stage_history: list of dicts with 'signals' and 'stakes' for each completed stage
     """
     import os
-    global _ACTIONS
+    global _ACTIONS, _CURRENT_SESSION, _SESSIONS
+
+    # Reset global state for backward compatibility
     _ACTIONS = None
     _POSTED.clear()
     _END_EVENT.clear()
+
+    # Create new session
+    session_id = str(uuid.uuid4())
+    _CURRENT_SESSION = session_id
+    _SESSIONS[session_id] = {
+        'actions': None,
+        'posted': threading.Event(),
+        'ended': threading.Event()
+    }
 
     # Build lightweight cards with optional median/top2 and second_rank fields
     cards_df = df.loc[df["alive"], :].copy()
@@ -520,7 +582,7 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     actual_port = getattr(srv, 'server_address', (None, port))[1]
     url = f"http://127.0.0.1:{actual_port}/"
-    print(f"[web] Serving stage {stage} UI at {url}")
+    print(f"[web] Serving stage {stage} UI at {url} (session: {session_id[:8]})")
     global _BROWSER_OPENED
     if open_browser and not _BROWSER_OPENED:
         try:
@@ -529,11 +591,45 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
         except Exception:
             pass
 
-    _POSTED.wait()  # wait for stage POST
+    # Wait for POST or END event depending on whether this is a results-only stage
+    session_data = _SESSIONS.get(session_id)
+    if not session_data:
+        print(f"[web] Warning: Session {session_id[:8]} disappeared")
+        srv.shutdown()
+        return None
 
-    if results:  # Results stage: wait for end event
-        _END_EVENT.wait(timeout=3600)
-        time.sleep(0.2)
+    actions = None
+
+    # Results-only stage: skip waiting for POST, just wait for END
+    if results and stage >= 3:
+        print(f"[web] Results stage - waiting for 'End Game' click")
+        ended_event = session_data['ended']
+        ended_event.wait(timeout=300)  # 5 minute timeout
+    else:
+        # Normal game stage: wait for POST (user submission)
+        posted_event = session_data['posted']
+        if not posted_event.wait(timeout=300):  # 5 minute timeout
+            print(f"[web] Warning: Stage {stage} timed out waiting for POST")
+            srv.shutdown()
+            # Clean up session
+            if session_id in _SESSIONS:
+                del _SESSIONS[session_id]
+            return None
+
+        # Get actions from session
+        actions = session_data.get('actions')
+        _ACTIONS = actions  # Backward compatibility
+
+        # If results are also provided (shouldn't happen with stage < 3), wait for end too
+        if results:
+            ended_event = session_data['ended']
+            ended_event.wait(timeout=300)
+            time.sleep(0.2)
 
     srv.shutdown()
-    return _ACTIONS
+
+    # Clean up session
+    if session_id in _SESSIONS:
+        del _SESSIONS[session_id]
+
+    return actions

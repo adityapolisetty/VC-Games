@@ -165,10 +165,8 @@
 window.__enterClick = function(){
   try{
     var nmEl=document.getElementById('nameInput');
-    var rsEl=document.getElementById('riskSlider');
     var nm=(nmEl&&nmEl.value?nmEl.value:'Team Alpha').trim();
-    var rp=rsEl?String(rsEl.value):'3';
-    try{ localStorage.setItem('player_name', nm); localStorage.setItem('risk_pct', rp); }catch(_){ }
+    try{ localStorage.setItem('player_name', nm); }catch(_){ }
     if (typeof window.showApp === 'function') { window.showApp(); return; }
     // Fallback: toggle views now and try to call showApp shortly (to build grid)
     var login=document.getElementById('loginSection');
@@ -199,13 +197,6 @@ window.__enterClick = function(){
     <label for="nameInput" class="label-lg" style="display:block;margin:0 0 14px;color:#111827;">Team Name</label>
     <input id="nameInput" type="text" placeholder="Team Alpha"
            style="width:100%;padding:14px 12px;border-radius:10px;border:1px solid #cbd5e1;background:#ffffff;color:#111827;font-size:16px;margin:0 0 22px;" />
-
-    <div class="label-lg" style="color:#111827;margin:12px 0 6px;">How risk averse are you?</div>
-    <label for="riskSlider" class="label-lg muted" style="display:block;margin:0 0 8px;">
-      1 = Let's gooo!<br>5 = Very risk averse
-    </label>
-    <input id="riskSlider" type="range" min="1" max="5" value="3" class="slider" />
-    <div class="small-lg">Selected: <span id="riskVal">3</span> — <span id="riskPhrase">Balanced 🤝</span></div>
 
     <div class="label-lg" style="color:#111827;margin:18px 0 6px;">Game type</div>
     <div class="row" style="gap:16px; margin-bottom:10px;">
@@ -245,7 +236,7 @@ window.__enterClick = function(){
         <div style="margin-top:16px; font-size:14px; color:#6b7280;">
           If you don't want to invest in this stage
         </div>
-        <button id="skipStage" class="btn-cta-sm" style="margin-top:8px; width:100%;">Skip Stage</button>
+        <button id="skipStage" class="btn-cta-sm" style="margin-top:8px; width:100%;">Finish Stage</button>
       </div>
 
       <div id="panel" style="display:none;margin-top:8px;">
@@ -307,8 +298,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const loginSection=document.getElementById("loginSection");
   const appView=document.getElementById("appView");
   const nameInput=document.getElementById("nameInput");
-  const riskSlider=document.getElementById("riskSlider");
-  const riskVal=document.getElementById("riskVal");
   const enterBtn=document.getElementById("enterBtn");
   const dashCenter=document.getElementById("dashCenter");
   const aliveTitle=document.getElementById("aliveTitle");
@@ -338,17 +327,7 @@ document.addEventListener("DOMContentLoaded", () => {
     budgetAlertModal.style.display = "flex";
   }
 
-  const RISK_TAGS = {
-    1: "Let's gooo! 🚀😎",
-    2: "Risk is nice 🙂",
-    3: "Balanced 🤝",
-    4: "Cautious 🤔🛡️",
-    5: "Very risk averse 🐢⚠️"
-  };
-  const riskPhrase = document.getElementById("riskPhrase");
-  function updateRisk(){ const v = String(riskSlider.value||"3"); riskVal.textContent = v; riskPhrase.textContent = RISK_TAGS[Number(v)] || ""; }
-  riskSlider.oninput = updateRisk;
-  updateRisk();
+  // Risk slider removed - no longer needed
 
   // Game mode (set from localStorage by Enter). Default g1 (median)
   let SINGLE_SIGNAL_MODE = true;
@@ -720,7 +699,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     const payload={ stage:STAGE, player_name:localStorage.getItem("player_name")||"",
-      risk_percentile:Number(localStorage.getItem("risk_pct")||""), purchases, invest,
+      risk_percentile:0, purchases, invest,
       client_spent_signals:ss, client_spent_invest:si, client_budget_remaining:budget };
 
     fetch("/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
@@ -747,7 +726,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const payload = {
         stage: STAGE,
         player_name: localStorage.getItem("player_name") || "",
-        risk_percentile: Number(localStorage.getItem("risk_pct") || ""),
+        risk_percentile: 0,
         purchases: {},
         invest: {},
         client_spent_signals: 0,
@@ -813,16 +792,14 @@ document.addEventListener("DOMContentLoaded", () => {
   setBudget();
   updateSummary();
 }
-  if (STAGE===1){ localStorage.removeItem("player_name"); localStorage.removeItem("risk_pct"); localStorage.removeItem("activity_v1"); showLogin(); }
-  else { const n=localStorage.getItem("player_name"), r=localStorage.getItem("risk_pct"); if(n&&r) showApp(); else showLogin(); }
+  if (STAGE===1){ localStorage.removeItem("player_name"); localStorage.removeItem("activity_v1"); showLogin(); }
+  else { const n=localStorage.getItem("player_name"); if(n) showApp(); else showLogin(); }
 
   function doEnter(){
     if (enterBtn) enterBtn.disabled = true; // guard against double-click
     const nm=(nameInput.value||"Team Alpha").trim();
-    const rp=String(riskSlider.value||"3");
     const gt = (document.querySelector('input[name="gameType"]:checked')||{value:'g1'}).value;
     localStorage.setItem("player_name", nm);
-    localStorage.setItem("risk_pct", rp);
     localStorage.setItem("game_type", gt);
     try { initSignalsFromGame(); } catch(_){ }
     showApp();

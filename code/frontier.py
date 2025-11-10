@@ -44,9 +44,9 @@ POST_NPZ_DEFAULT = "../precomp_output/post_mc.npz"
 # Fixed params per request
 ACE_PAYOUT = 20.0
 SCALE_PARAM_ON = 0.25
-ALPHA_GRID = np.linspace(0, 1.0, 11) 
+ALPHA_GRID = np.linspace(0, 1.0, 21) 
 UNITS = 9
-SD_STEP = 5  # percentage points
+SD_STEP = 0.1  # percentage points
 
 
 # -----------------------
@@ -450,7 +450,7 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Grids per request
-    SIGNAL_COSTS = [0, 3, 7]
+    SIGNAL_COSTS = [0, 3, 7, 9]
     SCALE_PARAMS = [0.25]
     SCALE_PAYS = [0, 1]
     ACE_PAYOUTS = [20.0]
