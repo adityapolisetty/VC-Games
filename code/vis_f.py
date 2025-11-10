@@ -159,7 +159,7 @@ with ctlA:
                                    format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}",
                                    key="frontier_alpha_A")
     with rowA[1]:
-        signal_cost_A = st.select_slider("Signal cost", options=[0, 3, 7, 9], value=3, format_func=lambda v: f"£{v}", key="signal_cost_A")
+        signal_cost_A = st.select_slider("Signal cost", options=[0, 3, 9], value=3, format_func=lambda v: f"£{v}", key="signal_cost_A")
     with rowA[2]:
         sd_step_A = st.select_slider("SD binning", options=[0.1, 1, 2, 5], value=5, format_func=lambda v: f"{v}pp bin", key="sd_step_A")
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)  # Spacer
@@ -183,7 +183,7 @@ with ctlB:
                                    format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}",
                                    key="frontier_alpha_B")
     with rowB[1]:
-        signal_cost_B = st.select_slider("Signal cost", options=[0, 3, 7, 9], value=3, format_func=lambda v: f"£{v}", key="signal_cost_B")
+        signal_cost_B = st.select_slider("Signal cost", options=[0, 3, 9], value=3, format_func=lambda v: f"£{v}", key="signal_cost_B")
     with rowB[2]:
         sd_step_B = st.select_slider("SD binning", options=[0.1, 1, 2, 5], value=5, format_func=lambda v: f"{v}pp bin", key="sd_step_B")
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)  # Spacer
