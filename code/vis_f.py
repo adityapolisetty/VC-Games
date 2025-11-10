@@ -136,7 +136,7 @@ with row[0]:
         unsafe_allow_html=True,
     )
 with row[1]:
-    fix_y_mv = st.toggle("Fix Y axis range", value=True, key="fix_y_mv")
+    fix_y_mv = st.toggle("Fix Y axis range", value=False, key="fix_y_mv")
 
 # Per-panel controls
 ctlA, ctlB = st.columns(2)
@@ -154,13 +154,13 @@ with ctlA:
         # Match ALPHA_GRID from frontier.py (11 points, 0.1 step)
         alpha_A = st.select_slider("Stage 1 allocation",
                                    options=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
-                                   value=0.5,
+                                   value=0.1,
                                    format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}",
                                    key="frontier_alpha_A")
     with rowA[1]:
         signal_cost_A = st.select_slider("Signal cost", options=[0, 3, 7, 9], value=3, format_func=lambda v: f"£{v}", key="signal_cost_A")
     with rowA[2]:
-        sd_step_A = st.select_slider("SD step", options=[0.1, 1, 2, 5], value=0.1, format_func=lambda v: f"±{v}pp", key="sd_step_A")
+        sd_step_A = st.select_slider("SD step", options=[0.1, 1, 2, 5], value=5, format_func=lambda v: f"±{v}pp", key="sd_step_A")
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)  # Spacer
 
 with ctlB:
@@ -171,19 +171,19 @@ with ctlB:
     with topB[1]:
         frontier_sig_B = st.selectbox("Signal type", ["Median", "Top 2"], key="frontier_sig_B")
     sp_B = 1 if "On" in frontier_sp_B else 0
-    sig_B = "median" if frontier_sig_B == "Median" else "top2"
+    sig_B = "top2" if frontier_sig_B == "Top 2" else "median"
     rowB = st.columns([1, 1, 1])
     with rowB[0]:
         # Match ALPHA_GRID from frontier.py (11 points, 0.1 step)
         alpha_B = st.select_slider("Stage 1 allocation",
                                    options=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
-                                   value=0.5,
+                                   value=0.1,
                                    format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}",
                                    key="frontier_alpha_B")
     with rowB[1]:
         signal_cost_B = st.select_slider("Signal cost", options=[0, 3, 7, 9], value=3, format_func=lambda v: f"£{v}", key="signal_cost_B")
     with rowB[2]:
-        sd_step_B = st.select_slider("SD step", options=[0.1, 1, 2, 5], value=0.1, format_func=lambda v: f"±{v}pp", key="sd_step_B")
+        sd_step_B = st.select_slider("SD step", options=[0.1, 1, 2, 5], value=5, format_func=lambda v: f"±{v}pp", key="sd_step_B")
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)  # Spacer
 
 # Resolve files
