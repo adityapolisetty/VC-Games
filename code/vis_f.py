@@ -170,7 +170,7 @@ with ctlB:
     with topB[0]:
         frontier_sp_B = st.radio("Payoff scaling", ["Off (Ace-only)", "On (Scaled)"], horizontal=True, key="frontier_sp_B")
     with topB[1]:
-        frontier_sig_B = st.selectbox("Signal type", ["Median", "Top 2"], key="frontier_sig_B")
+        frontier_sig_B = st.selectbox("Signal type", ["Median", "Top 2"], index=1, key="frontier_sig_B")
     sp_B = 1 if "On" in frontier_sp_B else 0
     sig_B = "top2" if frontier_sig_B == "Top 2" else "median"
     rowB = st.columns([1, 1, 1])
