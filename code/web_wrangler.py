@@ -58,6 +58,7 @@ class _H(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        global _SESSIONS, _ACTIONS, _POSTED, _END_EVENT
         # Health check endpoint for Railway
         if self.path == "/health":
             self.send_response(200)
@@ -133,7 +134,7 @@ class _H(BaseHTTPRequestHandler):
                 "stage": self.server.ctx["stage"],
                 "totalBudget": self.server.ctx["total_budget"],
                 "budgetRemaining": self.server.ctx["wallet"],
-                "cards": self.server.ctx["cards"],  # [{card_id,color,N}]
+                "cards": self.server.ctx["cards"],  # [{card_id,N}]
                 "prevSignals": self.server.ctx["prev_signals"],
                 "prevInvest": self.server.ctx["prev_invest"],
                 "stage_history": self.server.ctx.get("stage_history", []),
@@ -160,7 +161,7 @@ class _H(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_POST(self):
-        global _ACTIONS, _CURRENT_SESSION
+        global _ACTIONS, _CURRENT_SESSION, _SESSIONS, _POSTED, _END_EVENT
         if self.path == "/submit":
             n = int(self.headers.get("Content-Length", "0"))
             data = json.loads(self.rfile.read(n).decode("utf-8"))
@@ -189,13 +190,14 @@ class _H(BaseHTTPRequestHandler):
 
         if self.path == "/reset":
             # Reset session for new game
-            global _SESSIONS
             _SESSIONS.clear()
             _ACTIONS = None
             _POSTED.clear()
             _END_EVENT.clear()
             self.send_response(200)
+            self.send_header("Content-Type", "application/json")
             self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
             return
 
         self.send_error(404)
@@ -539,10 +541,10 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
 
     # Build lightweight cards with optional median/top2 and second_rank fields
     cards_df = df.loc[df["alive"], :].copy()
-    cols = [c for c in ("card_id", "color", "N", "med", "sum2", "second_rank") if c in cards_df.columns]
+    cols = [c for c in ("card_id", "N", "med", "sum2", "second_rank") if c in cards_df.columns]
     cards = []
     for _, r in cards_df[cols].iterrows():
-        rec = {"card_id": int(r.get("card_id")), "color": str(r.get("color", "blue"))}
+        rec = {"card_id": int(r.get("card_id"))}
         if "med" in cols: rec["med"] = int(r.get("med"))
         if "sum2" in cols: rec["sum2"] = int(r.get("sum2"))
         if "N" in cols: rec["N"] = int(r.get("N"))

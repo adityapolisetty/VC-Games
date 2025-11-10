@@ -212,7 +212,10 @@ window.__enterClick = function(){
       <a href="https://ib-vc-simulation-dynamic.streamlit.app/#b" target="_blank" id="wonkLink">Wonkish</a>
     </div>
     <div class="title"><span id="stageIndicator"></span></div>
-    <div class="right"><div id="budget" class="budget">Budget £—</div></div>
+    <div class="right">
+      <button id="restartBtn" class="btn-ghost" style="padding:8px 14px; margin-left:0; margin-right:16px;">🔄 Restart</button>
+      <div id="budget" class="budget">Budget £—</div>
+    </div>
   </header>
 
   <div class="wrap">
@@ -544,12 +547,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const offsets=[48,36,24,12];
       offsets.forEach(off=>{
         const u=document.createElement("div");
-        u.className="underCard blue";
+        u.className="underCard";
         u.style.left = (-off)+"px";
         pile.appendChild(u);
       });
       const b=document.createElement("button");
-      b.type="button"; b.className=`card top blue`; b.dataset.idx=i;
+      b.type="button"; b.className=`card top`; b.dataset.idx=i;
       b.innerHTML=`<span class=\"pile-tag\">Pile ${i+1}</span><span class=\"label\"></span>`;
       b.addEventListener("click",()=>{
         if(STAGE===3) return;  // Results stage - no selection
@@ -676,8 +679,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const stageSum = c.stage_invests.reduce((a,b)=>a+b,0);
         const newS = [...c.owned_sids].filter(x=>!c.prev_owned.has(x));
         if (stageSum>0 || newS.length>0){
-          const prev = act[c.card_id] || {color:c.color, N:c.N, invested:0, signals:[]};
-          prev.color=c.color; prev.N=c.N;
+          const prev = act[c.card_id] || {N:c.N, invested:0, signals:[]};
+          prev.N=c.N;
           prev.invested = Number(prev.invested||0) + stageSum;
           prev.signals = Array.from(new Set([...(prev.signals||[]), ...newS])).sort((a,b)=>a-b);
           act[c.card_id] = prev;
@@ -761,6 +764,23 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".close").forEach(x=>x.onclick=()=>{ document.getElementById(x.dataset.x).style.display="none"; });
   document.getElementById("rulesLink").onclick=(e)=>{e.preventDefault();rulesModal.style.display="flex";};
   [rulesModal,tipsModal,wonkModal,budgetAlertModal,performanceModal].forEach(m=>m.addEventListener("click",(e)=>{ if(e.target===m) m.style.display="none"; }));
+
+  // Restart button handler
+  const restartBtn = document.getElementById("restartBtn");
+  if (restartBtn) {
+    restartBtn.onclick = () => {
+      if (confirm("Are you sure you want to restart? All progress will be lost.")) {
+        // Clear localStorage
+        localStorage.removeItem("player_name");
+        localStorage.removeItem("game_type");
+        localStorage.removeItem("activity_v1");
+        // Call reset endpoint
+        fetch("/reset", {method: "POST"}).catch(() => {});
+        // Redirect to landing page
+        setTimeout(() => { location.href = "/"; }, 100);
+      }
+    };
+  }
 
   // view toggles
   function showLogin(){ brandbar.style.display="none"; loginSection.style.display="grid"; appView.style.display="none"; dashCenter.textContent=""; }

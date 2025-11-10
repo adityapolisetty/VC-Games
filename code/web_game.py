@@ -5,6 +5,7 @@ import pandas as pd
 
 from web_wrangler import run_ui  # UI server only
 from sim_res import _deal_cards_global_deck, round_seed
+from database import init_db, create_session, log_stage_action, log_game_results, close_session
 
 # ------- game parameters -------
 MIN_INV = {1: 1.0, 2: 5.0}  # Only 2 stages now
@@ -183,20 +184,45 @@ if __name__ == "__main__":
     cost = float(args.signal_cost)
     open_first = args.open_browser
     ace_pay = ACE_PAYOUT
+
+    # Initialize database
+    init_db()
+
     # 9 piles
-    df = draw_deck(n_cards=9, seed=42)
+    game_seed = 42
+    df = draw_deck(n_cards=9, seed=game_seed)
     for c in ("inv1", "inv2"):
         if c not in df.columns:
             df[c] = 0.0
 
     wallet = WALLET0
     stage_history = []  # Track stage-wise stats
+    total_signal_cost_stage1 = 0.0  # Explicit tracker for Stage 1 signals
+    total_signal_cost_stage2 = 0.0  # Explicit tracker for Stage 2 signals
+
+    # Create database session (team name will be updated after Stage 1)
+    session_id = create_session(
+        team_name="",  # Will be filled from UI
+        seed=game_seed,
+        signal_mode=mode,
+        signal_cost=cost
+    )
 
     # ---- Stage 1 ----
     act = run_ui(1, df, wallet, open_browser=open_first, signal_mode=mode, signal_cost=cost)
     if act is None:
         raise RuntimeError("Stage 1 UI returned None - did the server fail?")
+
+    # Update session with team name from UI
+    team_name = act.get("player_name", "Anonymous")
+    if team_name:
+        conn = __import__('sqlite3').connect(__import__('database').DB_FILE)
+        conn.execute("UPDATE game_sessions SET team_name = ? WHERE id = ?", (team_name, session_id))
+        conn.commit()
+        conn.close()
+
     df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
+    total_signal_cost_stage1 = float(s_spent)
     wallet = max(0.0, wallet - float(s_spent))
 
     inv_need = {int(k): max(float(v), MIN_INV[1]) for k, v in act["invest"].items() if float(v) > 0}
@@ -221,7 +247,18 @@ if __name__ == "__main__":
     df = step_round(df, 1)
 
     # Record Stage 1 history
-    stage_history.append({"signals": float(s_spent), "stakes": float(stage1_stakes)})
+    stage_history.append({"signals": float(total_signal_cost_stage1), "stakes": float(stage1_stakes)})
+
+    # Log Stage 1 to database
+    log_stage_action(
+        session_id=session_id,
+        stage=1,
+        purchases=act.get("purchases", {}),
+        investments=act.get("invest", {}),
+        signals_spent=total_signal_cost_stage1,
+        stakes_invested=stage1_stakes,
+        budget_remaining=wallet
+    )
 
     # Track which piles were invested in Stage 1
     stage1_invested_ids = [int(cid) for cid in df[df["inv1"] > 0]["card_id"].tolist()]
@@ -232,6 +269,7 @@ if __name__ == "__main__":
     if act is None:
         raise RuntimeError("Stage 2 UI returned None - did the server fail?")
     df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
+    total_signal_cost_stage2 = float(s_spent)
     wallet = max(0.0, wallet - float(s_spent))
 
     inv_need = {int(k): max(float(v), MIN_INV[2]) for k, v in act["invest"].items() if float(v) > 0}
@@ -256,7 +294,18 @@ if __name__ == "__main__":
     df = step_round(df, 2)
 
     # Record Stage 2 history
-    stage_history.append({"signals": float(s_spent), "stakes": float(stage2_stakes)})
+    stage_history.append({"signals": float(total_signal_cost_stage2), "stakes": float(stage2_stakes)})
+
+    # Log Stage 2 to database
+    log_stage_action(
+        session_id=session_id,
+        stage=2,
+        purchases=act.get("purchases", {}),
+        investments=act.get("invest", {}),
+        signals_spent=total_signal_cost_stage2,
+        stakes_invested=stage2_stakes,
+        budget_remaining=wallet
+    )
 
     # ---- Compute Results and Show Performance ----
     pay = compute_payoffs_at_stage2(df, ace_payout=ace_pay)
@@ -265,8 +314,12 @@ if __name__ == "__main__":
     total_invest = float(inv_sum.sum())
     total_payoff = float(pay["payout"].sum()) if len(pay) else 0.0
     n_invested = int((inv_sum > 0).sum())
-    # signals spent
-    total_signals_spend = float(df.get("signals_spend", 0).fillna(0).sum())
+    # signals spent - use explicit trackers as source of truth
+    total_signals_spend = float(total_signal_cost_stage1 + total_signal_cost_stage2)
+    # Verification: check DataFrame accumulation matches
+    df_signals_total = float(df.get("signals_spend", 0).fillna(0).sum())
+    if abs(total_signals_spend - df_signals_total) > 0.01:
+        print(f"[WARNING] Signal cost mismatch: explicit={total_signals_spend}, df={df_signals_total}")
     # avg signals per invested card
     def _row_sig_count(row):
         cnt = 0
@@ -280,8 +333,9 @@ if __name__ == "__main__":
     else:
         avg_signals = 0.0
 
+    # Net returns: express as % of original WALLET0 budget for consistency with frontier
     net_return_abs = total_payoff - total_invest
-    net_return_pct = (net_return_abs / total_invest * 100.0) if total_invest > 0 else 0.0
+    net_return_pct = 100.0 * ((total_payoff - WALLET0) / WALLET0) if WALLET0 > 0 else 0.0
 
     # Calculate player portfolio weights (all 9 piles)
     player_weights = []
@@ -323,11 +377,17 @@ if __name__ == "__main__":
         "queen_hits": queen_hits,
     }
 
+    # Log results to database
+    log_game_results(session_id=session_id, results=stats)
+
     # ---- Show Results (triggered from Stage 2) ----
     # Start a persistent server to serve /results page
     # This server will keep running until user clicks "End Game"
     print("[web] Results ready. Server will stay up until 'End Game' is clicked.")
     _ = run_ui(stage=3, df=df, wallet=wallet, results=stats, signal_mode=mode, signal_cost=cost)
+
+    # Close database session
+    close_session(session_id=session_id)
 
 
     # Optional console dump
