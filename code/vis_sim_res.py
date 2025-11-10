@@ -707,7 +707,7 @@ def _ssq_extents(fd):
         return None
     return (min(vals), max(vals))
 
-def _build_frontier_fig(fd, sd_step, y_range_override=None, cmin_override=None, cmax_override=None):
+def _build_frontier_fig(fd, sd_step, y_range_override=None, cmin_override=None, cmax_override=None, n_signals_filter="All"):
     """Build frontier figure with enhanced hover info and concentration coloring."""
     if fd is None:
         return None, []
@@ -724,7 +724,14 @@ def _build_frontier_fig(fd, sd_step, y_range_override=None, cmin_override=None, 
 
     points = []
     all_sum_sq_weights = []
-    for n_sig in range(len(sd_by_n)):
+
+    # Determine which signal counts to plot
+    if n_signals_filter == "All":
+        n_sigs_to_plot = range(len(sd_by_n))
+    else:
+        n_sigs_to_plot = [n_signals_filter] if n_signals_filter < len(sd_by_n) else []
+
+    for n_sig in n_sigs_to_plot:
         sd_vals = sd_by_n[n_sig]
         mean_vals = mean_by_n[n_sig]
         weights = weights_by_n[n_sig]
@@ -906,7 +913,7 @@ def _panel_controls(tag: str):
 # ==============================
 
 # View selector: Simulation Results vs Efficient Frontiers vs Posteriors
-view = st.radio("View", ["Simulation Results", "Efficient Frontiers", "Posteriors"], horizontal=True, key="top_view")
+view = st.radio("View", ["Simulation Results", "Mean-Variance Frontier", "Posteriors"], horizontal=True, key="top_view")
 
 # ==============================
 # CONDITIONAL RENDERING: SIMULATION RESULTS vs POSTERIORS
@@ -1106,6 +1113,9 @@ elif view == "Efficient Frontiers":
             signal_cost_A = st.select_slider("Signal cost", options=[0, 3, 9], value=3, format_func=lambda v: f"£{v}", key="signal_cost_A")
         with rowA[2]:
             sd_step_A = st.select_slider("SD binning", options=[0.1, 1, 2, 5], value=5, format_func=lambda v: f"{v}pp bin", key="sd_step_A")
+        rowA2 = st.columns([1])
+        with rowA2[0]:
+            n_signals_A = st.select_slider("Number of signals", options=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, "All"], value="All", format_func=lambda v: "All" if v == "All" else str(v), key="n_signals_A")
         st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
 
     with ctlB:
