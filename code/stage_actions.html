@@ -235,7 +235,7 @@ window.__enterClick = function(){
         <div style="margin-top:16px; font-size:14px; color:#6b7280;">
           If you don't want to invest in this stage
         </div>
-        <button id="skipStage" class="btn-cta-sm" style="margin-top:8px; width:100%;">Finish Stage 1</button>
+        <button id="skipStage" class="btn-cta-sm" style="margin-top:8px; width:100%;">Finish Stage</button>
       </div>
 
       <div id="panel" style="display:none;margin-top:8px;">
@@ -251,7 +251,7 @@ window.__enterClick = function(){
         <div id="msg" class="muted" style="margin-top:10px;"></div>
       </div>
 
-      <button id="finish" class="btn-cta" style="margin-top:12px;">Finish Stage 2</button>
+      <button id="finish" class="btn-cta" style="margin-top:12px;">Finish Stage</button>
 
       <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--b);">
         <h3 style="margin:0 0 12px 0;">Summary</h3>
@@ -287,10 +287,16 @@ window.__enterClick = function(){
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-  const SEED = window.SEED || {};
-  let STAGE  = Number(SEED.stage) || 1;
-  let BUDGET = Number(SEED.budgetRemaining) || 0;
-  const STAGE1_INVESTED = new Set(SEED.stage1_invested || []);  // card_ids invested in Stage 1
+    const SEED = window.SEED || {};
+    let STAGE  = Number(SEED.stage) || 1;
+    let BUDGET = Number(SEED.budgetRemaining) || 0;
+    const STAGE1_INVESTED = new Set(SEED.stage1_invested || []);  // card_ids invested in Stage 1
+
+    // Check if we're loading Stage 2 after Stage 1 submit - keep overlay visible
+    if (sessionStorage.getItem('loading_stage2') === 'true') {
+      document.getElementById("stageOverlay").style.display = 'flex';
+      document.getElementById("overlayMsg").textContent = 'Loading Stage 2...';
+    }
 
   // Refs
   const brandbar=document.getElementById("brandbar");
@@ -318,8 +324,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const sigDesc=document.getElementById("sigDesc");
   const budgetAlertModal=document.getElementById("budgetAlertModal");
   const budgetAlertMsg=document.getElementById("budgetAlertMsg");
-  const overlay=document.getElementById("stageOverlay");
-  const overlayMsg=document.getElementById("overlayMsg");
+  // const overlay=document.getElementById("stageOverlay");
+  // const overlayMsg=document.getElementById("overlayMsg");
 
   function showBudgetAlert(message) {
     budgetAlertMsg.textContent = message;
@@ -712,6 +718,8 @@ document.addEventListener("DOMContentLoaded", () => {
           // DO NOT clear localStorage - keep player_name and game_type for Stage 2
           overlayMsg.textContent = "Your investments are hard at work…";
           overlay.style.display = "flex";
+          // Mark that we're loading Stage 2 to prevent flash of login page
+          sessionStorage.setItem('loading_stage2', 'true');
           // Server will shut down and restart - reload page to get Stage 2
           setTimeout(() => { location.href = "/"; }, 2000);
         }
@@ -834,7 +842,12 @@ document.addEventListener("DOMContentLoaded", () => {
   } else {
     // Stage 2+: Continue existing game if player_name exists
     const n=localStorage.getItem("player_name");
-    if(n) showApp();
+    if(n) {
+      showApp();
+      // Hide loading overlay and clear flag
+      overlay.style.display = 'none';
+      sessionStorage.removeItem('loading_stage2');
+    }
     else showLogin();
   }
 
