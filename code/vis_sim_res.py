@@ -1072,7 +1072,7 @@ if view == "Simulation Results":
                 key="voi_B",
             )
 
-elif view == "Efficient Frontiers":
+elif view == "Mean-Variance Frontiers":
     # ==============================
     # EFFICIENT FRONTIERS VIEW
     # ==============================
