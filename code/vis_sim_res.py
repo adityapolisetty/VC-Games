@@ -605,7 +605,7 @@ def _fmt_ratio(x: float) -> str:
 
 @st.cache_data(show_spinner=False)
 def load_frontier_npz(npz_path: str):
-    """Load frontier NPZ file containing mean-variance efficient frontiers."""
+    """Load frontier NPZ file containing mean-variance MEAN-VARIANCE frontiers."""
     p = Path(npz_path).resolve()
     if not p.exists():
         return None
@@ -753,7 +753,7 @@ def _build_frontier_fig(fd, sd_step, y_range_override=None, cmin_override=None, 
         ))
         all_sum_sq_weights.extend(sum_sq_weights)
 
-    # Determine global frontier (Pareto-efficient) across all points
+    # Determine global frontier (Pareto-MEAN-VARIANCE) across all points
     combined = []
     for i, p in enumerate(points):
         for j in range(len(p["sd"])):
@@ -912,7 +912,7 @@ def _panel_controls(tag: str):
 # TOP-LEVEL VIEW SELECTOR
 # ==============================
 
-# View selector: Simulation Results vs Efficient Frontiers vs Posteriors
+# View selector: Simulation Results vs MEAN-VARIANCE Frontiers vs Posteriors
 view = st.radio("View", ["Simulation Results", "Mean-Variance Frontier", "Posteriors"], horizontal=True, key="top_view")
 
 # ==============================
@@ -1074,7 +1074,7 @@ if view == "Simulation Results":
 
 elif view == "Mean-Variance Frontiers":
     # ==============================
-    # EFFICIENT FRONTIERS VIEW
+    # MEAN-VARIANCE FRONTIERS VIEW
     # ==============================
 
     # Help text + shared y-range toggle
