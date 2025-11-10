@@ -17,8 +17,22 @@ else:
 
 def init_db():
     """Create tables if they don't exist."""
+    # Ensure directory exists for Railway volume
+    DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    print(f"[db] Database path: {DB_FILE}")
+    print(f"[db] Database directory exists: {DB_FILE.parent.exists()}")
+
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
+
+    # Migration: Add 'completed' column if it doesn't exist
+    try:
+        cur.execute("SELECT completed FROM game_sessions LIMIT 1")
+    except sqlite3.OperationalError:
+        print("[db] Adding 'completed' column to game_sessions table...")
+        cur.execute("ALTER TABLE game_sessions ADD COLUMN completed BOOLEAN DEFAULT 0")
+        conn.commit()
+        print("[db] Migration complete!")
 
     # Game sessions table
     cur.execute("""
@@ -75,20 +89,26 @@ def init_db():
 
 def create_session(team_name: str, seed: int, signal_mode: str, signal_cost: float) -> int:
     """Create a new game session and return its ID."""
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cur = conn.cursor()
 
-    cur.execute("""
-        INSERT INTO game_sessions (team_name, timestamp_start, seed, signal_mode, signal_cost)
-        VALUES (?, ?, ?, ?, ?)
-    """, (team_name, datetime.now(), seed, signal_mode, signal_cost))
+        cur.execute("""
+            INSERT INTO game_sessions (team_name, timestamp_start, seed, signal_mode, signal_cost)
+            VALUES (?, ?, ?, ?, ?)
+        """, (team_name, datetime.now(), seed, signal_mode, signal_cost))
 
-    session_id = cur.lastrowid
-    conn.commit()
-    conn.close()
+        session_id = cur.lastrowid
+        conn.commit()
+        conn.close()
 
-    print(f"[db] Created session {session_id} for team '{team_name}'")
-    return session_id
+        print(f"[db] Created session {session_id} for team '{team_name}'")
+        return session_id
+    except Exception as e:
+        print(f"[db] ERROR creating session: {e}")
+        print(f"[db] Database file: {DB_FILE}")
+        print(f"[db] DB exists: {DB_FILE.exists()}")
+        raise
 
 
 def log_stage_action(
