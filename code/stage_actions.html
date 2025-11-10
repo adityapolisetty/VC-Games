@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>VC Card Games</title>
+<title>The VC Card Game</title>
 <style>
   @font-face{font-family:'Source Sans Pro'; font-style:normal; font-weight:400; font-display:swap; src: local('Source Sans Pro Regular'), local('SourceSansPro-Regular'), url('/assets/SourceSansPro-Regular.woff2') format('woff2'), url('/assets/SourceSansPro-Regular.ttf.woff2') format('woff2');}
   @font-face{font-family:'Source Sans Pro'; font-style:normal; font-weight:600; font-display:swap; src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url('/assets/SourceSansPro-Semibold.woff2') format('woff2'), url('/assets/SourceSansPro-Semibold.ttf.woff2') format('woff2');}
@@ -677,8 +677,9 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Finish / Show performance
-  finishStageBtn.addEventListener("click",()=>{
-    const purchases={}, invest={}; let ss=0, si=0;
+  if (finishStageBtn) {
+    finishStageBtn.addEventListener("click",()=>{
+      const purchases={}, invest={}; let ss=0, si=0;
 
     (function updateActivity(){
       const act = (function load(){ try{ return JSON.parse(localStorage.getItem("activity_v1")||"{}"); }catch{ return {}; } })();
@@ -726,7 +727,8 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       })
       .catch(()=>alert("POST failed. Is Python running?"));
-  });
+    });
+  }
 
   // Skip Stage button handler removed - now using single finishStageBtn
 
