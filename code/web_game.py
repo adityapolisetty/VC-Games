@@ -192,9 +192,10 @@ if __name__ == "__main__":
     print("[game] Starting game server. Press Ctrl+C to stop.")
     while True:
         try:
-            # 9 piles
-            game_seed = 42
+            # 9 piles - generate random seed for each new game
+            game_seed = np.random.randint(0, 1_000_000)
             df = draw_deck(n_cards=9, seed=game_seed)
+            print(f"[game] New game started with seed: {game_seed}")
             for c in ("inv1", "inv2"):
                 if c not in df.columns:
                     df[c] = 0.0
@@ -221,7 +222,11 @@ if __name__ == "__main__":
                 signal_cost=cost
             )
 
-            df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
+            df, s_spent, _ = stage_buy_signals(
+                df, {int(k): v for k, v in act["purchases"].items()},
+                budget=wallet,
+                per_signal_cost=cost
+            )
             total_signal_cost_stage1 = float(s_spent)
             wallet = max(0.0, wallet - float(s_spent))
 
@@ -273,7 +278,11 @@ if __name__ == "__main__":
             act = run_ui(2, df, wallet, signal_mode=mode, signal_cost=cost, stage1_invested=stage1_invested_ids, stage_history=stage_history)
             if act is None:
                 raise RuntimeError("Stage 2 UI returned None - did the server fail?")
-            df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
+            df, s_spent, _ = stage_buy_signals(
+                df, {int(k): v for k, v in act["purchases"].items()},
+                budget=wallet,
+                per_signal_cost=cost
+            )
             total_signal_cost_stage2 = float(s_spent)
             wallet = max(0.0, wallet - float(s_spent))
 

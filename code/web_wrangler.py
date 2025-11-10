@@ -306,13 +306,14 @@ def _results_page(stats: dict) -> str:
       <h3 style="margin-top:0;">Performance Summary</h3>
       <div class="summary-box">
         <div class="stat-grid">
+          <div class="stat"><div class="stat-label">Budget</div><div class="stat-value">£100.00</div></div>
           <div class="stat"><div class="stat-label">Total invested</div><div class="stat-value">£{stats.get('invested',0):.2f}</div></div>
-          <div class="stat"><div class="stat-label">Net return</div><div class="stat-value">{stats.get('net_return_pct',0):.2f}%</div></div>
+          <div class="stat"><div class="stat-label">Net return on budget</div><div class="stat-value">{stats.get('net_return_pct',0):.2f}%</div></div>
           <div class="stat"><div class="stat-label">Spent on signals</div><div class="stat-value">£{stats.get('signals_spent',0):.2f}</div></div>
           <div class="stat"><div class="stat-label">Piles invested</div><div class="stat-value">{stats.get('n_invested',0)}</div></div>
-          <div class="stat"><div class="stat-label">Hit an Ace</div><div class="stat-value">{hit_ace_label}</div></div>
-          <div class="stat"><div class="stat-label">Kings hit</div><div class="stat-value">{stats.get('king_hits',0)}</div></div>
-          <div class="stat"><div class="stat-label">Queens hit</div><div class="stat-value">{stats.get('queen_hits',0)}</div></div>
+          <div class="stat"><div class="stat-label">No. Ace hits</div><div class="stat-value">{hit_ace_label}</div></div>
+          <div class="stat"><div class="stat-label">No. King hits</div><div class="stat-value">{stats.get('king_hits',0)}</div></div>
+          <div class="stat"><div class="stat-label">No. Queen hits</div><div class="stat-value">{stats.get('queen_hits',0)}</div></div>
         </div>
       </div>
     </div>

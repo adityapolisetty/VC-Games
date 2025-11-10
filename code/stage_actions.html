@@ -286,7 +286,7 @@ window.__enterClick = function(){
 <div id="sigModal" class="modal"><div class="box"><span class="close" data-x="sigModal">✕</span><h3 id="sigTitle">Signal</h3><p id="sigDesc" class="muted"></p></div></div>
 <div id="budgetAlertModal" class="modal"><div class="box"><span class="close" data-x="budgetAlertModal">✕</span><h3>Budget Alert</h3><p id="budgetAlertMsg" class="muted"></p><button class="btn" onclick="document.getElementById('budgetAlertModal').style.display='none'">OK</button></div></div>
 
-<div id="performanceModal" class="modal"><div class="box"><span class="close" data-x="performanceModal">✕</span><h3>Stage Complete</h3><p class="muted" style="margin:16px 0;">Your investment performance can be viewed here</p><button id="showPerformanceBtn" class="btn" style="width:100%;">Show performance</button></div></div>
+<div id="performanceModal" class="modal"><div class="box"><span class="close" data-x="performanceModal">✕</span><h3>Game Complete!</h3><p class="muted" style="margin:16px 0;">Your investments are complete. Click below to view your performance and results.</p><button id="showPerformanceBtn" class="btn" style="width:auto; min-width:180px; margin:0 auto; display:block;">Show performance</button></div></div>
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
@@ -298,25 +298,19 @@ document.addEventListener("DOMContentLoaded", () => {
     // Check if we're loading Stage 2 after Stage 1 submit - keep overlay visible
     const loadingStage2 = sessionStorage.getItem('loading_stage2') === 'true';
     if (loadingStage2) {
-      // Clear flag immediately since we're now on the new page
-      sessionStorage.removeItem('loading_stage2');
-
-      // If we successfully loaded Stage 2, clear the overlay and continue
+      // If we successfully loaded Stage 2, clear flag and continue
       if (STAGE === 2) {
-        // Success! Stage 2 is ready, just hide overlay after a brief moment
+        // Success! Clear the flag and hide overlay
+        sessionStorage.removeItem('loading_stage2');
         setTimeout(() => {
           document.getElementById("stageOverlay").style.display = 'none';
         }, 200);
       } else {
-        // Still on Stage 1 or login page - show error
+        // Still transitioning - DO NOT clear flag yet, keep polling
+        // This means the polling function will continue checking
+        // Don't show error - just keep overlay visible with original message
         document.getElementById("stageOverlay").style.display = 'flex';
-        document.getElementById("overlayMsg").textContent = 'Loading Stage 2...';
-
-        // This shouldn't happen with new polling, but keep as fallback
-        setTimeout(() => {
-          document.getElementById("stageOverlay").style.display = 'none';
-          alert('Stage 2 loading failed. Please contact support.');
-        }, 3000);
+        document.getElementById("overlayMsg").textContent = 'Your investments are hard at work…';
       }
     }
 
@@ -759,12 +753,19 @@ document.addEventListener("DOMContentLoaded", () => {
     const pollInterval = 300; // Check every 300ms
 
     function checkServer() {
+      // Stop polling if flag was cleared (e.g., user navigated away)
+      if (sessionStorage.getItem('loading_stage2') !== 'true') {
+        console.log('[poll] Loading flag cleared, stopping poll');
+        return;
+      }
+
       const elapsed = Date.now() - startTime;
 
       if (elapsed > maxWait) {
-        // Timeout - show error
-        document.getElementById("overlayMsg").textContent = "Server timeout. Please refresh the page.";
+        // Timeout - show error and clear flag
+        document.getElementById("overlayMsg").textContent = "Server timeout. Please contact support.";
         sessionStorage.removeItem('loading_stage2');
+        console.error('[poll] Timeout after 30 seconds');
         return;
       }
 
@@ -778,7 +779,8 @@ document.addEventListener("DOMContentLoaded", () => {
               .then(html => {
                 // Check if HTML contains Stage 2 context (SEED.stage === 2)
                 if (html.includes('"stage":2') || html.includes('"stage": 2')) {
-                  // Stage 2 is ready!
+                  // Stage 2 is ready! Reload will clear flag and show Stage 2
+                  console.log('[poll] Stage 2 detected, reloading...');
                   location.href = "/";
                 } else {
                   // Still Stage 1 or transitioning - keep polling
@@ -881,7 +883,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // IMPORTANT: Check loading flag FIRST to prevent login page flash during Stage 1→2 transition
   if (loadingStage2 && STAGE !== 2) {
     // Keep overlay visible while waiting for Stage 2, don't show any other views
-    // Error handler above will deal with stuck states
+    // User may have refreshed during transition - restart polling
+    console.log('[init] Page refreshed during Stage 2 transition, restarting poll...');
+    pollForStage2Ready();
   } else if (loadingStage2 && STAGE === 2) {
     // Successfully loaded Stage 2 - show app with Stage 2 content
     showApp();
