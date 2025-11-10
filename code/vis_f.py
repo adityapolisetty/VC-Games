@@ -151,9 +151,10 @@ with ctlA:
     sig_A = "median" if frontier_sig_A == "Median" else "top2"
     rowA = st.columns([1, 1, 1])
     with rowA[0]:
-        # Match ALPHA_GRID from frontier.py (11 points, 0.1 step)
+        # Match ALPHA_GRID from frontier.py (21 points, 0.05 step)
         alpha_A = st.select_slider("Stage 1 allocation",
-                                   options=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+                                   options=[0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50,
+                                           0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1.0],
                                    value=0.1,
                                    format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}",
                                    key="frontier_alpha_A")
@@ -174,9 +175,10 @@ with ctlB:
     sig_B = "top2" if frontier_sig_B == "Top 2" else "median"
     rowB = st.columns([1, 1, 1])
     with rowB[0]:
-        # Match ALPHA_GRID from frontier.py (11 points, 0.1 step)
+        # Match ALPHA_GRID from frontier.py (21 points, 0.05 step)
         alpha_B = st.select_slider("Stage 1 allocation",
-                                   options=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+                                   options=[0.0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50,
+                                           0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 1.0],
                                    value=0.1,
                                    format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}",
                                    key="frontier_alpha_B")
@@ -392,9 +394,9 @@ def _build_fig(fd, sd_step, y_range_override=None, cmin_override=None, cmax_over
 
             # Detailed hover text with all information
             hover_text = (
-                f"<b>Signals: n={n_sig}</b><br>"
+                f"<b>Signals: N = {n_sig}</b><br>"
                 f"<b>Simulations:</b> {sim_display}<br>"
-                f"<b>Mean Return:</b> {mean_val:.2f}%<br>"
+                f"<b>Mean Net Return:</b> {mean_val:.2f}%<br>"
                 f"<b>Std Dev:</b> {sd_val:.2f}%<br>"
                 f"<b>Sharpe Ratio:</b> {sharpe:.2f}<br>"
                 f"<b>Σw²:</b> {cs[idx_k]:.3f}"
@@ -423,7 +425,7 @@ def _build_fig(fd, sd_step, y_range_override=None, cmin_override=None, cmax_over
         all_custom_data.extend(custom_data)
 
         fig.add_trace(go.Scatter(
-            x=xs, y=ys, mode="markers+text", name=f"n={n_sig}",
+            x=xs, y=ys, mode="markers+text", name=f"N = {n_sig}",
             marker=dict(size=16, color=cs, colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
                         cmin=vmin_global, cmax=vmax_global, showscale=False, line=dict(width=0)),
             text=[str(n_sig)] * len(keep_idx), textposition="middle center", textfont=dict(size=11, color="white"),
@@ -431,20 +433,20 @@ def _build_fig(fd, sd_step, y_range_override=None, cmin_override=None, cmax_over
             hovertext=hover_texts, showlegend=False, opacity=ALPHA,
         ))
 
-    yaxis_cfg = dict(title=dict(text="Mean Return (%)", font=dict(size=13)), tickfont=dict(size=16), showgrid=True, gridcolor="rgba(128,128,128,0.1)")
+    yaxis_cfg = dict(title=dict(text="Mean Net Return (%)", font=dict(size=15)), tickfont=dict(size=15), showgrid=True, gridcolor="rgba(128,128,128,0.1)")
     if y_range_override is not None:
         yaxis_cfg.update(range=list(map(float, y_range_override)))
     fig.update_layout(
         template="plotly_white",
         font=dict(family="Roboto, Arial, sans-serif", size=15),
-        xaxis=dict(title=dict(text="Standard Deviation (%)", font=dict(size=13)), tickfont=dict(size=16), showgrid=True, gridcolor="rgba(128,128,128,0.1)"),
+        xaxis=dict(title=dict(text="Standard Deviation (%)", font=dict(size=15)), tickfont=dict(size=15), showgrid=True, gridcolor="rgba(128,128,128,0.1)"),
         yaxis=yaxis_cfg,
         height=600,
         hovermode="closest",
         margin=dict(l=10, r=10, t=10, b=50),
         hoverlabel=dict(
             bgcolor="white",
-            font_size=16,
+            font_size=14,
             font_family="Roboto, Arial, sans-serif",
             bordercolor="#2b8cbe",
             align="left",

@@ -333,12 +333,12 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
     stats_by_n = {}
     debug_data_by_n = {}  # Collect debug data per n_sig
     for n_sig in range(int(max_signals) + 1):
-        # Validate: skip if cannot afford n_sig signals with this stage1_alloc
+        # Validate: skip if stage1_alloc=0 (no budget) or cannot afford n_sig signals
         budget1 = float(stage1_alloc) * BUDGET
         signal_cost = float(params.get('signal_cost', 3.0))
         signal_cost_total = float(n_sig) * signal_cost
-        if budget1 < signal_cost_total:
-            # Cannot afford signals - skip simulation entirely
+        if stage1_alloc <= 0 or budget1 < signal_cost_total:
+            # No Stage 1 budget or cannot afford signals - skip simulation entirely
             stats_by_n[n_sig] = None
             debug_data_by_n[n_sig] = None
             continue
@@ -396,8 +396,10 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
         var_g1 = g1sq / cnt - mean_g1 ** 2
         var_g2 = g2sq / cnt - mean_g2 ** 2
         cov_g12 = g12 / cnt - (mean_g1 * mean_g2)
-        # Account for uninvested cash (1.0x return): only invested portions contribute to excess returns
-        mean_net = 100.0 * (c1 * (mean_g1 - 1.0) + c2 * (mean_g2 - 1.0))
+        # Signal cost is a permanent sunk cost (not recoverable cash)
+        signal_cost_total = float(n_sig) * signal_cost
+        signal_cost_fraction = signal_cost_total / BUDGET
+        mean_net = 100.0 * (c1 * (mean_g1 - 1.0) + c2 * (mean_g2 - 1.0) - signal_cost_fraction)
         var_net = (100.0 ** 2) * ((c1 ** 2) * np.clip(var_g1, 0, np.inf) + (c2 ** 2) * np.clip(var_g2, 0, np.inf) + 2.0 * c1 * c2 * cov_g12)
         sd_net = np.sqrt(np.clip(var_net, 0.0, np.inf))
 
@@ -451,7 +453,7 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Grids per request
-    SIGNAL_COSTS = [0, 3, 7, 9]
+    SIGNAL_COSTS = [9]
     SCALE_PARAMS = [0.25]
     SCALE_PAYS = [0, 1]
     ACE_PAYOUTS = [20.0]
@@ -465,7 +467,7 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
                         raw = dict(signal_cost=float(sc), scale_pay=sp, scale_param=(s if sp == 1 else 0.0), ace_payout=ap)
                         norm, key_tuple, key_id = canonicalize_params(raw)
                         for st in ("median", "top2"):
-                            a_tag = f"a{int(round(float(alpha)*100)):03d}"  # 000, 005, 010, ..., 100
+                            a_tag = f"a{int(round(float(alpha)*10)):02d}"  # 00, 05, 10, ..., 10
                             outfile = out_dir / f"{key_id}_{st}_{a_tag}.npz"
                             combos.append((raw, alpha, st, outfile))
 

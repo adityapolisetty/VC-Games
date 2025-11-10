@@ -407,8 +407,10 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
         var_g1 = g1sq / cnt - mean_g1 ** 2
         var_g2 = g2sq / cnt - mean_g2 ** 2
         cov_g12 = g12 / cnt - (mean_g1 * mean_g2)
-        # Account for uninvested cash (1.0x return): only invested portions contribute to excess returns
-        mean_net = 100.0 * (c1 * (mean_g1 - 1.0) + c2 * (mean_g2 - 1.0))
+        # Signal cost is a permanent sunk cost (not recoverable cash)
+        signal_cost_total = float(n_sig) * signal_cost
+        signal_cost_fraction = signal_cost_total / BUDGET
+        mean_net = 100.0 * (c1 * (mean_g1 - 1.0) + c2 * (mean_g2 - 1.0) - signal_cost_fraction)
         var_net = (100.0 ** 2) * ((c1 ** 2) * np.clip(var_g1, 0, np.inf) + (c2 ** 2) * np.clip(var_g2, 0, np.inf) + 2.0 * c1 * c2 * cov_g12)
         sd_net = np.sqrt(np.clip(var_net, 0.0, np.inf))
 
@@ -603,8 +605,9 @@ def run_local_test(seed, rounds, signal_cost, stage1_alloc, signal_type, scale_p
         var_g2 = g2sq / cnt - mean_g2 ** 2
         cov_g12 = g12 / cnt - (mean_g1 * mean_g2)
 
-        # Net portfolio statistics (original logic)
-        mean_net = 100.0 * (c1 * (mean_g1 - 1.0) + c2 * (mean_g2 - 1.0))
+        # Net portfolio statistics with signal cost as permanent sunk cost
+        signal_cost_fraction = signal_cost_total / BUDGET
+        mean_net = 100.0 * (c1 * (mean_g1 - 1.0) + c2 * (mean_g2 - 1.0) - signal_cost_fraction)
         var_net = (100.0 ** 2) * ((c1 ** 2) * np.clip(var_g1, 0, np.inf) + (c2 ** 2) * np.clip(var_g2, 0, np.inf) + 2.0 * c1 * c2 * cov_g12)
         sd_net = np.sqrt(np.clip(var_net, 0.0, np.inf))
 

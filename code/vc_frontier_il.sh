@@ -26,7 +26,7 @@ ID="${PBS_ARRAY_INDEX:-0}"
 
 # Parameterization (keep a constant base seed across array tasks like dynamic)
 SEED=${SEED:-12345}
-ROUNDS=${ROUNDS:-100000}
+ROUNDS=${ROUNDS:-200000}
 MAX_SIGNALS=${MAX_SIGNALS:-9}
 
 STRIDE=${STRIDE:-40}  # Total number of tasks
