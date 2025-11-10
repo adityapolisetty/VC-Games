@@ -453,7 +453,7 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Grids per request
-    SIGNAL_COSTS = [9]
+    SIGNAL_COSTS = [0, 3, 9]
     SCALE_PARAMS = [0.25]
     SCALE_PAYS = [0, 1]
     ACE_PAYOUTS = [20.0]
