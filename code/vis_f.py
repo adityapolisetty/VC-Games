@@ -158,7 +158,7 @@ with ctlA:
                                    format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}",
                                    key="frontier_alpha_A")
     with rowA[1]:
-        signal_cost_A = st.select_slider("Signal cost", options=[0, 3, 7], value=3, format_func=lambda v: f"£{v}", key="signal_cost_A")
+        signal_cost_A = st.select_slider("Signal cost", options=[0, 3, 7, 9], value=3, format_func=lambda v: f"£{v}", key="signal_cost_A")
     with rowA[2]:
         sd_step_A = st.select_slider("SD step", options=[0.1, 1, 2, 5], value=0.1, format_func=lambda v: f"±{v}pp", key="sd_step_A")
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)  # Spacer
@@ -181,7 +181,7 @@ with ctlB:
                                    format_func=lambda v: f"{int(v*100)}:{int((1-v)*100)}",
                                    key="frontier_alpha_B")
     with rowB[1]:
-        signal_cost_B = st.select_slider("Signal cost", options=[0, 3, 7], value=3, format_func=lambda v: f"£{v}", key="signal_cost_B")
+        signal_cost_B = st.select_slider("Signal cost", options=[0, 3, 7, 9], value=3, format_func=lambda v: f"£{v}", key="signal_cost_B")
     with rowB[2]:
         sd_step_B = st.select_slider("SD step", options=[0.1, 1, 2, 5], value=0.1, format_func=lambda v: f"±{v}pp", key="sd_step_B")
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)  # Spacer
@@ -277,7 +277,7 @@ def _build_fig(fd, sd_step, y_range_override=None, cmin_override=None, cmax_over
     king_hits_by_n = fd.get("best_king_hits_by_n", [])
     queen_hits_by_n = fd.get("best_queen_hits_by_n", [])
     meta = fd.get("meta", {})
-    total_rounds = meta.get("total_rounds", None)
+    total_rounds = meta.get("total_rounds", 100000)  # Default to 100k if not in metadata
     scale_pay = meta.get("params", {}).get("scale_pay", 0)
 
     points = []
@@ -397,10 +397,10 @@ def _build_fig(fd, sd_step, y_range_override=None, cmin_override=None, cmax_over
                 f"<b>Mean Return:</b> {mean_val:.2f}%<br>"
                 f"<b>Std Dev:</b> {sd_val:.2f}%<br>"
                 f"<b>Sharpe Ratio:</b> {sharpe:.2f}<br>"
-                f"<b>Σw²:</b> {cs[idx_k]:.3f}<br>"
+                f"<b>Σw²:</b> {cs[idx_k]:.3f}"
+                f"{hit_rate_str}<br>"
                 f"<br><b>Weights (sorted high→low by Stage-1 EV):</b><br>"
                 f"{line1}<br>{line2}<br>{line3}"
-                f"{hit_rate_str}"
             )
             hover_texts.append(hover_text)
 
@@ -444,7 +444,7 @@ def _build_fig(fd, sd_step, y_range_override=None, cmin_override=None, cmax_over
         margin=dict(l=10, r=10, t=10, b=50),
         hoverlabel=dict(
             bgcolor="white",
-            font_size=14,
+            font_size=16,
             font_family="Roboto, Arial, sans-serif",
             bordercolor="#2b8cbe",
             align="left",

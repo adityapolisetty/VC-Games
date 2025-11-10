@@ -212,192 +212,202 @@ if __name__ == "__main__":
                 signal_cost=cost
             )
 
-    # ---- Stage 1 ----
-    act = run_ui(1, df, wallet, open_browser=open_first, signal_mode=mode, signal_cost=cost)
-    if act is None:
-        raise RuntimeError("Stage 1 UI returned None - did the server fail?")
+            # ---- Stage 1 ----
+            act = run_ui(1, df, wallet, open_browser=open_first, signal_mode=mode, signal_cost=cost)
+            if act is None:
+                raise RuntimeError("Stage 1 UI returned None - did the server fail?")
 
-    # Update session with team name from UI
-    team_name = act.get("player_name", "Anonymous")
-    if team_name:
-        conn = __import__('sqlite3').connect(__import__('database').DB_FILE)
-        conn.execute("UPDATE game_sessions SET team_name = ? WHERE id = ?", (team_name, session_id))
-        conn.commit()
-        conn.close()
+            # Update session with team name from UI
+            team_name = act.get("player_name", "Anonymous")
+            if team_name:
+                conn = __import__('sqlite3').connect(__import__('database').DB_FILE)
+                conn.execute("UPDATE game_sessions SET team_name = ? WHERE id = ?", (team_name, session_id))
+                conn.commit()
+                conn.close()
 
-    df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
-    total_signal_cost_stage1 = float(s_spent)
-    wallet = max(0.0, wallet - float(s_spent))
+            df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
+            total_signal_cost_stage1 = float(s_spent)
+            wallet = max(0.0, wallet - float(s_spent))
 
-    inv_need = {int(k): max(float(v), MIN_INV[1]) for k, v in act["invest"].items() if float(v) > 0}
-    stage1_stakes = sum(inv_need.values())
-    need = stage1_stakes
-    if need > wallet:
-        left = wallet
-        for cid in list(inv_need.keys()):
-            take = min(inv_need[cid], left)
-            inv_need[cid] = take
-            left -= take
-            if left <= 0:
-                break
-        wallet = 0.0
-        stage1_stakes = sum(inv_need.values())  # Update to actual invested amount
-    else:
-        wallet -= need
-    for cid, amt in inv_need.items():
-        ix = df.index[df["card_id"].eq(cid)]
-        if len(ix) and df.at[ix[0], "alive"] and amt > 0:
-            df.at[ix[0], "inv1"] += amt
-    df = step_round(df, 1)
+            inv_need = {int(k): max(float(v), MIN_INV[1]) for k, v in act["invest"].items() if float(v) > 0}
+            stage1_stakes = sum(inv_need.values())
+            need = stage1_stakes
+            if need > wallet:
+                left = wallet
+                for cid in list(inv_need.keys()):
+                    take = min(inv_need[cid], left)
+                    inv_need[cid] = take
+                    left -= take
+                    if left <= 0:
+                        break
+                wallet = 0.0
+                stage1_stakes = sum(inv_need.values())  # Update to actual invested amount
+            else:
+                wallet -= need
+            for cid, amt in inv_need.items():
+                ix = df.index[df["card_id"].eq(cid)]
+                if len(ix) and df.at[ix[0], "alive"] and amt > 0:
+                    df.at[ix[0], "inv1"] += amt
+            df = step_round(df, 1)
 
-    # Record Stage 1 history
-    stage_history.append({"signals": float(total_signal_cost_stage1), "stakes": float(stage1_stakes)})
+            # Record Stage 1 history
+            stage_history.append({"signals": float(total_signal_cost_stage1), "stakes": float(stage1_stakes)})
 
-    # Log Stage 1 to database
-    log_stage_action(
-        session_id=session_id,
-        stage=1,
-        purchases=act.get("purchases", {}),
-        investments=act.get("invest", {}),
-        signals_spent=total_signal_cost_stage1,
-        stakes_invested=stage1_stakes,
-        budget_remaining=wallet
-    )
+            # Log Stage 1 to database
+            log_stage_action(
+                session_id=session_id,
+                stage=1,
+                purchases=act.get("purchases", {}),
+                investments=act.get("invest", {}),
+                signals_spent=total_signal_cost_stage1,
+                stakes_invested=stage1_stakes,
+                budget_remaining=wallet
+            )
 
-    # Track which piles were invested in Stage 1
-    stage1_invested_ids = [int(cid) for cid in df[df["inv1"] > 0]["card_id"].tolist()]
+            # Track which piles were invested in Stage 1
+            stage1_invested_ids = [int(cid) for cid in df[df["inv1"] > 0]["card_id"].tolist()]
 
-    # ---- Stage 2 ----
-    # Only allow investing in piles that were invested in Stage 1
-    act = run_ui(2, df, wallet, signal_mode=mode, signal_cost=cost, stage1_invested=stage1_invested_ids, stage_history=stage_history)
-    if act is None:
-        raise RuntimeError("Stage 2 UI returned None - did the server fail?")
-    df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
-    total_signal_cost_stage2 = float(s_spent)
-    wallet = max(0.0, wallet - float(s_spent))
+            # ---- Stage 2 ----
+            # Only allow investing in piles that were invested in Stage 1
+            act = run_ui(2, df, wallet, signal_mode=mode, signal_cost=cost, stage1_invested=stage1_invested_ids, stage_history=stage_history)
+            if act is None:
+                raise RuntimeError("Stage 2 UI returned None - did the server fail?")
+            df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
+            total_signal_cost_stage2 = float(s_spent)
+            wallet = max(0.0, wallet - float(s_spent))
 
-    inv_need = {int(k): max(float(v), MIN_INV[2]) for k, v in act["invest"].items() if float(v) > 0}
-    stage2_stakes = sum(inv_need.values())
-    need = stage2_stakes
-    if need > wallet:
-        left = wallet
-        for cid in list(inv_need.keys()):
-            take = min(inv_need[cid], left)
-            inv_need[cid] = take
-            left -= take
-            if left <= 0:
-                break
-        wallet = 0.0
-        stage2_stakes = sum(inv_need.values())  # Update to actual invested amount
-    else:
-        wallet -= need
-    for cid, amt in inv_need.items():
-        ix = df.index[df["card_id"].eq(cid)]
-        if len(ix) and df.at[ix[0], "alive"] and amt > 0:
-            df.at[ix[0], "inv2"] += amt
-    df = step_round(df, 2)
+            inv_need = {int(k): max(float(v), MIN_INV[2]) for k, v in act["invest"].items() if float(v) > 0}
+            stage2_stakes = sum(inv_need.values())
+            need = stage2_stakes
+            if need > wallet:
+                left = wallet
+                for cid in list(inv_need.keys()):
+                    take = min(inv_need[cid], left)
+                    inv_need[cid] = take
+                    left -= take
+                    if left <= 0:
+                        break
+                wallet = 0.0
+                stage2_stakes = sum(inv_need.values())  # Update to actual invested amount
+            else:
+                wallet -= need
+            for cid, amt in inv_need.items():
+                ix = df.index[df["card_id"].eq(cid)]
+                if len(ix) and df.at[ix[0], "alive"] and amt > 0:
+                    df.at[ix[0], "inv2"] += amt
+            df = step_round(df, 2)
 
-    # Record Stage 2 history
-    stage_history.append({"signals": float(total_signal_cost_stage2), "stakes": float(stage2_stakes)})
+            # Record Stage 2 history
+            stage_history.append({"signals": float(total_signal_cost_stage2), "stakes": float(stage2_stakes)})
 
-    # Log Stage 2 to database
-    log_stage_action(
-        session_id=session_id,
-        stage=2,
-        purchases=act.get("purchases", {}),
-        investments=act.get("invest", {}),
-        signals_spent=total_signal_cost_stage2,
-        stakes_invested=stage2_stakes,
-        budget_remaining=wallet
-    )
+            # Log Stage 2 to database
+            log_stage_action(
+                session_id=session_id,
+                stage=2,
+                purchases=act.get("purchases", {}),
+                investments=act.get("invest", {}),
+                signals_spent=total_signal_cost_stage2,
+                stakes_invested=stage2_stakes,
+                budget_remaining=wallet
+            )
 
-    # ---- Compute Results and Show Performance ----
-    pay = compute_payoffs_at_stage2(df, ace_payout=ace_pay)
+            # ---- Compute Results and Show Performance ----
+            pay = compute_payoffs_at_stage2(df, ace_payout=ace_pay)
 
-    inv_sum = df.get("inv1", 0) + df.get("inv2", 0)
-    total_invest = float(inv_sum.sum())
-    total_payoff = float(pay["payout"].sum()) if len(pay) else 0.0
-    n_invested = int((inv_sum > 0).sum())
-    # signals spent - use explicit trackers as source of truth
-    total_signals_spend = float(total_signal_cost_stage1 + total_signal_cost_stage2)
-    # Verification: check DataFrame accumulation matches
-    df_signals_total = float(df.get("signals_spend", 0).fillna(0).sum())
-    if abs(total_signals_spend - df_signals_total) > 0.01:
-        print(f"[WARNING] Signal cost mismatch: explicit={total_signals_spend}, df={df_signals_total}")
-    # avg signals per invested card
-    def _row_sig_count(row):
-        cnt = 0
-        for k in (1, 2, 3, 4):
-            v = row.get(f"s{k}")
-            if pd.notna(v) and v is not None and str(v) != "None":
-                cnt += 1
-        return cnt
-    if n_invested > 0:
-        avg_signals = float(df.loc[(inv_sum > 0)].apply(_row_sig_count, axis=1).mean())
-    else:
-        avg_signals = 0.0
+            inv_sum = df.get("inv1", 0) + df.get("inv2", 0)
+            total_invest = float(inv_sum.sum())
+            total_payoff = float(pay["payout"].sum()) if len(pay) else 0.0
+            n_invested = int((inv_sum > 0).sum())
+            # signals spent - use explicit trackers as source of truth
+            total_signals_spend = float(total_signal_cost_stage1 + total_signal_cost_stage2)
+            # Verification: check DataFrame accumulation matches
+            df_signals_total = float(df.get("signals_spend", 0).fillna(0).sum())
+            if abs(total_signals_spend - df_signals_total) > 0.01:
+                print(f"[WARNING] Signal cost mismatch: explicit={total_signals_spend}, df={df_signals_total}")
+            # avg signals per invested card
+            def _row_sig_count(row):
+                cnt = 0
+                for k in (1, 2, 3, 4):
+                    v = row.get(f"s{k}")
+                    if pd.notna(v) and v is not None and str(v) != "None":
+                        cnt += 1
+                return cnt
+            if n_invested > 0:
+                avg_signals = float(df.loc[(inv_sum > 0)].apply(_row_sig_count, axis=1).mean())
+            else:
+                avg_signals = 0.0
 
-    # Net returns: express as % of original WALLET0 budget for consistency with frontier
-    net_return_abs = total_payoff - total_invest
-    net_return_pct = 100.0 * ((total_payoff - WALLET0) / WALLET0) if WALLET0 > 0 else 0.0
+            # Net returns: express as % of original WALLET0 budget for consistency with frontier
+            net_return_abs = total_payoff - total_invest
+            net_return_pct = 100.0 * ((total_payoff - WALLET0) / WALLET0) if WALLET0 > 0 else 0.0
 
-    # Calculate player portfolio weights (all 9 piles)
-    player_weights = []
-    for idx in range(9):
-        if idx < len(df):
-            inv_amt = float(inv_sum.iloc[idx]) if idx < len(inv_sum) else 0.0
-            player_weights.append(round(inv_amt, 2))
-        else:
-            player_weights.append(0.0)
+            # Calculate player portfolio weights (all 9 piles)
+            player_weights = []
+            for idx in range(9):
+                if idx < len(df):
+                    inv_amt = float(inv_sum.iloc[idx]) if idx < len(inv_sum) else 0.0
+                    player_weights.append(round(inv_amt, 2))
+                else:
+                    player_weights.append(0.0)
 
-    # Count ace/king/queen hits in surviving invested cards
-    ace_hits = 0
-    king_hits = 0
-    queen_hits = 0
-    if len(pay) > 0:
-        for _, row in pay.iterrows():
-            card_inv = float(row.get("stake", 0))
-            if card_inv > 0:
-                max_rank = int(row.get("N", 0))
-                if max_rank == 14:  # Ace
-                    ace_hits += 1
-                elif max_rank == 13:  # King
-                    king_hits += 1
-                elif max_rank == 12:  # Queen
-                    queen_hits += 1
+            # Count ace/king/queen hits in surviving invested cards
+            ace_hits = 0
+            king_hits = 0
+            queen_hits = 0
+            if len(pay) > 0:
+                for _, row in pay.iterrows():
+                    card_inv = float(row.get("stake", 0))
+                    if card_inv > 0:
+                        max_rank = int(row.get("N", 0))
+                        if max_rank == 14:  # Ace
+                            ace_hits += 1
+                        elif max_rank == 13:  # King
+                            king_hits += 1
+                        elif max_rank == 12:  # Queen
+                            queen_hits += 1
 
-    stats = {
-        "player": "",                # filled by UI
-        "wallet_left": wallet,       # remaining budget
-        "invested": total_invest,    # total invested £
-        "signals_spent": total_signals_spend,     # total spent on signals £
-        "net_return": net_return_abs,             # £
-        "net_return_pct": net_return_pct,         # %
-        "n_invested": n_invested,
-        "avg_signals": avg_signals,
-        "player_weights": player_weights,         # [9 pile weights]
-        "ace_hits": ace_hits,
-        "king_hits": king_hits,
-        "queen_hits": queen_hits,
-    }
+            stats = {
+                "player": "",                # filled by UI
+                "wallet_left": wallet,       # remaining budget
+                "invested": total_invest,    # total invested £
+                "signals_spent": total_signals_spend,     # total spent on signals £
+                "net_return": net_return_abs,             # £
+                "net_return_pct": net_return_pct,         # %
+                "n_invested": n_invested,
+                "avg_signals": avg_signals,
+                "player_weights": player_weights,         # [9 pile weights]
+                "ace_hits": ace_hits,
+                "king_hits": king_hits,
+                "queen_hits": queen_hits,
+            }
 
-    # Log results to database
-    log_game_results(session_id=session_id, results=stats)
+            # Log results to database
+            log_game_results(session_id=session_id, results=stats)
 
-    # ---- Show Results (triggered from Stage 2) ----
-    # Start a persistent server to serve /results page
-    # This server will keep running until user clicks "End Game"
-    print("[web] Results ready. Server will stay up until 'End Game' is clicked.")
-    _ = run_ui(stage=3, df=df, wallet=wallet, results=stats, signal_mode=mode, signal_cost=cost)
+            # ---- Show Results (triggered from Stage 2) ----
+            # Start a persistent server to serve /results page
+            # This server will keep running until user clicks "End Game"
+            print("[web] Results ready. Server will stay up until 'End Game' is clicked.")
+            _ = run_ui(stage=3, df=df, wallet=wallet, results=stats, signal_mode=mode, signal_cost=cost)
 
-    # Close database session
-    close_session(session_id=session_id)
+            # Close database session
+            close_session(session_id=session_id)
 
+            # Optional console dump
+            if len(pay):
+                print(
+                    pay[["card_id", "N", "stake", "payout"]]
+                    .sort_values("payout", ascending=False)
+                    .to_string(index=False)
+                )
 
-    # Optional console dump
-    if len(pay):
-        print(
-            pay[["card_id", "N", "stake", "payout"]]
-            .sort_values("payout", ascending=False)
-            .to_string(index=False)
-        )
+        except KeyboardInterrupt:
+            print("\n[game] Server stopped by user.")
+            break
+        except Exception as e:
+            print(f"[ERROR] Game encountered an error: {e}")
+            import traceback
+            traceback.print_exc()
+            print("[game] Restarting game in 3 seconds...")
+            import time
+            time.sleep(3)

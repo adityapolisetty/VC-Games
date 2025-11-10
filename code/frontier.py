@@ -440,6 +440,7 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
         stage1_alloc=float(stage1_alloc),
         signal_type=st,
         params=norm_params,
+        total_rounds=int(rounds),
     )
     _save_bins_npz(out_path, sd_levels_by_n, best_means_by_n, best_weights_by_n, best_ace_hits_by_n, best_king_hits_by_n, best_queen_hits_by_n, meta)
 
