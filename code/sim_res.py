@@ -60,10 +60,7 @@ ACE_PAYOUTS    = [10, 20, 30, 40]
 STAGE1_ALLOC   = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
 
-POST_NPZ_DEFAULT = "../output/post_mc.npz"
-
-# Joint posterior (Stage‑1 bucket + R2) from precomp_joint.py
-POST_NPZ_JOINT_DEFAULT = "../output_joint/post_joint.npz" 
+POST_NPZ_DEFAULT = "../precomp_output/post_mc.npz" 
 
 # Histogram spec for net-return distributions (percent)
 HIST_START = -100.0   # inclusive lower bound
@@ -75,34 +72,60 @@ WEIGHT_HIST_START = 0.0   # inclusive lower bound
 WEIGHT_HIST_STEP  = 0.01  # bin width (1% of budget)
 WEIGHT_HIST_N     = 101   # number of bins; covers [0.0, 1.0]
 
-def _load_mc_posteriors(npz_path: str):
-    """Load empirical P(Rmax|signal) tables and prior from precompute NPZ.
+def _load_unified_posteriors(npz_path: str):
+    """Load all posteriors from unified NPZ file (both marginal and joint).
 
-    Only median and top‑2 regimes are required for the dynamic model. Max/min
-    entries, if present, are ignored; empty placeholders are returned for
-    compatibility with legacy call‑sites until they are refactored.
-    Returns (rmax_median, rmax_top2, rmax_max, rmax_min, prior_rmax, meta_curves)
-    where meta_curves contains (pm_x, pm_y, pt2_x, pt2_y, pmax_x, pmax_y, pmin_x, pmin_y).
+    Returns:
+        rmax_tables: dict with 'median' and 'top2' marginal posteriors P(Rmax|signal)
+        joint_tables: dict with 'median' and 'top2' joint posteriors P(Rmax|signal,R2)
+        prior_rmax: P(Rmax) prior distribution
+        r2_marginal: P(Rmax|R2) marginal distribution
+        meta_curves: tuple (pm_x, pm_y, pt2_x, pt2_y, pmax_x, pmax_y, pmin_x, pmin_y)
     """
     p = pathlib.Path(npz_path)
     if not p.exists():
         raise FileNotFoundError(f"post_npz not found: {p}")
+
     with np.load(p, allow_pickle=False) as z:
-        req = {"rmax_median_keys", "rmax_median_mat", "rmax_top2_keys", "rmax_top2_mat", "prior_rmax"}
+        # Check for required arrays from unified NPZ
+        req = {
+            "rmax_median_keys", "rmax_median_mat", "rmax_top2_keys", "rmax_top2_mat",
+            "joint_median_keys", "joint_median_mat", "joint_top2_keys", "joint_top2_mat",
+            "prior_rmax", "r2_marginal_mat"
+        }
         missing = [k for k in req if k not in z.files]
         if missing:
             raise ValueError(f"post_npz missing arrays: {missing}")
-        m_keys = np.asarray(z["rmax_median_keys"], int)
-        m_mat  = np.asarray(z["rmax_median_mat"], float)
-        t_keys = np.asarray(z["rmax_top2_keys"], int)
-        t_mat  = np.asarray(z["rmax_top2_mat"], float)
-        prior  = np.asarray(z["prior_rmax"], float)
 
-    # Build dicts mapping bucket -> vector
+        # Load marginal posteriors P(Rmax|signal)
+        m_keys = np.asarray(z["rmax_median_keys"], int)
+        m_mat = np.asarray(z["rmax_median_mat"], float)
+        t_keys = np.asarray(z["rmax_top2_keys"], int)
+        t_mat = np.asarray(z["rmax_top2_mat"], float)
+
+        # Load joint posteriors P(Rmax|signal,R2)
+        jm_keys = np.asarray(z["joint_median_keys"], int)
+        jm_mat = np.asarray(z["joint_median_mat"], float)
+        jt_keys = np.asarray(z["joint_top2_keys"], int)
+        jt_mat = np.asarray(z["joint_top2_mat"], float)
+
+        # Load common arrays
+        prior = np.asarray(z["prior_rmax"], float)
+        r2_marg = np.asarray(z["r2_marginal_mat"], float)
+
+    # Build marginal posterior lookup dicts
     rmax_median = {int(k): np.array(m_mat[i], float) for i, k in enumerate(m_keys)}
-    rmax_top2   = {int(k): np.array(t_mat[i], float) for i, k in enumerate(t_keys)}
-    # Placeholders for legacy max/min (not used in dynamic model)
-    rmax_max, rmax_min = {}, {}
+    rmax_top2 = {int(k): np.array(t_mat[i], float) for i, k in enumerate(t_keys)}
+    rmax_tables = {"median": rmax_median, "top2": rmax_top2}
+
+    # Build joint posterior lookup (signal bucket -> row index)
+    def _rowmap(keys: np.ndarray):
+        return {int(k): int(i) for i, k in enumerate(keys.tolist())}
+
+    joint_tables = {
+        "median": (jm_keys, jm_mat, _rowmap(jm_keys)),
+        "top2": (jt_keys, jt_mat, _rowmap(jt_keys)),
+    }
 
     # P(Ace | signal) meta curves from last column
     ace_idx = ACE_RANK - 2
@@ -110,11 +133,13 @@ def _load_mc_posteriors(npz_path: str):
     pm_y = m_mat[:, ace_idx].astype(float) if m_mat.size else np.zeros((0,), float)
     pt2_x = t_keys.astype(float)
     pt2_y = t_mat[:, ace_idx].astype(float) if t_mat.size else np.zeros((0,), float)
-    # Empty meta for max/min
+    # Empty meta for max/min (legacy compatibility)
     pmax_x = np.array([], float); pmax_y = np.array([], float)
     pmin_x = np.array([], float); pmin_y = np.array([], float)
 
-    return rmax_median, rmax_top2, rmax_max, rmax_min, prior, (pm_x, pm_y, pt2_x, pt2_y, pmax_x, pmax_y, pmin_x, pmin_y)
+    meta_curves = (pm_x, pm_y, pt2_x, pt2_y, pmax_x, pmax_y, pmin_x, pmin_y)
+
+    return rmax_tables, joint_tables, prior, r2_marg, meta_curves
 
 # ------------------------------------
 # Round-seed helper (32-bit Adler32)
@@ -265,26 +290,6 @@ def _weights_top5(sc: np.ndarray) -> np.ndarray:
     w[idx] = (p[idx] / sm) if sm > 0 else (1.0 / 5.0)
     return w
 
-def _load_joint_posteriors(npz_path: str):
-    """Load joint posteriors P(Rmax | Stage‑1 bucket, R2) and marginal P(Rmax | R2)."""
-    p = pathlib.Path(npz_path)
-    if not p.exists():
-        raise FileNotFoundError(f"joint post_npz not found: {p}")
-    with np.load(p, allow_pickle=False) as z:
-        req = {"joint_median_keys","joint_median_mat","joint_top2_keys","joint_top2_mat","prior_rmax","r2_marginal_mat"}
-        missing = [k for k in req if k not in z.files]
-        if missing:
-            raise ValueError(f"joint NPZ missing arrays: {missing}")
-        jm_keys = np.asarray(z["joint_median_keys"], int); jm_mat = np.asarray(z["joint_median_mat"], float)
-        jt_keys = np.asarray(z["joint_top2_keys"],  int); jt_mat = np.asarray(z["joint_top2_mat"],  float)
-        prior   = np.asarray(z["prior_rmax"], float)
-        r2_marg = np.asarray(z["r2_marginal_mat"], float)
-    def _rowmap(keys: np.ndarray):
-        return {int(k): int(i) for i, k in enumerate(keys.tolist())}
-    return {
-        "median": (jm_keys, jm_mat, _rowmap(jm_keys)),
-        "top2":   (jt_keys, jt_mat, _rowmap(jt_keys)),
-    }, prior, r2_marg
 
 def run_single_round_dynamic(
     rmax_tables, joint_tables, prior_rmax, r2_marginal,
@@ -454,15 +459,8 @@ def simulate_experiment_dynamic(seed_int, rounds, max_signals, procs, params, st
     - Deterministic board/permutation per round via round_seed(seed_int, r).
     """
 
-    # Load P(Rmax|signal) for median/top2 and prior
-    rmax_median, rmax_top2, _rmax_max_unused, _rmax_min_unused, prior_mc, (pm_x, pm_y, pt2_x, pt2_y, pmax_x, pmax_y, pmin_x, pmin_y) = _load_mc_posteriors(POST_NPZ_DEFAULT)
-
-    # Load joint posteriors, marginal posteriors, and prior
-    joint_tables, prior_joint, r2_marginal = _load_joint_posteriors(POST_NPZ_JOINT_DEFAULT)
-    prior_rmax = prior_joint if isinstance(prior_joint, np.ndarray) else prior_mc
-
-    # Tables used by dynamic model
-    rmax_tables = {"median": rmax_median, "top2": rmax_top2}
+    # Load all posteriors from unified NPZ file
+    rmax_tables, joint_tables, prior_rmax, r2_marginal, (pm_x, pm_y, pt2_x, pt2_y, pmax_x, pmax_y, pmin_x, pmin_y) = _load_unified_posteriors(POST_NPZ_DEFAULT)
     signal_types = ["median", "top2"]
 
     # Output containers (dynamic-only regimes)

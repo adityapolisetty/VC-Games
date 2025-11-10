@@ -165,3 +165,94 @@ def save_npz(out_path: pathlib.Path, args, dist, summary, meta, norm_params, raw
         try: os.remove(tmp_path)
         except Exception: pass
         raise
+
+def save_npz_unified(out_path: pathlib.Path, args, dist, summary, meta, norm_params, raw_params, key_tuple, key_id, hists=None, weight_hists=None):
+    """
+    Save simulation results using unified NPZ format (similar to frontier.py).
+
+    Structure uses object arrays indexed by n_sig (number of signals), with metadata dict.
+    This is more compact and easier to extend than flat array structure.
+    """
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    max_signals = int(args.max_signals)
+    sig_grid = np.arange(max_signals + 1, dtype=int)
+
+    # Build regime-indexed arrays (object arrays containing per-n data)
+    regimes = list(summary.keys())
+
+    # For each regime, build object arrays indexed by n_sig
+    means_by_n = {}  # regime -> {strategy -> [means per n]}
+    sds_by_n = {}    # regime -> {strategy -> [sds per n]}
+
+    for reg in regimes:
+        means_by_n[reg] = {
+            'max': np.array([summary[reg][n]['mean_net_return_max'] for n in sig_grid], float),
+            'linear': np.array([summary[reg][n]['mean_net_return_linear'] for n in sig_grid], float),
+            'top5': np.array([summary[reg][n]['mean_net_return_top5'] for n in sig_grid], float),
+        }
+        sds_by_n[reg] = {
+            'max': np.array([summary[reg][n]['sd_net_return_max'] for n in sig_grid], float),
+            'linear': np.array([summary[reg][n]['sd_net_return_linear'] for n in sig_grid], float),
+            'top5': np.array([summary[reg][n]['sd_net_return_top5'] for n in sig_grid], float),
+        }
+
+    # Build metadata dict
+    meta_dict = {
+        'params': norm_params,
+        'params_raw': raw_params,
+        'rounds': int(args.rounds),
+        'max_signals': max_signals,
+        'budget': float(BUDGET),
+        'regimes': regimes,
+    }
+    if 'stage1_alloc' in meta:
+        meta_dict['stage1_alloc'] = float(meta['stage1_alloc'])
+
+    # Build payload
+    payload = {
+        'meta': json.dumps(meta_dict),
+        'sig_grid': sig_grid,
+    }
+
+    # Add regime-specific data
+    for reg in regimes:
+        payload[f'means_{reg}_max'] = means_by_n[reg]['max']
+        payload[f'means_{reg}_linear'] = means_by_n[reg]['linear']
+        payload[f'means_{reg}_top5'] = means_by_n[reg]['top5']
+        payload[f'sds_{reg}_max'] = sds_by_n[reg]['max']
+        payload[f'sds_{reg}_linear'] = sds_by_n[reg]['linear']
+        payload[f'sds_{reg}_top5'] = sds_by_n[reg]['top5']
+
+    # Add histograms if present (keep as flat arrays for now)
+    if isinstance(hists, dict):
+        for reg, rules in hists.items():
+            for rule_name, arr in rules.items():
+                payload[f'hist_{reg}_{rule_name}'] = arr
+        payload['hist_start'] = float(meta.get('hist_start', -100.0))
+        payload['hist_step'] = float(meta.get('hist_step', 1.0))
+        payload['hist_n'] = int(meta.get('hist_n', 0))
+
+    # Add weight histograms if present
+    if isinstance(weight_hists, dict):
+        for reg, strat_stage in weight_hists.items():
+            for strat_stage_name, arr in strat_stage.items():
+                payload[f'whist_{reg}_{strat_stage_name}'] = arr
+        payload['weight_hist_start'] = float(meta.get('weight_hist_start', 0.0))
+        payload['weight_hist_step'] = float(meta.get('weight_hist_step', 0.01))
+        payload['weight_hist_n'] = int(meta.get('weight_hist_n', 0))
+
+    # Add posterior curves if present
+    for k in ('post_median_x', 'post_median_y', 'post_top2_x', 'post_top2_y'):
+        if k in meta:
+            payload[k] = meta[k]
+
+    # Atomic write
+    fd, tmp_path = tempfile.mkstemp(prefix=out_path.stem + '.', suffix='.npz', dir=str(out_path.parent))
+    os.close(fd)
+    try:
+        np.savez_compressed(tmp_path, **payload)
+        os.replace(tmp_path, str(out_path))
+    except Exception:
+        try: os.remove(tmp_path)
+        except Exception: pass
+        raise
