@@ -7,7 +7,7 @@
 <style>
   @font-face{font-family:'Source Sans Pro'; font-style:normal; font-weight:400; font-display:swap; src: local('Source Sans Pro Regular'), local('SourceSansPro-Regular'), url('/assets/SourceSansPro-Regular.woff2') format('woff2'), url('/assets/SourceSansPro-Regular.ttf.woff2') format('woff2');}
   @font-face{font-family:'Source Sans Pro'; font-style:normal; font-weight:600; font-display:swap; src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url('/assets/SourceSansPro-Semibold.woff2') format('woff2'), url('/assets/SourceSansPro-Semibold.ttf.woff2') format('woff2');}
-  :root { --blue:#2b6cb0; --red:#c53030; --green:#059669; --bg:#ffffff; --panel:#ffffff; --cta:#f59e0b; --ctatxt:#111827; --b:#e5e7eb; --infoW:72px; }
+  :root { --green:#059669; --bg:#ffffff; --panel:#ffffff; --cta:#f59e0b; --ctatxt:#111827; --b:#e5e7eb; --infoW:72px; }
   *{box-sizing:border-box}
   /* Prefer Source Sans Pro to match Streamlit page */
   body{margin:0;font-family:"Source Sans Pro", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif; background:var(--bg); color:#111827; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale}
@@ -36,11 +36,7 @@
   .pile.raised .card.top{ box-shadow:0 12px 28px rgba(0,0,0,.28), 0 0 0 1.5px #fff; }
   .section-title{margin:6px 0 12px 0}
 
-  .card{width:var(--cardW);height:var(--cardH);border:var(--cardBorder) solid #000;border-radius:var(--cardRadius);cursor:pointer;position:relative;transition:border-color .15s, box-shadow .15s, filter .15s;box-shadow:0 0 0 1.5px #fff}
-  .card.blue{background:#ffffff} .card.red{background:#ffffff}
-  /* Ensure invested state does not change fill color */
-  .card.blue.invested{ background:#ffffff !important }
-  .card.red.invested{ background:#ffffff !important }
+  .card{width:var(--cardW);height:var(--cardH);border:var(--cardBorder) solid #000;border-radius:var(--cardRadius);cursor:pointer;position:relative;transition:border-color .15s, box-shadow .15s, filter .15s;box-shadow:0 0 0 1.5px #fff;background:#ffffff}
   /* Keep white edge on signalled/invested states */
   .card.signaled{ box-shadow:0 0 0 1.5px #fff }
   /* Also raise the selected top card itself as an extra safeguard */
@@ -277,7 +273,7 @@ window.__enterClick = function(){
 <!-- Overlays and Modals -->
 <div id="stageOverlay" class="overlay"><div class="msg" id="overlayMsg">Your investments are hard at work…</div></div>
 
-<div id="rulesModal" class="modal"><div class="box"><span class="close" data-x="rulesModal">✕</span><h3>Rules</h3><p class="muted">Buy signals and invest per card. Wallet £100 total. If a color wipes out, those cards vanish next stage.</p></div></div>
+<div id="rulesModal" class="modal"><div class="box"><span class="close" data-x="rulesModal">✕</span><h3>Rules</h3><p class="muted">Buy signals and invest per card. Wallet £100 total.</p></div></div>
 <div id="tipsModal"  class="modal"><div class="box"><span class="close" data-x="tipsModal">✕</span><h3>Tips</h3><ul><li>Higher signal overwrites the reveal.</li><li>Card turns green after any investment.</li></ul></div></div>
 <div id="wonkModal"  class="modal"><div class="box"><span class="close" data-x="wonkModal">✕</span><h3>Wonkish</h3><p class="muted">S1 A–7/8–K; S2 A/2–5/6–9/10–K; S3 2–3/4–5/6–7/8–9/10–J/Q–K/A; S4 exact N.</p></div></div>
 
@@ -438,7 +434,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const hasSig = !!c.current_reveal;
       const invested = c.invest_total > 0;
       const wasSelected = el.classList.contains('selected');
-      el.className = `card top ${c.color}`
+      el.className = `card top`
         + (hasSig ? " signaled" : "")
         + (invested ? " invested" : "")
         + (c.current_sid != null ? " sig-owned" : "")
@@ -493,8 +489,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const stageSum = c.stage_invests.reduce((a,b)=>a+b,0);
       const newSids = [...c.owned_sids].filter(sid=>!c.prev_owned.has(sid));
       if (stageSum>0 || newSids.length>0){
-      const prev = act[c.card_id] || {color:'blue', N:c.N, invested:0, signals:[]};
-      prev.color = 'blue'; prev.N = c.N;
+      const prev = act[c.card_id] || {N:c.N, invested:0, signals:[]};
+      prev.N = c.N;
         prev.invested = Number(prev.invested||0) + stageSum;
         prev.signals = Array.from(new Set([...(prev.signals||[]), ...newSids])).sort((a,b)=>a-b);
         act[c.card_id] = prev;
@@ -526,7 +522,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const Nmed = (c.med!=null) ? Number(c.med) : Number(c.N);
       const Nsum = (c.sum2!=null)? Number(c.sum2): Number(c.N);
       const obj={
-        card_id:Number(c.card_id), color:"blue", N: Number(c.N),
+        card_id:Number(c.card_id), N: Number(c.N),
         prev_owned:new Set(owned), owned_sids:new Set(owned),
         current_sid: owned.length ? Math.max(...owned) : null,
         med_val: Nmed, sum2_val: Nsum,

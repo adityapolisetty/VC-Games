@@ -20,8 +20,8 @@ CARD_VALUES = np.arange(2, 15)  # 2..10, J=11, Q=12, K=13, A=14
 # ===============================
 # Deck and risks
 # ===============================
-def draw_deck(n_blue: int, n_red: int, seed: int | None = None) -> pd.DataFrame:
-    """Compatibility wrapper returning a 9-pile blue-only board using global deck.
+def draw_deck(n_cards: int, seed: int | None = None) -> pd.DataFrame:
+    """Return a board with n_cards piles using global deck.
 
     Populates per-pile stats so the web UI can show actual signal values.
     Includes second-highest rank (R2) for dynamic two-stage model.
@@ -36,7 +36,6 @@ def draw_deck(n_blue: int, n_red: int, seed: int | None = None) -> pd.DataFrame:
 
         rows.append({
             "card_id": int(i),
-            "color": "blue",
             "alive": True,
             "round": 0,
             # legacy field; keep for fallback (max rank)
@@ -50,40 +49,10 @@ def draw_deck(n_blue: int, n_red: int, seed: int | None = None) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def apply_systemic_risk(df: pd.DataFrame, rng=None):
-    """Apply block events. Return (df, blue_event, red_event)."""
-    rng = np.random.default_rng() if rng is None else rng
-    blue_event = rng.random() < 0.01
-    red_event  = rng.random() < 0.10
-    if blue_event:
-        df.loc[(df["color"] == "blue") & df["alive"], "alive"] = False
-    if red_event:
-        df.loc[(df["color"] == "red") & df["alive"], "alive"] = False
-    return df, blue_event, red_event
-
-
-def apply_idiosyncratic_risk(df: pd.DataFrame, rng=None):
-    rng = np.random.default_rng() if rng is None else rng
-    alive = df["alive"].to_numpy()
-    is_blue = (df["color"].to_numpy() == "blue")
-    is_red = ~is_blue
-
-    p = np.zeros(len(df), float)
-    p[is_blue] = 0.01
-    p[is_red]  = np.minimum(0.03 * df["N"].to_numpy()[is_red], 1.0)
-
-    fails = rng.random(len(df)) < p
-    df.loc[alive & fails, "alive"] = False
-    return df
-
-
-def step_round(df: pd.DataFrame, round_idx: int, rng=None):
-    """Run systemic then idiosyncratic; return (df, blue_event, red_event)."""
-    rng = np.random.default_rng() if rng is None else rng
-    df, b_evt, r_evt = apply_systemic_risk(df, rng)
-    df = apply_idiosyncratic_risk(df, rng)
+def step_round(df: pd.DataFrame, round_idx: int):
+    """Increment round counter for all alive cards. No risk applied."""
     df.loc[df["alive"], "round"] = round_idx
-    return df, b_evt, r_evt
+    return df
 
 
 # ===============================
@@ -214,15 +183,13 @@ if __name__ == "__main__":
     cost = float(args.signal_cost)
     open_first = args.open_browser
     ace_pay = ACE_PAYOUT
-    # 9 piles, all blue
-    df = draw_deck(n_blue=9, n_red=0, seed=42)
+    # 9 piles
+    df = draw_deck(n_cards=9, seed=42)
     for c in ("inv1", "inv2"):
         if c not in df.columns:
             df[c] = 0.0
 
     wallet = WALLET0
-    sys_blue = False
-    sys_red = False
     stage_history = []  # Track stage-wise stats
 
     # ---- Stage 1 ----
@@ -251,9 +218,7 @@ if __name__ == "__main__":
         ix = df.index[df["card_id"].eq(cid)]
         if len(ix) and df.at[ix[0], "alive"] and amt > 0:
             df.at[ix[0], "inv1"] += amt
-    df, b1, r1 = step_round(df, 1, rng=np.random.default_rng(101))
-    sys_blue |= b1
-    sys_red  |= r1
+    df = step_round(df, 1)
 
     # Record Stage 1 history
     stage_history.append({"signals": float(s_spent), "stakes": float(stage1_stakes)})
@@ -288,9 +253,7 @@ if __name__ == "__main__":
         ix = df.index[df["card_id"].eq(cid)]
         if len(ix) and df.at[ix[0], "alive"] and amt > 0:
             df.at[ix[0], "inv2"] += amt
-    df, b2, r2 = step_round(df, 2, rng=np.random.default_rng(102))
-    sys_blue |= b2
-    sys_red  |= r2
+    df = step_round(df, 2)
 
     # Record Stage 2 history
     stage_history.append({"signals": float(s_spent), "stakes": float(stage2_stakes)})
@@ -302,8 +265,6 @@ if __name__ == "__main__":
     total_invest = float(inv_sum.sum())
     total_payoff = float(pay["payout"].sum()) if len(pay) else 0.0
     n_invested = int((inv_sum > 0).sum())
-    n_wiped = int(((inv_sum > 0) & (~df["alive"])).sum())  # invested cards that died
-    n_red_invested = int((df["color"].eq("red") & (inv_sum > 0)).sum())
     # signals spent
     total_signals_spend = float(df.get("signals_spend", 0).fillna(0).sum())
     # avg signals per invested card
@@ -321,7 +282,6 @@ if __name__ == "__main__":
 
     net_return_abs = total_payoff - total_invest
     net_return_pct = (net_return_abs / total_invest * 100.0) if total_invest > 0 else 0.0
-    sys_tag = "both" if (sys_blue and sys_red) else ("blue" if sys_blue else ("red" if sys_red else "none"))
 
     # Calculate player portfolio weights (all 9 piles)
     player_weights = []
@@ -356,9 +316,6 @@ if __name__ == "__main__":
         "net_return": net_return_abs,             # £
         "net_return_pct": net_return_pct,         # %
         "n_invested": n_invested,
-        "n_wiped": n_wiped,
-        "sys_wipe": sys_tag,                       # "none" | "blue" | "red" | "both"
-        "n_red_invested": n_red_invested,
         "avg_signals": avg_signals,
         "player_weights": player_weights,         # [9 pile weights]
         "ace_hits": ace_hits,
@@ -376,7 +333,7 @@ if __name__ == "__main__":
     # Optional console dump
     if len(pay):
         print(
-            pay[["card_id", "color", "N", "stake", "payout"]]
+            pay[["card_id", "N", "stake", "payout"]]
             .sort_values("payout", ascending=False)
             .to_string(index=False)
         )

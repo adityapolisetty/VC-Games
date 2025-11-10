@@ -454,12 +454,12 @@ def _build_fig(fd, sd_step, y_range_override=None, cmin_override=None, cmax_over
     return fig, all_custom_data
 
 # Compute global Σw² range across both datasets for consistent color mapping
-def _ssq_extents(fd, max_n):
+def _ssq_extents(fd):
     if fd is None:
         return None
     weights_by_n = fd["best_weights_by_n"]
     vals = []
-    for n_sig in range(min(len(weights_by_n), max_n + 1)):
+    for n_sig in range(len(weights_by_n)):
         weights = weights_by_n[n_sig]
         for w_vec in weights:
             vals.append(float(np.sum(np.asarray(w_vec, float) ** 2)))
@@ -468,8 +468,8 @@ def _ssq_extents(fd, max_n):
     return (min(vals), max(vals))
 
 
-extA = _ssq_extents(data_A, max_n_A)
-extB = _ssq_extents(data_B, max_n_B)
+extA = _ssq_extents(data_A)
+extB = _ssq_extents(data_B)
 if extA and extB:
     global_vmin = min(extA[0], extB[0])
     global_vmax = max(extA[1], extB[1])
