@@ -22,7 +22,7 @@
   .nav-left a:hover{color:#6b7280}
   .nav .title{font-weight:700;font-size:14px;color:#111827}
   .right{display:flex;gap:16px}
-  .budget{font-weight:700}
+  .budget{font-weight:700;font-size:14px}
 
   /* Decision board width = 420 - invest(170) + 0.5*info button width */
   .wrap{display:grid;grid-template-columns:1fr calc(420px - 170px + (var(--infoW)/2));gap:20px;padding:40px 20px 20px;margin-left:72px}
@@ -294,9 +294,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const STAGE1_INVESTED = new Set(SEED.stage1_invested || []);  // card_ids invested in Stage 1
 
     // Check if we're loading Stage 2 after Stage 1 submit - keep overlay visible
-    if (sessionStorage.getItem('loading_stage2') === 'true') {
+    const loadingStage2 = sessionStorage.getItem('loading_stage2') === 'true';
+    if (loadingStage2) {
       document.getElementById("stageOverlay").style.display = 'flex';
       document.getElementById("overlayMsg").textContent = 'Loading Stage 2...';
+
+      // Add timeout to prevent stuck state (15 seconds)
+      setTimeout(() => {
+        if (sessionStorage.getItem('loading_stage2') === 'true') {
+          // Server restart failed or took too long - clear flag and show login
+          sessionStorage.removeItem('loading_stage2');
+          document.getElementById("stageOverlay").style.display = 'none';
+          location.reload();
+        }
+      }, 15000);
     }
 
   // Refs
@@ -421,8 +432,8 @@ document.addEventListener("DOMContentLoaded", () => {
       SEED.stage_history.forEach((hist, idx) => {
         html += `<tr style="border-bottom: 1px solid var(--b);">
           <td style="padding:8px 4px;">Stage ${idx + 1}</td>
-          <td style="text-align:right; padding:8px 4px;">£${hist.signals || 0}</td>
-          <td style="text-align:right; padding:8px 4px;">£${hist.stakes || 0}</td>
+          <td style="text-align:right; padding:8px 4px;">£${Math.round(hist.signals || 0)}</td>
+          <td style="text-align:right; padding:8px 4px;">£${Math.round(hist.stakes || 0)}</td>
         </tr>`;
       });
     }
@@ -430,8 +441,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // Add current stage
     html += `<tr style="border-bottom: 1px solid var(--b);">
       <td style="padding:8px 4px;">Stage ${STAGE}</td>
-      <td style="text-align:right; padding:8px 4px;">£${currentSignals}</td>
-      <td style="text-align:right; padding:8px 4px;">£${currentStakes}</td>
+      <td style="text-align:right; padding:8px 4px;">£${Math.round(currentSignals)}</td>
+      <td style="text-align:right; padding:8px 4px;">£${Math.round(currentStakes)}</td>
     </tr>`;
 
     summaryBody.innerHTML = html;
@@ -804,7 +815,11 @@ document.addEventListener("DOMContentLoaded", () => {
 }
 
   // Initialize view based on stage
-  if (STAGE===1){
+  // IMPORTANT: Check loading flag FIRST to prevent login page flash during Stage 1→2 transition
+  if (loadingStage2) {
+    // Keep overlay visible, don't show any other views
+    // Timeout handler above will deal with stuck states
+  } else if (STAGE===1){
     // Stage 1: Fresh game - always clear ALL localStorage to start fresh
     localStorage.removeItem("player_name");
     localStorage.removeItem("game_type");
