@@ -232,10 +232,6 @@ window.__enterClick = function(){
 
       <div id="idle" style="margin-top:8px;">
         <div class="muted">Click a card.</div>
-        <div style="margin-top:16px; font-size:14px; color:#6b7280;">
-          If you don't want to invest in this stage
-        </div>
-        <button id="skipStage" class="btn-cta-sm" style="margin-top:8px; width:100%;">Finish Stage</button>
       </div>
 
       <div id="panel" style="display:none;margin-top:8px;">
@@ -250,8 +246,6 @@ window.__enterClick = function(){
         <div id="invList" class="muted" style="margin-top:6px;">Invested: 0</div>
         <div id="msg" class="muted" style="margin-top:10px;"></div>
       </div>
-
-      <button id="finish" class="btn-cta" style="margin-top:12px;">Finish Stage</button>
 
       <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--b);">
         <h3 style="margin:0 0 12px 0;">Summary</h3>
@@ -268,6 +262,13 @@ window.__enterClick = function(){
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--b);">
+        <div style="font-size:14px; color:#6b7280; margin-bottom:12px;">
+          If you are happy with your investments or don't want to invest in this stage, go ahead and click Finish Stage below
+        </div>
+        <button id="finishStage" class="btn-cta-sm" style="width:100%;">Finish Stage 1</button>
       </div>
     </aside>
   </div>
@@ -314,7 +315,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const pickInfo=document.getElementById("pickInfo");
   const invList=document.getElementById("invList");
   const msg=document.getElementById("msg");
-  const finishBtn=document.getElementById("finish");
+  const finishStageBtn=document.getElementById("finishStage");
   const sigLines=document.getElementById("sigLines");
   const rulesModal=document.getElementById("rulesModal");
   const tipsModal=document.getElementById("tipsModal");
@@ -676,7 +677,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Finish / Show performance
-  finishBtn.addEventListener("click",()=>{
+  finishStageBtn.addEventListener("click",()=>{
     const purchases={}, invest={}; let ss=0, si=0;
 
     (function updateActivity(){
@@ -727,39 +728,7 @@ document.addEventListener("DOMContentLoaded", () => {
       .catch(()=>alert("POST failed. Is Python running?"));
   });
 
-  // Skip Stage button
-  const skipStageBtn = document.getElementById("skipStage");
-  if (skipStageBtn) {
-    skipStageBtn.addEventListener("click", () => {
-      // Submit with empty purchases and investments
-      const payload = {
-        stage: STAGE,
-        player_name: localStorage.getItem("player_name") || "",
-        risk_percentile: 0,
-        purchases: {},
-        invest: {},
-        client_spent_signals: 0,
-        client_spent_invest: 0,
-        client_budget_remaining: budget
-      };
-
-      fetch("/submit", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)})
-        .then(() => {
-          if (STAGE === 2) {
-            overlayMsg.textContent = "Preparing results…";
-            overlay.style.display = "flex";
-            setTimeout(() => { location.href = "/results"; }, 600);
-          } else {
-            // Stage 1: Show loading overlay, wait for server to restart with Stage 2
-            overlayMsg.textContent = "Your investments are hard at work…";
-            overlay.style.display = "flex";
-            // Server will shut down and restart - reload page to get Stage 2
-            setTimeout(() => { location.href = "/"; }, 2000);
-          }
-        })
-        .catch(() => alert("POST failed. Is Python running?"));
-    });
-  }
+  // Skip Stage button handler removed - now using single finishStageBtn
 
   // Show performance button in modal
   const showPerformanceBtn = document.getElementById("showPerformanceBtn");
@@ -815,15 +784,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const stageIndicator = document.getElementById("stageIndicator");
   if (STAGE === 2){
-    // Stage 2: Show performance button
+    // Stage 2: Show performance button text
     if (stageIndicator) stageIndicator.textContent = `Stage ${STAGE}`;
     aliveTitle.textContent = "Alive";
-    finishBtn.textContent = "Show performance";
+    finishStageBtn.textContent = "Finish Stage 2";
   } else {
     // Stage 1
     if (stageIndicator) stageIndicator.textContent = `Stage ${STAGE}`;
     aliveTitle.textContent = "Alive";
-    finishBtn.textContent = "Finish Stage";
+    finishStageBtn.textContent = "Finish Stage 1";
   }
 
   buildGrid();
