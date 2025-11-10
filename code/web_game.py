@@ -333,9 +333,31 @@ if __name__ == "__main__":
             else:
                 avg_signals = 0.0
 
-            # Net returns: express as % of original WALLET0 budget for consistency with frontier
+            # Net returns: use frontier formula for consistency
+            # mean_net = 100 * (c1*(g1-1) + c2*(g2-1) - signal_cost_fraction)
+            stage1_payoff = float(pay["payout1"].sum()) if len(pay) else 0.0
+            stage2_payoff = float(pay["payout2"].sum()) if len(pay) else 0.0
+
+            # Investable amounts per stage (after signal costs)
+            investable_stage1 = stage1_stakes
+            investable_stage2 = stage2_stakes
+
+            # Fractions of total budget
+            c1 = investable_stage1 / WALLET0 if WALLET0 > 0 else 0.0
+            c2 = investable_stage2 / WALLET0 if WALLET0 > 0 else 0.0
+            signal_cost_fraction = total_signals_spend / WALLET0 if WALLET0 > 0 else 0.0
+
+            # Gross return multipliers per stage
+            g1 = stage1_payoff / investable_stage1 if investable_stage1 > 0 else 0.0
+            g2 = stage2_payoff / investable_stage2 if investable_stage2 > 0 else 0.0
+
+            # Net return using frontier formula
+            net_return_pct = 100.0 * (c1 * (g1 - 1.0) + c2 * (g2 - 1.0) - signal_cost_fraction)
             net_return_abs = total_payoff - total_invest
-            net_return_pct = 100.0 * ((total_payoff - WALLET0) / WALLET0) if WALLET0 > 0 else 0.0
+
+            # Stage 1 fraction (for strategic analysis)
+            total_stakes = stage1_stakes + stage2_stakes
+            stage1_fraction = stage1_stakes / total_stakes if total_stakes > 0 else 0.0
 
             # Calculate player portfolio weights (all 9 piles)
             player_weights = []
@@ -345,6 +367,9 @@ if __name__ == "__main__":
                     player_weights.append(round(inv_amt, 2))
                 else:
                     player_weights.append(0.0)
+
+            # Concentration index (Σw² / 10000) - risk proxy for MV frontier
+            concentration_index = sum(w ** 2 for w in player_weights) / 10000.0
 
             # Count ace/king/queen hits in surviving invested cards
             ace_hits = 0
@@ -368,13 +393,15 @@ if __name__ == "__main__":
                 "invested": total_invest,    # total invested £
                 "signals_spent": total_signals_spend,     # total spent on signals £
                 "net_return": net_return_abs,             # £
-                "net_return_pct": net_return_pct,         # %
+                "net_return_pct": net_return_pct,         # % (frontier formula)
                 "n_invested": n_invested,
                 "avg_signals": avg_signals,
                 "player_weights": player_weights,         # [9 pile weights]
                 "ace_hits": ace_hits,
                 "king_hits": king_hits,
                 "queen_hits": queen_hits,
+                "concentration_index": concentration_index,  # Σw²/10000 for MV frontier
+                "stage1_fraction": stage1_fraction,          # % of stakes in Stage 1
             }
 
             # Log results to database

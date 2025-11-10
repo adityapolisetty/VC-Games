@@ -34,6 +34,23 @@ def init_db():
         conn.commit()
         print("[db] Migration complete!")
 
+    # Migration: Add 'concentration_index' and 'stage1_fraction' columns if they don't exist
+    try:
+        cur.execute("SELECT concentration_index FROM game_results LIMIT 1")
+    except sqlite3.OperationalError:
+        print("[db] Adding 'concentration_index' column to game_results table...")
+        cur.execute("ALTER TABLE game_results ADD COLUMN concentration_index REAL")
+        conn.commit()
+        print("[db] Migration complete!")
+
+    try:
+        cur.execute("SELECT stage1_fraction FROM game_results LIMIT 1")
+    except sqlite3.OperationalError:
+        print("[db] Adding 'stage1_fraction' column to game_results table...")
+        cur.execute("ALTER TABLE game_results ADD COLUMN stage1_fraction REAL")
+        conn.commit()
+        print("[db] Migration complete!")
+
     # Game sessions table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS game_sessions (
@@ -78,6 +95,8 @@ def init_db():
             king_hits INTEGER,
             queen_hits INTEGER,
             player_weights JSON,
+            concentration_index REAL,
+            stage1_fraction REAL,
             FOREIGN KEY (session_id) REFERENCES game_sessions(id)
         )
     """)
@@ -152,9 +171,10 @@ def log_game_results(session_id: int, results: dict):
         INSERT INTO game_results (
             session_id, total_invested, total_payoff,
             net_return, net_return_pct, n_invested,
-            ace_hits, king_hits, queen_hits, player_weights
+            ace_hits, king_hits, queen_hits, player_weights,
+            concentration_index, stage1_fraction
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         session_id,
         results.get("invested", 0.0),
@@ -165,7 +185,9 @@ def log_game_results(session_id: int, results: dict):
         results.get("ace_hits", 0),
         results.get("king_hits", 0),
         results.get("queen_hits", 0),
-        json.dumps(results.get("player_weights", []))
+        json.dumps(results.get("player_weights", [])),
+        results.get("concentration_index", None),
+        results.get("stage1_fraction", None)
     ))
 
     conn.commit()
