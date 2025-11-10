@@ -383,11 +383,11 @@ def _build_fig(fd, sd_step, y_range_override=None, cmin_override=None, cmax_over
             hit_rate_str = ""
             if total_rounds and total_rounds > 0:
                 ace_pct = (ace_hit / total_rounds) * 100
-                hit_rate_str = f"<br><br><b>Hit Rates:</b><br>Ace: {ace_pct:.1f}%"
+                hit_rate_str = f"<br><br><b>Hit Rates:</b><br>Ace: {ace_pct:.2f}%"
                 if scale_pay == 1:
                     king_pct = (king_hit / total_rounds) * 100
                     queen_pct = (queen_hit / total_rounds) * 100
-                    hit_rate_str += f", King: {king_pct:.1f}%, Queen: {queen_pct:.1f}%"
+                    hit_rate_str += f", King: {king_pct:.2f}%, Queen: {queen_pct:.2f}%"
 
             # Format simulations count
             sim_display = f"{total_rounds:,}" if total_rounds else "N/A"
