@@ -5,7 +5,7 @@ import pandas as pd
 
 from web_wrangler import run_ui  # UI server only
 from sim_res import _deal_cards_global_deck, round_seed
-from database import init_db, create_session, log_stage_action, log_game_results, close_session
+from database import init_db, create_session, log_stage_action, log_game_results, close_session, mark_session_completed, delete_session
 
 # ------- game parameters -------
 MIN_INV = {1: 1.0, 2: 5.0}  # Only 2 stages now
@@ -203,27 +203,23 @@ if __name__ == "__main__":
             stage_history = []  # Track stage-wise stats
             total_signal_cost_stage1 = 0.0  # Explicit tracker for Stage 1 signals
             total_signal_cost_stage2 = 0.0  # Explicit tracker for Stage 2 signals
-
-            # Create database session (team name will be updated after Stage 1)
-            session_id = create_session(
-                team_name="",  # Will be filled from UI
-                seed=game_seed,
-                signal_mode=mode,
-                signal_cost=cost
-            )
+            session_id = None  # Will be created after Stage 1 submission
 
             # ---- Stage 1 ----
             act = run_ui(1, df, wallet, open_browser=open_first, signal_mode=mode, signal_cost=cost)
             if act is None:
-                raise RuntimeError("Stage 1 UI returned None - did the server fail?")
+                # Player closed browser or restarted - don't create DB session
+                print("[game] Stage 1 returned None - game abandoned before submission")
+                continue  # Start fresh game
 
-            # Update session with team name from UI
+            # Create database session AFTER Stage 1 submission (game has legitimate progress)
             team_name = act.get("player_name", "Anonymous")
-            if team_name:
-                conn = __import__('sqlite3').connect(__import__('database').DB_FILE)
-                conn.execute("UPDATE game_sessions SET team_name = ? WHERE id = ?", (team_name, session_id))
-                conn.commit()
-                conn.close()
+            session_id = create_session(
+                team_name=team_name,
+                seed=game_seed,
+                signal_mode=mode,
+                signal_cost=cost
+            )
 
             df, s_spent, _ = stage_buy_signals(df, {int(k): v for k, v in act["purchases"].items()}, budget=wallet)
             total_signal_cost_stage1 = float(s_spent)
@@ -388,7 +384,10 @@ if __name__ == "__main__":
             # Start a persistent server to serve /results page
             # This server will keep running until user clicks "End Game"
             print("[web] Results ready. Server will stay up until 'End Game' is clicked.")
-            _ = run_ui(stage=3, df=df, wallet=wallet, results=stats, signal_mode=mode, signal_cost=cost)
+            _ = run_ui(stage=3, df=df, wallet=wallet, results=stats, signal_mode=mode, signal_cost=cost, session_id=session_id)
+
+            # Mark session as completed (player clicked End Game)
+            mark_session_completed(session_id=session_id)
 
             # Close database session
             close_session(session_id=session_id)

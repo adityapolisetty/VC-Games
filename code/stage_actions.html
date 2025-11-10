@@ -709,6 +709,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if (performanceModal) performanceModal.style.display = "flex";
         } else {
           // Stage 1: Show loading overlay, wait for server to restart with Stage 2
+          // DO NOT clear localStorage - keep player_name and game_type for Stage 2
           overlayMsg.textContent = "Your investments are hard at work…";
           overlay.style.display = "flex";
           // Server will shut down and restart - reload page to get Stage 2
@@ -822,8 +823,20 @@ document.addEventListener("DOMContentLoaded", () => {
   setBudget();
   updateSummary();
 }
-  if (STAGE===1){ localStorage.removeItem("player_name"); localStorage.removeItem("activity_v1"); showLogin(); }
-  else { const n=localStorage.getItem("player_name"); if(n) showApp(); else showLogin(); }
+
+  // Initialize view based on stage
+  if (STAGE===1){
+    // Stage 1: Fresh game - always clear ALL localStorage to start fresh
+    localStorage.removeItem("player_name");
+    localStorage.removeItem("game_type");
+    localStorage.removeItem("activity_v1");
+    showLogin();
+  } else {
+    // Stage 2+: Continue existing game if player_name exists
+    const n=localStorage.getItem("player_name");
+    if(n) showApp();
+    else showLogin();
+  }
 
   function doEnter(){
     if (enterBtn) enterBtn.disabled = true; // guard against double-click

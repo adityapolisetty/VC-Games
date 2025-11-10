@@ -3,11 +3,16 @@
 
 import sqlite3
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-DB_FILE = Path(__file__).parent / "game_data.db"
+# Use Railway Volume if available, otherwise local directory
+if os.path.exists("/data"):
+    DB_FILE = Path("/data") / "game_data.db"
+else:
+    DB_FILE = Path(__file__).parent / "game_data.db"
 
 
 def init_db():
@@ -24,7 +29,8 @@ def init_db():
             timestamp_end DATETIME,
             seed INTEGER,
             signal_mode TEXT,
-            signal_cost REAL
+            signal_cost REAL,
+            completed BOOLEAN DEFAULT 0
         )
     """)
 
@@ -163,6 +169,39 @@ def close_session(session_id: int):
     conn.close()
 
     print(f"[db] Closed session {session_id}")
+
+
+def mark_session_completed(session_id: int):
+    """Mark a session as completed (player clicked End Game)."""
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+
+    cur.execute("""
+        UPDATE game_sessions
+        SET completed = 1
+        WHERE id = ?
+    """, (session_id,))
+
+    conn.commit()
+    conn.close()
+
+    print(f"[db] Marked session {session_id} as completed")
+
+
+def delete_session(session_id: int):
+    """Delete a session and all its related data (for abandoned games)."""
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+
+    # Delete related records first (foreign key constraint)
+    cur.execute("DELETE FROM game_results WHERE session_id = ?", (session_id,))
+    cur.execute("DELETE FROM stage_actions WHERE session_id = ?", (session_id,))
+    cur.execute("DELETE FROM game_sessions WHERE id = ?", (session_id,))
+
+    conn.commit()
+    conn.close()
+
+    print(f"[db] Deleted session {session_id} and all related data")
 
 
 if __name__ == "__main__":

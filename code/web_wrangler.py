@@ -184,12 +184,20 @@ class _H(BaseHTTPRequestHandler):
             if _CURRENT_SESSION and _CURRENT_SESSION in _SESSIONS:
                 _SESSIONS[_CURRENT_SESSION]['ended'].set()
             _END_EVENT.set()  # Backward compatibility
+
+            # Mark DB session as completed (will be done in web_game.py after this returns)
+            # This endpoint just signals that the user clicked "End Game"
+
             self.send_response(200)
             self.end_headers()
             return
 
         if self.path == "/reset":
             # Reset session for new game
+            # Note: We don't delete DB sessions here because:
+            # - Abandoned games (no Stage 1 submit) never create a session
+            # - Incomplete games (Stage 1 submitted) should be kept
+            # - Completed games are already marked as completed
             _SESSIONS.clear()
             _ACTIONS = None
             _POSTED.clear()
@@ -516,7 +524,8 @@ document.querySelector('[data-tab="frontier"]').addEventListener('click', functi
 def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None = None,
            port: int = 8765, open_browser: bool = False,
            signal_mode: str = "median", signal_cost: float = 5.0,
-           stage1_invested: list | None = None, stage_history: list | None = None):
+           stage1_invested: list | None = None, stage_history: list | None = None,
+           session_id: int | None = None):
     """Serve UI for a stage and return the posted decisions.
 
     stage1_invested: list of card_ids that were invested in Stage 1 (for Stage 2 restrictions)
@@ -563,6 +572,7 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
         "signal_cost": float(signal_cost),
         "stage1_invested": stage1_invested or [],  # card_ids invested in Stage 1
         "stage_history": stage_history or [],  # history of previous stages
+        "session_id": session_id,  # DB session ID for marking completion
     }
 
     # Use PORT from environment (Railway) or fallback to default
