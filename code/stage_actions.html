@@ -23,6 +23,8 @@
   .nav .title{font-weight:700;font-size:14px;color:#111827}
   .right{display:flex;gap:16px}
   .budget{font-weight:700;font-size:14px}
+  /* Ensure stage indicator matches budget styling exactly - override parent .title */
+  .nav .title, .nav .title #stageIndicator{font-weight:700;font-size:14px !important;color:#111827}
 
   /* Decision board width = 420 - invest(170) + 0.5*info button width */
   .wrap{display:grid;grid-template-columns:1fr calc(420px - 170px + (var(--infoW)/2));gap:20px;padding:40px 20px 20px;margin-left:72px}
@@ -296,18 +298,26 @@ document.addEventListener("DOMContentLoaded", () => {
     // Check if we're loading Stage 2 after Stage 1 submit - keep overlay visible
     const loadingStage2 = sessionStorage.getItem('loading_stage2') === 'true';
     if (loadingStage2) {
-      document.getElementById("stageOverlay").style.display = 'flex';
-      document.getElementById("overlayMsg").textContent = 'Loading Stage 2...';
+      // Clear flag immediately since we're now on the new page
+      sessionStorage.removeItem('loading_stage2');
 
-      // Add timeout to prevent stuck state (15 seconds)
-      setTimeout(() => {
-        if (sessionStorage.getItem('loading_stage2') === 'true') {
-          // Server restart failed or took too long - clear flag and show login
-          sessionStorage.removeItem('loading_stage2');
+      // If we successfully loaded Stage 2, clear the overlay and continue
+      if (STAGE === 2) {
+        // Success! Stage 2 is ready, just hide overlay after a brief moment
+        setTimeout(() => {
           document.getElementById("stageOverlay").style.display = 'none';
-          location.reload();
-        }
-      }, 15000);
+        }, 200);
+      } else {
+        // Still on Stage 1 or login page - show error
+        document.getElementById("stageOverlay").style.display = 'flex';
+        document.getElementById("overlayMsg").textContent = 'Loading Stage 2...';
+
+        // This shouldn't happen with new polling, but keep as fallback
+        setTimeout(() => {
+          document.getElementById("stageOverlay").style.display = 'none';
+          alert('Stage 2 loading failed. Please contact support.');
+        }, 3000);
+      }
     }
 
   // Refs
@@ -733,12 +743,65 @@ document.addEventListener("DOMContentLoaded", () => {
           overlay.style.display = "flex";
           // Mark that we're loading Stage 2 to prevent flash of login page
           sessionStorage.setItem('loading_stage2', 'true');
-          // Server will shut down and restart - reload page to get Stage 2
-          setTimeout(() => { location.href = "/"; }, 2000);
+
+          // Poll server until Stage 2 is ready instead of fixed timeout
+          pollForStage2Ready();
         }
       })
       .catch(()=>alert("POST failed. Is Python running?"));
     });
+  }
+
+  // Poll server to check when Stage 2 is ready (instead of fixed timeout)
+  function pollForStage2Ready() {
+    const startTime = Date.now();
+    const maxWait = 30000; // 30 seconds max
+    const pollInterval = 300; // Check every 300ms
+
+    function checkServer() {
+      const elapsed = Date.now() - startTime;
+
+      if (elapsed > maxWait) {
+        // Timeout - show error
+        document.getElementById("overlayMsg").textContent = "Server timeout. Please refresh the page.";
+        sessionStorage.removeItem('loading_stage2');
+        return;
+      }
+
+      // Try to fetch root - if server is ready with Stage 2, it will respond
+      fetch("/", {method: "HEAD", cache: "no-store"})
+        .then(response => {
+          if (response.ok) {
+            // Server responded - now check if it's Stage 2 by fetching the page
+            fetch("/", {cache: "no-store"})
+              .then(resp => resp.text())
+              .then(html => {
+                // Check if HTML contains Stage 2 context (SEED.stage === 2)
+                if (html.includes('"stage":2') || html.includes('"stage": 2')) {
+                  // Stage 2 is ready!
+                  location.href = "/";
+                } else {
+                  // Still Stage 1 or transitioning - keep polling
+                  setTimeout(checkServer, pollInterval);
+                }
+              })
+              .catch(() => {
+                // Fetch failed - server might be restarting, keep polling
+                setTimeout(checkServer, pollInterval);
+              });
+          } else {
+            // Server not ready yet - keep polling
+            setTimeout(checkServer, pollInterval);
+          }
+        })
+        .catch(() => {
+          // Server not responding yet (likely restarting) - keep polling
+          setTimeout(checkServer, pollInterval);
+        });
+    }
+
+    // Start polling after a small initial delay to let server begin shutdown
+    setTimeout(checkServer, 500);
   }
 
   // Skip Stage button handler removed - now using single finishStageBtn
@@ -816,9 +879,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Initialize view based on stage
   // IMPORTANT: Check loading flag FIRST to prevent login page flash during Stage 1→2 transition
-  if (loadingStage2) {
-    // Keep overlay visible, don't show any other views
-    // Timeout handler above will deal with stuck states
+  if (loadingStage2 && STAGE !== 2) {
+    // Keep overlay visible while waiting for Stage 2, don't show any other views
+    // Error handler above will deal with stuck states
+  } else if (loadingStage2 && STAGE === 2) {
+    // Successfully loaded Stage 2 - show app with Stage 2 content
+    showApp();
   } else if (STAGE===1){
     // Stage 1: Fresh game - always clear ALL localStorage to start fresh
     localStorage.removeItem("player_name");

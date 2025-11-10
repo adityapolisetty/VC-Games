@@ -247,7 +247,12 @@ if __name__ == "__main__":
             df = step_round(df, 1)
 
             # Record Stage 1 history
-            stage_history.append({"signals": float(total_signal_cost_stage1), "stakes": float(stage1_stakes)})
+            signal_count_stage1 = sum(len(v) for v in act.get("purchases", {}).values())
+            stage_history.append({
+                "signals": float(total_signal_cost_stage1),
+                "signal_count": int(signal_count_stage1),
+                "stakes": float(stage1_stakes)
+            })
 
             # Log Stage 1 to database
             log_stage_action(
@@ -294,7 +299,12 @@ if __name__ == "__main__":
             df = step_round(df, 2)
 
             # Record Stage 2 history
-            stage_history.append({"signals": float(total_signal_cost_stage2), "stakes": float(stage2_stakes)})
+            signal_count_stage2 = sum(len(v) for v in act.get("purchases", {}).values())
+            stage_history.append({
+                "signals": float(total_signal_cost_stage2),
+                "signal_count": int(signal_count_stage2),
+                "stakes": float(stage2_stakes)
+            })
 
             # Log Stage 2 to database
             log_stage_action(

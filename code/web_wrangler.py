@@ -281,7 +281,7 @@ def _results_page(stats: dict) -> str:
 <body>
 
 <div class="brandbar">
-  <div class="brand-center">{stats.get('player','') or 'Team Alpha'} • Performance</div>
+  <div class="brand-center">{stats.get('player','') or 'Team Alpha'} Performance</div>
 </div>
 
 <header class="nav">
