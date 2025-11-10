@@ -435,7 +435,7 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
 
     # Save per (params, alpha, st)
     norm_params, key_tuple, key_id = canonicalize_params(params)
-    a_tag = f"a{int(round(float(stage1_alloc)*10)):02d}"
+    a_tag = f"a{int(round(float(stage1_alloc)*100)):03d}"
     out_path = out_dir / f"{key_id}_{st}_{a_tag}.npz"
     meta = dict(
         mode="frontier_il",
@@ -467,7 +467,7 @@ def run_sweep(base_seed, rounds, max_signals, procs_inner, out_dir,
                         raw = dict(signal_cost=float(sc), scale_pay=sp, scale_param=(s if sp == 1 else 0.0), ace_payout=ap)
                         norm, key_tuple, key_id = canonicalize_params(raw)
                         for st in ("median", "top2"):
-                            a_tag = f"a{int(round(float(alpha)*10)):02d}"  # 00, 05, 10, ..., 10
+                            a_tag = f"a{int(round(float(alpha)*100)):03d}"  # 00, 05, 10, ..., 10
                             outfile = out_dir / f"{key_id}_{st}_{a_tag}.npz"
                             combos.append((raw, alpha, st, outfile))
 

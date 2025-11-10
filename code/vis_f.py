@@ -194,8 +194,8 @@ raw_A = dict(signal_cost=float(signal_cost_A), scale_pay=sp_A, scale_param=(0.25
 raw_B = dict(signal_cost=float(signal_cost_B), scale_pay=sp_B, scale_param=(0.25 if sp_B == 1 else 0.0), ace_payout=20.0)
 _, key_A = _canonicalize(raw_A)
 _, key_B = _canonicalize(raw_B)
-tag_A = f"a{int(round(float(alpha_A)*10)):02d}"
-tag_B = f"a{int(round(float(alpha_B)*10)):02d}"
+tag_A = f"a{int(round(float(alpha_A)*100)):03d}"
+tag_B = f"a{int(round(float(alpha_B)*100)):03d}"
 file_A = frontier_dir / f"{key_A}_{sig_A}_{tag_A}.npz"
 file_B = frontier_dir / f"{key_B}_{sig_B}_{tag_B}.npz"
 
@@ -507,7 +507,7 @@ if (global_vmin is not None) and (global_vmax is not None):
         <div style='display: flex; align-items: center; gap: 20px; width: 100%; max-width: 700px; margin: 20px auto;'>
             <div style='white-space: nowrap;'>Legend: Σw² (portfolio concentration)</div>
             <div style='flex: 1;'>
-                <div style='height: 40px; background: linear-gradient(to right, #2b8cbe, #08306b); border: 1px solid #ccc; border-radius: 4px;'></div>
+                <div style='height: 30px; background: linear-gradient(to right, #2b8cbe, #08306b); border: 1px solid #ccc; border-radius: 4px;'></div>
                 <div style='display: flex; justify-content: space-between; margin-top: 5px; font-size: 13px; color: #666;'>
                     <span>{global_vmin:.3f}</span>
                     <span>{global_vmax:.3f}</span>
