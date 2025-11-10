@@ -1072,9 +1072,9 @@ if view == "Simulation Results":
                 key="voi_B",
             )
 
-elif view == "Mean-Variance Frontiers":
+elif view == "Mean-Variance Frontier":
     # ==============================
-    # MEAN-VARIANCE FRONTIERS VIEW
+    # MEAN-VARIANCE FRONTIER VIEW
     # ==============================
 
     # Help text + shared y-range toggle
@@ -1215,10 +1215,11 @@ elif view == "Mean-Variance Frontiers":
             unsafe_allow_html=True
         )
 
+# ==============================
+# POSTERIORS VIEW
+# ==============================
+
 else:  # view == "Posteriors"
-    # ==============================
-    # POSTERIORS VIEW
-    # ==============================
 
     # Load unified posterior NPZ (precomp_output/post_mc.npz)
     post_npz_path = Path("precomp_output/post_mc.npz").resolve()
