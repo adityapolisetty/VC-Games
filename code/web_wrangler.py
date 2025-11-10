@@ -348,7 +348,7 @@ def _results_page(stats: dict) -> str:
 
   <aside>
     <h3 style="margin:0 0 16px 0;">Actions</h3>
-    <button id="endBtn" class="btn">End Game</button>
+    <button id="endBtn" class="btn">Quit Game</button>
   </aside>
 </div>
 
