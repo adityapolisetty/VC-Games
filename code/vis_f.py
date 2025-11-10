@@ -12,7 +12,7 @@ import streamlit as st
 # ==============================
 # App config
 # ==============================
-st.set_page_config(page_title="IL Frontier Viewer", layout="wide")
+st.set_page_config(page_title="Frontier Viewer", layout="wide")
 st.markdown(
     """
     <style>
@@ -484,7 +484,7 @@ with colA:
         st.info(f"Frontier data not found: {file_A.name}")
         st.caption("Run frontier.py to generate frontier data.")
     else:
-        st.markdown(f"**Fixed:** Signal cost=£{signal_cost_A}, Ace payoff=20X" + (", Scale param=0.25" if sp_A == 1 else ""))
+        st.markdown(f"**Fixed:** Ace payoff=20X" + (", Scale param=0.25" if sp_A == 1 else ""))
         figA, _ = _build_fig(data_A, sd_step_A, y_range, global_vmin, global_vmax)
         st.plotly_chart(figA, use_container_width=True, key="mv_frontier_A")
 
@@ -493,7 +493,7 @@ with colB:
         st.info(f"Frontier data not found: {file_B.name}")
         st.caption("Run frontier.py to generate frontier data.")
     else:
-        st.markdown(f"**Fixed:** Signal cost=£{signal_cost_B}, Ace payoff=20X" + (", Scale param=0.25" if sp_B == 1 else ""))
+        st.markdown(f"**Fixed:** Ace payoff=20X" + (", Scale param=0.25" if sp_B == 1 else ""))
         figB, _ = _build_fig(data_B, sd_step_B, y_range, global_vmin, global_vmax)
         st.plotly_chart(figB, use_container_width=True, key="mv_frontier_B")
 

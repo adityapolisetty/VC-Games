@@ -238,7 +238,7 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
             s2_m[jj] = float(np.dot(h2, vec))
         perm2 = np.argsort(-s2_m)
         g1 = Wm @ p_m
-        g2 = Wm[:, perm2] @ p_m_stage2  # Use Stage 2 payouts (0.5x)
+        g2 = Wm[:, perm2] @ p_m_stage2[perm2]  # Use Stage 2 payouts (0.5x) reordered by Stage 2 ranking
         stats["sum_g1"] += g1
         stats["sum_g2"] += g2
         stats["sum_g1_sq"] += g1 * g1
