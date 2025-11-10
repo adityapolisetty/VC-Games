@@ -505,7 +505,7 @@ if (global_vmin is not None) and (global_vmax is not None):
     st.markdown(
         f"""
         <div style='display: flex; align-items: center; gap: 20px; width: 100%; max-width: 700px; margin: 20px auto;'>
-            <div style='font-weight: regular; white-space: nowrap;'>Legend: Σw² (portfolio concentration)</div>
+            <div style='white-space: nowrap;'>Legend: Σw² (portfolio concentration)</div>
             <div style='flex: 1;'>
                 <div style='height: 30px; background: linear-gradient(to right, #2b8cbe, #08306b); border: 1px solid #ccc; border-radius: 4px;'></div>
                 <div style='display: flex; justify-content: space-between; margin-top: 5px; font-size: 13px; color: #666;'>
