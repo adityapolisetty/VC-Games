@@ -80,7 +80,6 @@ def _load_unified_posteriors(npz_path: str):
         joint_tables: dict with 'median' and 'top2' joint posteriors P(Rmax|signal,R2)
         prior_rmax: P(Rmax) prior distribution
         r2_marginal: P(Rmax|R2) marginal distribution
-        meta_curves: tuple (pm_x, pm_y, pt2_x, pt2_y, pmax_x, pmax_y, pmin_x, pmin_y)
     """
     p = pathlib.Path(npz_path)
     if not p.exists():
@@ -127,19 +126,7 @@ def _load_unified_posteriors(npz_path: str):
         "top2": (jt_keys, jt_mat, _rowmap(jt_keys)),
     }
 
-    # P(Ace | signal) meta curves from last column
-    ace_idx = ACE_RANK - 2
-    pm_x = m_keys.astype(float)
-    pm_y = m_mat[:, ace_idx].astype(float) if m_mat.size else np.zeros((0,), float)
-    pt2_x = t_keys.astype(float)
-    pt2_y = t_mat[:, ace_idx].astype(float) if t_mat.size else np.zeros((0,), float)
-    # Empty meta for max/min (legacy compatibility)
-    pmax_x = np.array([], float); pmax_y = np.array([], float)
-    pmin_x = np.array([], float); pmin_y = np.array([], float)
-
-    meta_curves = (pm_x, pm_y, pt2_x, pt2_y, pmax_x, pmax_y, pmin_x, pmin_y)
-
-    return rmax_tables, joint_tables, prior, r2_marg, meta_curves
+    return rmax_tables, joint_tables, prior, r2_marg
 
 # ------------------------------------
 # Round-seed helper (32-bit Adler32)
@@ -460,7 +447,7 @@ def simulate_experiment_dynamic(seed_int, rounds, max_signals, procs, params, st
     """
 
     # Load all posteriors from unified NPZ file
-    rmax_tables, joint_tables, prior_rmax, r2_marginal, (pm_x, pm_y, pt2_x, pt2_y, pmax_x, pmax_y, pmin_x, pmin_y) = _load_unified_posteriors(POST_NPZ_DEFAULT)
+    rmax_tables, joint_tables, prior_rmax, r2_marginal = _load_unified_posteriors(POST_NPZ_DEFAULT)
     signal_types = ["median", "top2"]
 
     # Output containers (dynamic-only regimes)
@@ -620,8 +607,6 @@ def simulate_experiment_dynamic(seed_int, rounds, max_signals, procs, params, st
 
     meta = dict(
         mode="dynamic", params=dict(params), stage1_alloc=float(stage1_alloc),
-        post_median_x=pm_x, post_median_y=pm_y,
-        post_top2_x=pt2_x, post_top2_y=pt2_y,
         hist_start=float(HIST_START), hist_step=float(HIST_STEP), hist_n=int(HIST_N),
         weight_hist_start=float(WEIGHT_HIST_START), weight_hist_step=float(WEIGHT_HIST_STEP), weight_hist_n=int(WEIGHT_HIST_N)
     )

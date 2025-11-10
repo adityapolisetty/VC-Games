@@ -1,4 +1,4 @@
-etup:
+Setup
   - 9 piles, each with 5 cards
   - Global deck constraint: exactly 1 Ace (rank 14), 2 Kings (rank 13), 2
   Queens (rank 12)

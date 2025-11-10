@@ -25,4 +25,4 @@ export NUMEXPR_NUM_THREADS=1
 ID="${PBS_ARRAY_INDEX}"
 STRIDE=62
 
-python3 -u card_game_dynamic.py --seed 12345 --rounds 100000 --max_signals 9 --procs 8 --sweep --sweep_out ../output_joint --sweep_index "$ID" --sweep_stride "$STRIDE" 
+python3 -u sim_res.py --seed 12345 --rounds 100000 --max_signals 9 --procs 8 --sweep --sweep_out ../output --sweep_index "$ID" --sweep_stride "$STRIDE" 

@@ -17,7 +17,7 @@ from sim_res import ACE_RANK
 # ==============================
 # App config: wide + light CSS
 # ==============================
-st.set_page_config(page_title="IB Card Game", layout="wide")
+st.set_page_config(page_title="VC Card Game", layout="wide")
 st.markdown(
     """
     <style>
@@ -430,15 +430,15 @@ def _render_posteriors_panel(tag: str, post_data: dict):
 
     # Row 2: Signal type selector
     if post_type == "Conditional":
-        signal_options = ["Median", "Top 2", "Second rank (R2)"]
+        signal_options = ["Median", "Top 2 rank sum", "Second rank (R2)"]
     else:  # Joint Conditional
-        signal_options = ["Median", "Top 2"]
+        signal_options = ["Median", "Top 2 rank sum"]
     signal_label = st.selectbox("Signal type", signal_options, key=f"post_sig_{tag}")
 
     # Map signal label to internal type
     if signal_label == "Median":
         signal_type = "median"
-    elif signal_label == "Top 2":
+    elif signal_label == "Top 2 rank sum":
         signal_type = "top2"
     else:  # Second rank (R2)
         signal_type = "r2"
@@ -461,7 +461,7 @@ def _render_posteriors_panel(tag: str, post_data: dict):
             elif signal_type == "top2":
                 x_vals = post_data["cond_t2_keys"]
                 y_vals = post_data["cond_t2_mat"][:, rmax_idx]
-                sig_name = "Top 2"
+                sig_name = "Top 2 rank sum"
                 counts_mat = post_data["cond_t2_counts"]
             else:  # r2
                 x_vals = np.arange(2, 14)  # R2 values from 2 to 13 (cannot be 14/Ace)
@@ -498,7 +498,7 @@ def _render_posteriors_panel(tag: str, post_data: dict):
             elif signal_type == "top2":
                 x_vals = post_data["cond_t2_keys"]
                 y_vals = post_data["cond_t2_mat"][:, ace_idx]
-                sig_name = "Top 2"
+                sig_name = "Top 2 rank sum"
                 counts_mat = post_data["cond_t2_counts"]
             else:  # r2
                 x_vals = np.arange(2, 14)  # R2 values from 2 to 13 (cannot be 14/Ace)
@@ -951,8 +951,6 @@ if view == "Simulation Results":
             "sig_grid", "budget",
             f"mean_{pct_key}_{regime}_max", f"mean_{pct_key}_{regime}_linear", f"mean_{pct_key}_{regime}_top5",
             f"sd_{pct_key}_{regime}_max",   f"sd_{pct_key}_{regime}_linear",   f"sd_{pct_key}_{regime}_top5",
-            "post_median_x", "post_median_y",
-            "post_top2_x",   "post_top2_y",
             "params_norm", "params_raw"
         )
 
@@ -1093,7 +1091,7 @@ elif view == "Efficient Frontiers":
         with topA[0]:
             frontier_sp_A = st.radio("Payoff scaling", ["Off (Ace-only)", "On (Scaled)"], horizontal=True, key="frontier_sp_A")
         with topA[1]:
-            frontier_sig_A = st.selectbox("Signal type", ["Median", "Top 2"], key="frontier_sig_A")
+            frontier_sig_A = st.selectbox("Signal type", ["Median", "Top 2 rank sum"], key="frontier_sig_A")
         sp_A = 1 if "On" in frontier_sp_A else 0
         sig_A = "median" if frontier_sig_A == "Median" else "top2"
         rowA = st.columns([1, 1, 1])
@@ -1116,9 +1114,9 @@ elif view == "Efficient Frontiers":
         with topB[0]:
             frontier_sp_B = st.radio("Payoff scaling", ["Off (Ace-only)", "On (Scaled)"], horizontal=True, key="frontier_sp_B")
         with topB[1]:
-            frontier_sig_B = st.selectbox("Signal type", ["Median", "Top 2"], index=1, key="frontier_sig_B")
+            frontier_sig_B = st.selectbox("Signal type", ["Median", "Top 2 rank sum"], index=1, key="frontier_sig_B")
         sp_B = 1 if "On" in frontier_sp_B else 0
-        sig_B = "top2" if frontier_sig_B == "Top 2" else "median"
+        sig_B = "top2" if frontier_sig_B == "Top 2 rank sum" else "median"
         rowB = st.columns([1, 1, 1])
         with rowB[0]:
             alpha_B = st.select_slider("Stage 1 allocation",
