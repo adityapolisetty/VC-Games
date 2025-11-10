@@ -136,7 +136,7 @@ with row[0]:
         unsafe_allow_html=True,
     )
 with row[1]:
-    fix_y_mv = st.toggle("Fix Y axis range", value=False, key="fix_y_mv")
+    fix_y_mv = st.toggle("Fix Y axis range", value=True, key="fix_y_mv")
 
 # Per-panel controls
 ctlA, ctlB = st.columns(2)
