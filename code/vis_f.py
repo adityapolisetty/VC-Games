@@ -81,7 +81,7 @@ def _padded_range(lo, hi, frac=0.03, min_pad=0.5):
     return [lo - pad, hi + pad]
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)  # Cache for 5 minutes only
 def load_frontier_npz(npz_path: str):
     """Load frontier NPZ file."""
     p = Path(npz_path).resolve()
