@@ -106,9 +106,10 @@ def run_policy_simulation(
     locations_to_try = [p]
     if not p.is_absolute():
         locations_to_try.extend([
-            script_dir / post_npz_path,
-            pathlib.Path("/data") / post_npz_path,
-            script_dir.parent / post_npz_path,
+            script_dir / "post_mc.npz",                    # Direct file in code directory (Railway)
+            script_dir / post_npz_path,                     # ./precomp_output/post_mc.npz
+            pathlib.Path("/data") / post_npz_path,          # /data/precomp_output/post_mc.npz
+            script_dir.parent / post_npz_path,              # ../precomp_output/post_mc.npz
         ])
 
     found_path = None
