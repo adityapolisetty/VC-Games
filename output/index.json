@@ -1,6 +1,23 @@
 {
-  "sc0p0000_sp0_s0_ap20p0000": "../output/sc0p0000_sp0_s0_ap20p0000.npz",
-  "sc3p0000_sp1_s0p1667_ap40p0000": "../output/sc3p0000_sp1_s0p1667_ap40p0000.npz",
-  "sc7p0000_sp1_s0p1667_ap20p0000": "../output/sc7p0000_sp1_s0p1667_ap20p0000.npz",
-  "sc11p0000_sp1_s0p2000_ap40p0000": "../output/sc11p0000_sp1_s0p2000_ap40p0000.npz"
+  "sc5p0000_sp1_s0p2500_ap10p0000": "../output/sc5p0000_sp1_s0p2500_ap10p0000_a00.npz",
+  "sc11p0000_sp1_s0p2500_ap30p0000": "../output/sc11p0000_sp1_s0p2500_ap30p0000_a00.npz",
+  "sc5p0000_sp1_s0p2000_ap10p0000": "../output/sc5p0000_sp1_s0p2000_ap10p0000_a01.npz",
+  "sc11p0000_sp1_s0p2000_ap30p0000": "../output/sc11p0000_sp1_s0p2000_ap30p0000_a01.npz",
+  "sc5p0000_sp1_s0p1667_ap10p0000": "../output/sc5p0000_sp1_s0p1667_ap10p0000_a02.npz",
+  "sc11p0000_sp1_s0p1667_ap30p0000": "../output/sc11p0000_sp1_s0p1667_ap30p0000_a02.npz",
+  "sc7p0000_sp0_s0_ap10p0000": "../output/sc7p0000_sp0_s0_ap10p0000_a03.npz",
+  "sc0p0000_sp0_s0_ap30p0000": "../output/sc0p0000_sp0_s0_ap30p0000_a04.npz",
+  "sc7p0000_sp1_s0p3333_ap10p0000": "../output/sc7p0000_sp1_s0p3333_ap10p0000_a04.npz",
+  "sc0p0000_sp1_s0p3333_ap30p0000": "../output/sc0p0000_sp1_s0p3333_ap30p0000_a05.npz",
+  "sc7p0000_sp1_s0p2500_ap10p0000": "../output/sc7p0000_sp1_s0p2500_ap10p0000_a05.npz",
+  "sc0p0000_sp1_s0p2500_ap30p0000": "../output/sc0p0000_sp1_s0p2500_ap30p0000_a06.npz",
+  "sc7p0000_sp1_s0p2000_ap10p0000": "../output/sc7p0000_sp1_s0p2000_ap10p0000_a06.npz",
+  "sc0p0000_sp1_s0p2000_ap30p0000": "../output/sc0p0000_sp1_s0p2000_ap30p0000_a07.npz",
+  "sc7p0000_sp1_s0p1667_ap10p0000": "../output/sc7p0000_sp1_s0p1667_ap10p0000_a07.npz",
+  "sc0p0000_sp1_s0p1667_ap30p0000": "../output/sc0p0000_sp1_s0p1667_ap30p0000_a08.npz",
+  "sc9p0000_sp0_s0_ap10p0000": "../output/sc9p0000_sp0_s0_ap10p0000_a08.npz",
+  "sc3p0000_sp0_s0_ap30p0000": "../output/sc3p0000_sp0_s0_ap30p0000_a09.npz",
+  "sc9p0000_sp1_s0p3333_ap10p0000": "../output/sc9p0000_sp1_s0p3333_ap10p0000_a09.npz",
+  "sc3p0000_sp1_s0p3333_ap30p0000": "../output/sc3p0000_sp1_s0p3333_ap30p0000_a10.npz",
+  "sc9p0000_sp1_s0p2500_ap10p0000": "../output/sc9p0000_sp1_s0p2500_ap10p0000_a10.npz"
 }
