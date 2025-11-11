@@ -787,13 +787,28 @@ document.addEventListener("DOMContentLoaded", () => {
   const showPerformanceBtn = document.getElementById("showPerformanceBtn");
   if (showPerformanceBtn) {
     showPerformanceBtn.addEventListener("click", () => {
-      overlayMsg.textContent = "Preparing results…";
       overlay.style.display = "flex";
       document.getElementById("performanceModal").style.display = "none";
+
+      // Progressive loading messages
+      const loadingMessages = [
+        "Noting your allocation strategy...",
+        "Noting your signal extraction strategy...",
+        "Simulating your strategy 50,000 times for various decks of cards..."
+      ];
+      let messageIndex = 0;
+      overlayMsg.textContent = loadingMessages[0];
+
+      // Rotate messages every 2.5 seconds
+      const messageInterval = setInterval(() => {
+        messageIndex = (messageIndex + 1) % loadingMessages.length;
+        overlayMsg.textContent = loadingMessages[messageIndex];
+      }, 2500);
 
       // Poll for /results page readiness (handles simulation delay)
       function pollForResults(attempts = 0) {
         if (attempts > 30) {
+          clearInterval(messageInterval);
           overlayMsg.textContent = "Results taking longer than expected...";
           setTimeout(() => { location.href = "/results"; }, 1000);
           return;
@@ -802,6 +817,7 @@ document.addEventListener("DOMContentLoaded", () => {
         fetch("/results", { method: "HEAD" })
           .then(response => {
             if (response.ok) {
+              clearInterval(messageInterval);
               location.href = "/results";
             } else {
               setTimeout(() => pollForResults(attempts + 1), 500);
