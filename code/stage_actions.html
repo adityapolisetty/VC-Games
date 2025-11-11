@@ -190,6 +190,9 @@
     </div>
 
     <button id="enterBtn" class="btn btn-lg" style="width:auto;min-width:160px;margin-top:16px;">Enter</button>
+    <div id="enterStatus" style="display:none;margin-top:12px;padding:12px;background:#f9fafb;border-radius:8px;color:#6b7280;font-size:14px;text-align:center;">
+      Preparing your game...
+    </div>
   </div>
 </div>
 
@@ -883,15 +886,34 @@ document.addEventListener("DOMContentLoaded", () => {
     // Successfully loaded Stage 2 - show app with Stage 2 content
     showApp();
   } else if (STAGE === 0){
-    // Stage 0 (no active game): Show login screen and clear all state
-    console.log('[init] Stage 0 - clearing all client-side state and showing login');
-    localStorage.removeItem("player_name");
-    localStorage.removeItem("game_type");
-    localStorage.removeItem("activity_v1");
-    sessionStorage.removeItem("loading_stage2");
-    // Clear any stale cache by adding timestamp to future requests
-    window.gameStartTime = Date.now();
-    showLogin();
+    // Stage 0 (no active game): Show login screen
+    const hasPlayerName = !!localStorage.getItem("player_name");
+
+    if (hasPlayerName) {
+      // User clicked Enter but page loaded at Stage 0
+      // This happens when server hasn't started game loop yet
+      // Show a brief "Loading game..." message then force reload
+      console.log('[init] Stage 0 with player name - game starting, will reload...');
+      showLogin();
+
+      const statusDiv = document.getElementById('enterStatus');
+      if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.textContent = 'Loading game...';
+      }
+
+      // Reload after brief delay to catch Stage 1
+      setTimeout(() => {
+        location.reload();
+      }, 300);
+    } else {
+      // Fresh start - clear any stale state
+      console.log('[init] Stage 0 without player name - showing login');
+      localStorage.removeItem("activity_v1");
+      sessionStorage.removeItem("loading_stage2");
+      window.gameStartTime = Date.now();
+      showLogin();
+    }
   } else if (STAGE === 1){
     // Stage 1: Check if player has already entered (page reload after Enter button)
     const n=localStorage.getItem("player_name");
@@ -965,11 +987,92 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem("player_name", nm);
     localStorage.setItem("game_type", gt);
 
-    // CRITICAL FIX: Always reload page to get fresh Stage 1 data from server
-    // This prevents showing stale SEED data from previous game
-    // The server's game loop will have prepared a fresh Stage 1 by now
-    console.log('[enter] Reloading page to fetch fresh Stage 1 data');
-    location.href = "/";
+    console.log('[enter] Starting new game for:', nm);
+    enterBtn.textContent = 'Starting...';
+
+    // Show status message
+    const statusDiv = document.getElementById('enterStatus');
+    if (statusDiv) statusDiv.style.display = 'block';
+
+    // CRITICAL FIX: Force server reset first, then reload to Stage 1
+    // This ensures clean state even if user is at Stage 3 (results page)
+    fetch("/reset", {method: "POST", cache: "no-store"})
+      .then(() => {
+        console.log('[enter] Server reset complete, loading game...');
+        if (statusDiv) statusDiv.textContent = 'Loading game...';
+        // Small delay to ensure server processes the reset
+        setTimeout(() => {
+          location.href = "/";
+        }, 150);
+      })
+      .catch(err => {
+        console.error('[enter] Reset failed:', err);
+        // Still try to load - server might be ready anyway
+        setTimeout(() => {
+          location.href = "/";
+        }, 150);
+      });
+  }
+
+  // Poll server until Stage 1 with cards is ready
+  function pollForStage1Ready() {
+    const startTime = Date.now();
+    const maxWait = 10000; // 10 seconds max
+    const pollInterval = 200; // Check every 200ms
+    const statusDiv = document.getElementById('enterStatus');
+
+    function checkServer() {
+      const elapsed = Date.now() - startTime;
+
+      if (elapsed > maxWait) {
+        // Timeout - show error
+        enterBtn.textContent = 'Timeout - please refresh';
+        enterBtn.disabled = false;
+        if (statusDiv) {
+          statusDiv.style.background = '#fee';
+          statusDiv.style.color = '#c53030';
+          statusDiv.textContent = 'Server timeout. Please refresh the page and try again.';
+        }
+        console.error('[enter] Timeout waiting for Stage 1');
+        return;
+      }
+
+      // Update status message with progress
+      if (statusDiv && elapsed > 1000) {
+        const seconds = Math.floor(elapsed / 1000);
+        statusDiv.textContent = `Preparing your game... (${seconds}s)`;
+      }
+
+      // Fetch root and check if Stage 1 with cards is ready
+      fetch("/", {cache: "no-store"})
+        .then(resp => resp.text())
+        .then(html => {
+          // Check if HTML contains Stage 1 context with non-empty cards array
+          const stageMatch = html.match(/"stage"\s*:\s*1/);
+          const cardsMatch = html.match(/"cards"\s*:\s*\[([^\]]+)\]/);
+
+          if (stageMatch && cardsMatch && cardsMatch[1].trim().length > 0) {
+            // Stage 1 is ready with cards! Safe to reload
+            const waitTime = ((Date.now() - startTime) / 1000).toFixed(1);
+            console.log(`[enter] Stage 1 ready after ${waitTime}s, loading game...`);
+            if (statusDiv) statusDiv.textContent = 'Game ready! Loading...';
+            location.href = "/";
+          } else {
+            // Still waiting - keep polling
+            if (elapsed > 1000 && elapsed % 1000 < pollInterval) {
+              console.log(`[enter] Still waiting for Stage 1... (${(elapsed/1000).toFixed(1)}s)`);
+            }
+            setTimeout(checkServer, pollInterval);
+          }
+        })
+        .catch(() => {
+          // Server not responding - keep polling
+          setTimeout(checkServer, pollInterval);
+        });
+    }
+
+    // Start polling after small delay to let server start processing
+    setTimeout(checkServer, 300);
   }
   // No inline onclick; rely on single listener
   if (enterBtn) enterBtn.addEventListener("click", doEnter);
