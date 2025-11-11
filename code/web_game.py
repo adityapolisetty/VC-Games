@@ -6,6 +6,7 @@ import pandas as pd
 from web_wrangler import run_ui  # UI server only
 from sim_res import _deal_cards_global_deck, round_seed
 from database import init_db, create_session, log_stage_action, log_game_results, close_session, mark_session_completed, delete_session
+from simulate_policy import run_policy_simulation
 
 # ------- game parameters -------
 MIN_INV = {1: 1.0, 2: 5.0}  # Only 2 stages now
@@ -31,9 +32,10 @@ def draw_deck(n_cards: int, seed: int | None = None) -> pd.DataFrame:
     has_ace, hands, medians, top2sum, max_rank, min_rank = _deal_cards_global_deck(rng)
     rows = []
     for i in range(len(hands)):
-        # Extract second-highest rank from sorted hand
+        # Extract second-highest UNIQUE rank (matching frontier.py logic)
         hand_sorted = np.sort(hands[i])
-        second_rank = int(hand_sorted[-2]) if len(hand_sorted) >= 2 else int(hand_sorted[-1])
+        unique_ranks = sorted(set(hand_sorted.tolist()), reverse=True)
+        second_rank = int(unique_ranks[1]) if len(unique_ranks) >= 2 else int(unique_ranks[0])
 
         rows.append({
             "card_id": int(i),
@@ -196,6 +198,12 @@ if __name__ == "__main__":
             game_seed = np.random.randint(0, 1_000_000)
             df = draw_deck(n_cards=9, seed=game_seed)
             print(f"[game] New game started with seed: {game_seed}")
+            print(f"[game] Board dealt (9 piles):")
+            for _, row in df.iterrows():
+                rank_label = {14: 'A', 13: 'K', 12: 'Q', 11: 'J'}.get(row['max_rank'], str(row['max_rank']))
+                r2_label = {14: 'A', 13: 'K', 12: 'Q', 11: 'J'}.get(row['second_rank'], str(row['second_rank']))
+                print(f"  Pile {row['card_id']}: max={rank_label}({row['max_rank']}), "
+                      f"R2={r2_label}({row['second_rank']}), median={row['med']}, top2={row['sum2']}")
             for c in ("inv1", "inv2"):
                 if c not in df.columns:
                     df[c] = 0.0
@@ -427,6 +435,29 @@ if __name__ == "__main__":
 
             # Log results to database
             log_game_results(session_id=session_id, results=stats)
+
+            # ---- Run Policy Simulation (10k rounds) ----
+            print("[game] Running policy simulation (10k rounds)...")
+            total_n_signals = signal_count_stage1 + signal_count_stage2
+            try:
+                sim_returns, sim_metadata = run_policy_simulation(
+                    n_signals=total_n_signals,
+                    signal_type=mode,
+                    signal_cost=cost,
+                    stage1_alloc=alpha,  # Use the alpha parameter from game setup
+                    ace_payout=ACE_PAYOUT,
+                    scale_pay=0,  # Hardcoded for now (ace-only payoff)
+                    scale_param=0.0,
+                    player_concentration=concentration_index,
+                    rounds=10000,
+                )
+                stats["sim_returns"] = sim_returns.tolist()
+                stats["sim_metadata"] = sim_metadata
+                print(f"[game] Simulation complete: mean={sim_metadata['mean']:.2f}%, std={sim_metadata['std']:.2f}%")
+            except Exception as e:
+                print(f"[game] Policy simulation failed: {e}")
+                stats["sim_returns"] = []
+                stats["sim_metadata"] = {}
 
             # ---- Show Results (triggered from Stage 2) ----
             # Start a persistent server to serve /results page

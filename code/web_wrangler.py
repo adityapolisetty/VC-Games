@@ -304,16 +304,33 @@ def _results_page(stats: dict) -> str:
     <!-- Summary Tab -->
     <div id="summary-tab" class="tab-content active">
       <h3 style="margin-top:0;">Performance Summary</h3>
-      <div class="summary-box">
-        <div class="stat-grid">
-          <div class="stat"><div class="stat-label">Budget</div><div class="stat-value">£100.00</div></div>
-          <div class="stat"><div class="stat-label">Total invested</div><div class="stat-value">£{stats.get('invested',0):.2f}</div></div>
-          <div class="stat"><div class="stat-label">Net return on budget</div><div class="stat-value">{stats.get('net_return_pct',0):.2f}%</div></div>
-          <div class="stat"><div class="stat-label">Spent on signals</div><div class="stat-value">£{stats.get('signals_spent',0):.2f}</div></div>
-          <div class="stat"><div class="stat-label">Piles invested</div><div class="stat-value">{stats.get('n_invested',0)}</div></div>
-          <div class="stat"><div class="stat-label">No. Ace hits</div><div class="stat-value">{hit_ace_label}</div></div>
-          <div class="stat"><div class="stat-label">No. King hits</div><div class="stat-value">{stats.get('king_hits',0)}</div></div>
-          <div class="stat"><div class="stat-label">No. Queen hits</div><div class="stat-value">{stats.get('queen_hits',0)}</div></div>
+      <div style="display:grid;grid-template-columns:520px 1fr;gap:24px;align-items:start;">
+        <!-- Left: Stats Grid -->
+        <div class="summary-box">
+          <div class="stat-grid">
+            <div class="stat"><div class="stat-label">Budget</div><div class="stat-value">£100.00</div></div>
+            <div class="stat"><div class="stat-label">Total invested</div><div class="stat-value">£{stats.get('invested',0):.2f}</div></div>
+            <div class="stat"><div class="stat-label">Net return on budget</div><div class="stat-value">{stats.get('net_return_pct',0):.2f}%</div></div>
+            <div class="stat"><div class="stat-label">Spent on signals</div><div class="stat-value">£{stats.get('signals_spent',0):.2f}</div></div>
+            <div class="stat"><div class="stat-label">Piles invested</div><div class="stat-value">{stats.get('n_invested',0)}</div></div>
+            <div class="stat"><div class="stat-label">No. Ace hits</div><div class="stat-value">{hit_ace_label}</div></div>
+            <div class="stat"><div class="stat-label">No. King hits</div><div class="stat-value">{stats.get('king_hits',0)}</div></div>
+            <div class="stat"><div class="stat-label">No. Queen hits</div><div class="stat-value">{stats.get('queen_hits',0)}</div></div>
+          </div>
+        </div>
+
+        <!-- Right: Return Distribution Histogram -->
+        <div style="border:1px solid var(--b);border-radius:12px;padding:20px;background:var(--panel);">
+          <h4 style="margin:0 0 12px 0;color:#111827;">Your Strategy Distribution</h4>
+          <p style="font-size:13px;color:#6b7280;margin:0 0 16px 0;">
+            Simulated 10,000 rounds with your policy ({stats.get('sim_metadata',{}).get('n_signals',0)} signals, {stats.get('sim_metadata',{}).get('signal_type','')})
+          </p>
+          <div id="distributionChart" style="width:100%;height:400px;"></div>
+          <div style="margin-top:12px;font-size:13px;color:#6b7280;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+            <div><strong>Mean:</strong> {stats.get('sim_metadata',{}).get('mean',0):.2f}%</div>
+            <div><strong>Std Dev:</strong> {stats.get('sim_metadata',{}).get('std',0):.2f}%</div>
+            <div><strong>Your Percentile:</strong> <span id="playerPercentile">--</span></div>
+          </div>
         </div>
       </div>
     </div>
@@ -510,6 +527,93 @@ function createFrontierChart() {{
       }}
     }}
   }});
+}}
+
+// Create distribution histogram (always visible in Summary tab)
+function createDistributionHistogram() {{
+  const simReturns = {json.dumps(stats.get('sim_returns', []))};
+  const playerReturn = {stats.get('net_return_pct', 0):.2f};
+
+  if (simReturns.length === 0) {{
+    document.getElementById('distributionChart').innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">No simulation data available</div>';
+    return;
+  }}
+
+  // Calculate player's percentile
+  const belowPlayer = simReturns.filter(r => r < playerReturn).length;
+  const percentile = (belowPlayer / simReturns.length * 100).toFixed(1);
+  document.getElementById('playerPercentile').textContent = percentile + '%';
+
+  // Create histogram with 100 bins
+  const trace = {{
+    x: simReturns,
+    type: 'histogram',
+    nbinsx: 100,
+    marker: {{
+      color: '#6b7280',
+      line: {{ color: '#111827', width: 0.5 }}
+    }},
+    opacity: 0.7,
+    name: 'Simulated Returns'
+  }};
+
+  // Add vertical line for player's actual return
+  const shapes = [{{
+    type: 'line',
+    x0: playerReturn,
+    x1: playerReturn,
+    y0: 0,
+    y1: 1,
+    yref: 'paper',
+    line: {{
+      color: '#111827',
+      width: 3,
+      dash: 'dash'
+    }}
+  }}];
+
+  const layout = {{
+    xaxis: {{
+      title: 'Net Return (%)',
+      color: '#111827',
+      gridcolor: '#e5e7eb',
+      zeroline: true,
+      zerolinecolor: '#9ca3af',
+      zerolinewidth: 1
+    }},
+    yaxis: {{
+      title: 'Frequency',
+      color: '#111827',
+      gridcolor: '#e5e7eb'
+    }},
+    paper_bgcolor: '#fafafa',
+    plot_bgcolor: '#fafafa',
+    font: {{ family: 'ui-sans-serif, system-ui, sans-serif', size: 12, color: '#111827' }},
+    margin: {{ l: 50, r: 20, t: 20, b: 50 }},
+    showlegend: false,
+    shapes: shapes,
+    annotations: [{{
+      x: playerReturn,
+      y: 1.05,
+      yref: 'paper',
+      text: 'Your Return',
+      showarrow: false,
+      font: {{ size: 11, color: '#111827', weight: 700 }},
+      xanchor: 'center'
+    }}]
+  }};
+
+  const config = {{
+    responsive: true,
+    displayModeBar: false
+  }};
+
+  Plotly.newPlot('distributionChart', [trace], layout, config);
+}}
+
+// Create histogram on page load
+if (document.getElementById('distributionChart')) {{
+  createDistributionHistogram();
 }}
 
 // Create chart when frontier tab is visible
