@@ -463,21 +463,26 @@ if __name__ == "__main__":
                     player_concentration=concentration_index,
                     rounds=10000,
                 )
-                # CRITICAL FIX: Create histogram bins instead of sending raw data to avoid 502 error
-                # Pre-compute 200-bin histogram on server side, send bin edges + counts
-                # This is much more compact (400 numbers vs 10k) and preserves exact distribution
-                n_bins = 200
-                counts, bin_edges = np.histogram(sim_returns, bins=n_bins)
-                stats["sim_histogram"] = {
-                    "counts": counts.tolist(),      # 200 integers (frequency in each bin)
-                    "bin_edges": bin_edges.tolist() # 201 floats (bin boundaries)
+                # Compute percentiles for 5 probability bins (quintiles)
+                # Shows most likely return ranges: 0-20%, 20-40%, 40-60%, 60-80%, 80-100%
+                percentiles = [20, 40, 60, 80]  # Boundaries between quintiles
+                percentile_values = np.percentile(sim_returns, percentiles)
+
+                # Also get min and max for complete range
+                stats["sim_quintiles"] = {
+                    "min": float(np.min(sim_returns)),
+                    "p20": float(percentile_values[0]),
+                    "p40": float(percentile_values[1]),
+                    "p60": float(percentile_values[2]),
+                    "p80": float(percentile_values[3]),
+                    "max": float(np.max(sim_returns))
                 }
                 stats["sim_metadata"] = sim_metadata
                 print(f"[game] Simulation complete: mean={sim_metadata['mean']:.2f}%, std={sim_metadata['std']:.2f}%")
-                print(f"[game] Created {n_bins}-bin histogram from {len(sim_returns)} simulation points")
+                print(f"[game] Computed percentiles from {len(sim_returns)} simulation points")
             except Exception as e:
                 print(f"[game] Policy simulation failed: {e}")
-                stats["sim_histogram"] = {}  # Empty histogram on error
+                stats["sim_quintiles"] = {}  # Empty quintiles on error
                 stats["sim_metadata"] = {}
 
             # ---- Fetch Leaderboard (for this signal type only) ----

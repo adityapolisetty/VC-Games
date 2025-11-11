@@ -425,17 +425,18 @@ def _results_page(stats: dict) -> str:
           </div>
         </div>
 
-        <!-- Right: Return Distribution Histogram -->
+        <!-- Right: Return Probability Table -->
         <div style="border:1px solid var(--b);border-radius:12px;padding:20px;background:var(--panel);">
-          <h4 style="margin:0 0 12px 0;color:#111827;">Your Strategy Distribution</h4>
+          <h4 style="margin:0 0 12px 0;color:#111827;">Probability of Returns</h4>
           <p style="font-size:13px;color:#6b7280;margin:0 0 16px 0;">
-            Simulated 10,000 rounds with your policy ({stats.get('sim_metadata',{}).get('n_signals',0)} signals, {stats.get('sim_metadata',{}).get('signal_type','')})
+            Based on 10,000 simulations with your allocation strategy ({stats.get('sim_metadata',{}).get('n_signals',0)} {stats.get('sim_metadata',{}).get('signal_type','')} signals)
           </p>
-          <div id="distributionChart" style="width:100%;height:400px;"></div>
-          <div style="margin-top:12px;font-size:13px;color:#6b7280;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
-            <div><strong>Mean:</strong> {stats.get('sim_metadata',{}).get('mean',0):.2f}%</div>
-            <div><strong>Std Dev:</strong> {stats.get('sim_metadata',{}).get('std',0):.2f}%</div>
-            <div><strong>Your Percentile:</strong> <span id="playerPercentile">--</span></div>
+          <div id="probabilityTable"></div>
+          <div style="margin-top:16px;padding:12px;background:#f9fafb;border-radius:8px;font-size:13px;color:#6b7280;">
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
+              <div><strong>Mean Return:</strong> {stats.get('sim_metadata',{}).get('mean',0):.2f}%</div>
+              <div><strong>Std Dev:</strong> {stats.get('sim_metadata',{}).get('std',0):.2f}%</div>
+            </div>
           </div>
         </div>
       </div>
@@ -657,113 +658,75 @@ function createFrontierChart() {{
   }});
 }}
 
-// Create distribution histogram (always visible in Summary tab)
-function createDistributionHistogram() {{
-  const simHistogram = {json.dumps(stats.get('sim_histogram', {}))};
+// Create probability table showing 5 most likely return ranges
+function createProbabilityTable() {{
+  const quintiles = {json.dumps(stats.get('sim_quintiles', {}))};
   const playerReturn = {stats.get('net_return_pct', 0):.2f};
 
-  // Check if histogram data exists
-  if (!simHistogram.counts || !simHistogram.bin_edges) {{
-    document.getElementById('distributionChart').innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">No simulation data available</div>';
+  // Check if quintile data exists
+  if (!quintiles || Object.keys(quintiles).length === 0) {{
+    document.getElementById('probabilityTable').innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">No simulation data available</div>';
     return;
   }}
 
-  const counts = simHistogram.counts;
-  const binEdges = simHistogram.bin_edges;
+  // Build 5 probability bins (quintiles) - each 20% probability
+  const bins = [
+    {{ prob: '20%', range: [quintiles.min, quintiles.p20], label: 'Bottom 20%' }},
+    {{ prob: '20%', range: [quintiles.p20, quintiles.p40], label: '20-40%' }},
+    {{ prob: '20%', range: [quintiles.p40, quintiles.p60], label: '40-60% (Middle)' }},
+    {{ prob: '20%', range: [quintiles.p60, quintiles.p80], label: '60-80%' }},
+    {{ prob: '20%', range: [quintiles.p80, quintiles.max], label: 'Top 20%' }}
+  ];
 
-  // Calculate bin centers for x-axis
-  const binCenters = binEdges.slice(0, -1).map((edge, i) => (edge + binEdges[i + 1]) / 2);
+  // Determine which bin contains player's return
+  let playerBin = -1;
+  if (playerReturn >= quintiles.min && playerReturn < quintiles.p20) playerBin = 0;
+  else if (playerReturn >= quintiles.p20 && playerReturn < quintiles.p40) playerBin = 1;
+  else if (playerReturn >= quintiles.p40 && playerReturn < quintiles.p60) playerBin = 2;
+  else if (playerReturn >= quintiles.p60 && playerReturn < quintiles.p80) playerBin = 3;
+  else if (playerReturn >= quintiles.p80) playerBin = 4;
 
-  // Calculate player's percentile from cumulative distribution
-  let totalCount = counts.reduce((sum, c) => sum + c, 0);
-  let cumulativeCount = 0;
-  let playerBinIndex = binEdges.findIndex((edge, i) => i < binEdges.length - 1 && playerReturn >= edge && playerReturn < binEdges[i + 1]);
+  let tableHTML = '<table style="width:100%;border-collapse:collapse;font-size:14px;">';
+  tableHTML += '<thead><tr style="border-bottom:2px solid #e5e7eb;">';
+  tableHTML += '<th style="text-align:left;padding:10px;color:#6b7280;font-weight:600;">Likelihood</th>';
+  tableHTML += '<th style="text-align:center;padding:10px;color:#6b7280;font-weight:600;">Return Range</th>';
+  tableHTML += '</tr></thead><tbody>';
 
-  if (playerBinIndex === -1) {{
-    // Handle edge cases: player return outside histogram range
-    if (playerReturn < binEdges[0]) playerBinIndex = 0;
-    else playerBinIndex = counts.length - 1;
-  }}
+  bins.forEach((bin, i) => {{
+    const isPlayerBin = i === playerBin;
+    const bgColor = isPlayerBin ? '#fef3c7' : 'transparent';
+    const fontWeight = i === 2 ? '600' : '400';  // Emphasize middle bin
+    const minColor = bin.range[0] >= 0 ? '#059669' : '#dc2626';
+    const maxColor = bin.range[1] >= 0 ? '#059669' : '#dc2626';
 
-  for (let i = 0; i < playerBinIndex; i++) {{
-    cumulativeCount += counts[i];
-  }}
-  // Add half of player's bin (interpolation)
-  cumulativeCount += counts[playerBinIndex] / 2;
+    tableHTML += `<tr style="border-bottom:1px solid #f3f4f6;background:${{bgColor}};">`;
+    tableHTML += `<td style="padding:12px;font-weight:${{fontWeight}};">`;
+    tableHTML += `<span style="font-weight:700;">${{bin.prob}}</span> <span style="color:#6b7280;">${{bin.label}}</span>`;
+    tableHTML += `</td>`;
+    tableHTML += `<td style="padding:12px;text-align:center;font-family:monospace;">`;
+    tableHTML += `<span style="color:${{minColor}};font-weight:600;">${{bin.range[0].toFixed(1)}}%</span>`;
+    tableHTML += ` to `;
+    tableHTML += `<span style="color:${{maxColor}};font-weight:600;">${{bin.range[1].toFixed(1)}}%</span>`;
+    tableHTML += `</td>`;
+    tableHTML += '</tr>';
+  }});
 
-  const percentile = (cumulativeCount / totalCount * 100).toFixed(1);
-  document.getElementById('playerPercentile').textContent = percentile + '%';
+  tableHTML += '</tbody></table>';
 
-  // Create bar chart from pre-computed histogram
-  const trace = {{
-    x: binCenters,
-    y: counts,
-    type: 'bar',
-    marker: {{
-      color: '#6b7280',
-      line: {{ color: '#111827', width: 0.5 }}
-    }},
-    opacity: 0.7,
-    name: 'Simulated Returns'
-  }};
+  // Add player's actual return
+  const returnColor = playerReturn >= 0 ? '#059669' : '#dc2626';
+  const binLabel = playerBin >= 0 ? bins[playerBin].label : 'Unknown';
+  tableHTML += `<div style="margin-top:16px;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;">`;
+  tableHTML += `<strong>Your Actual Return:</strong> <span style="color:${{returnColor}};font-weight:700;">${{playerReturn.toFixed(2)}}%</span> `;
+  tableHTML += `<span style="color:#6b7280;">(${{binLabel}} of simulations)</span>`;
+  tableHTML += '</div>';
 
-  // Add vertical line for player's actual return
-  const shapes = [{{
-    type: 'line',
-    x0: playerReturn,
-    x1: playerReturn,
-    y0: 0,
-    y1: 1,
-    yref: 'paper',
-    line: {{
-      color: '#111827',
-      width: 3,
-      dash: 'dash'
-    }}
-  }}];
-
-  const layout = {{
-    xaxis: {{
-      title: 'Net Return (%)',
-      color: '#111827',
-      gridcolor: '#e5e7eb',
-      zeroline: true,
-      zerolinecolor: '#9ca3af',
-      zerolinewidth: 1
-    }},
-    yaxis: {{
-      title: 'Frequency',
-      color: '#111827',
-      gridcolor: '#e5e7eb'
-    }},
-    paper_bgcolor: '#fafafa',
-    plot_bgcolor: '#fafafa',
-    font: {{ family: 'ui-sans-serif, system-ui, sans-serif', size: 12, color: '#111827' }},
-    margin: {{ l: 50, r: 20, t: 20, b: 50 }},
-    showlegend: false,
-    shapes: shapes,
-    annotations: [{{
-      x: playerReturn,
-      y: 1.05,
-      yref: 'paper',
-      text: 'Your Return',
-      showarrow: false,
-      font: {{ size: 11, color: '#111827', weight: 700 }},
-      xanchor: 'center'
-    }}]
-  }};
-
-  const config = {{
-    responsive: true,
-    displayModeBar: false
-  }};
-
-  Plotly.newPlot('distributionChart', [trace], layout, config);
+  document.getElementById('probabilityTable').innerHTML = tableHTML;
 }}
 
-// Create histogram on page load
-if (document.getElementById('distributionChart')) {{
-  createDistributionHistogram();
+// Create probability table on page load
+if (document.getElementById('probabilityTable')) {{
+  createProbabilityTable();
 }}
 
 // Create chart when frontier tab is visible
