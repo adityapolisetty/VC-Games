@@ -12,7 +12,9 @@
       "Bash(git log:*)",
       "Bash(git commit:*)",
       "Bash(curl:*)",
-      "Bash(lsof:*)"
+      "Bash(lsof:*)",
+      "WebSearch",
+      "WebFetch(domain:codepen.io)"
     ],
     "deny": [],
     "ask": []

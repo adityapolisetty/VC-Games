@@ -447,7 +447,7 @@ if __name__ == "__main__":
                             queen_hits += 1
 
             stats = {
-                "player": "",                # filled by UI
+                "player": team_name,         # player name from Stage 0
                 "wallet_left": wallet,       # remaining budget
                 "invested": total_invest,    # total invested £
                 "signals_spent": total_signals_spend,     # total spent on signals £
@@ -499,6 +499,8 @@ if __name__ == "__main__":
                     "p80": float(percentile_values[3]),
                     "max": float(np.max(sim_returns))
                 }
+                # Pass the actual returns array for histogram generation
+                stats["sim_returns"] = sim_returns.tolist()  # Convert numpy array to list for JSON
                 stats["sim_metadata"] = sim_metadata
                 print(f"[game] Simulation complete: mean={sim_metadata['mean']:.2f}%, std={sim_metadata['std']:.2f}%")
                 print(f"[game] Computed percentiles from {len(sim_returns)} simulation points")

@@ -705,123 +705,191 @@ function createFrontierChart() {{
   }});
 }}
 
-// Create histogram chart showing distribution of returns
+// Create histogram chart or probability table based on unique values
 function createHistogramChart() {{
-  const quintiles = {json.dumps(stats.get('sim_quintiles', {}))};
+  const simReturns = {json.dumps(stats.get('sim_returns', []))};
   const playerReturn = {stats.get('net_return_pct', 0):.2f};
 
-  console.log('[histogram] Quintiles data:', quintiles);
+  console.log('[histogram] Simulation returns count:', simReturns.length);
   console.log('[histogram] Player return:', playerReturn);
 
-  // Check if quintile data exists
-  if (!quintiles || Object.keys(quintiles).length === 0) {{
+  // Check if simulation data exists
+  if (!simReturns || simReturns.length === 0) {{
     document.getElementById('histogramChart').innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">No simulation data available</div>';
     return;
   }}
 
-  // Create histogram bins from quintiles (5 equal probability bins)
-  // Each bin represents 20% of the data (2000 simulations out of 10000)
-  const binEdges = [
-    quintiles.min,
-    quintiles.p20,
-    quintiles.p40,
-    quintiles.p60,
-    quintiles.p80,
-    quintiles.max
-  ];
+  // Count unique values and their frequencies
+  const valueCounts = {{}};
+  simReturns.forEach(val => {{
+    const rounded = Math.round(val * 10) / 10;  // Round to 1 decimal place
+    valueCounts[rounded] = (valueCounts[rounded] || 0) + 1;
+  }});
 
-  // Bin centers for x-axis
-  const binCenters = [];
-  const binCounts = [];
-  const binWidths = [];
+  const uniqueValues = Object.keys(valueCounts).map(Number).sort((a, b) => a - b);
+  const numUnique = uniqueValues.length;
 
-  for (let i = 0; i < binEdges.length - 1; i++) {{
-    const center = (binEdges[i] + binEdges[i + 1]) / 2;
-    const width = binEdges[i + 1] - binEdges[i];
-    binCenters.push(center);
-    binCounts.push(2000);  // Each quintile has 20% of 10000 = 2000
-    binWidths.push(width);
-  }}
+  console.log('[histogram] Unique values:', numUnique);
 
-  // Create Plotly bar chart
-  const trace = {{
-    x: binCenters,
-    y: binCounts,
-    type: 'bar',
-    marker: {{
-      color: '#000000',  // Black bars
-      line: {{ width: 0 }}
-    }},
-    width: binWidths,
-    hovertemplate: 'Return: %{{x:.1f}}%<br>Count: %{{y}}<extra></extra>'
-  }};
+  // Decision: histogram (>=50 unique) or probability table (<50 unique)
+  if (numUnique >= 50) {{
+    // Create 50-bin histogram using Plotly
+    const minVal = Math.min(...simReturns);
+    const maxVal = Math.max(...simReturns);
+    const binSize = (maxVal - minVal) / 50;
 
-  const layout = {{
-    plot_bgcolor: '#ffffff',  // White background
-    paper_bgcolor: '#ffffff',
-    font: {{ family: '"Source Sans Pro", system-ui, Arial, sans-serif', size: 12, color: '#111827' }},
-    xaxis: {{
-      title: {{ text: 'Net Return (%)', font: {{ size: 13, color: '#111827' }} }},
-      tickfont: {{ size: 11, color: '#6b7280' }},
-      showgrid: true,
-      gridcolor: '#e5e7eb',
-      zeroline: true,
-      zerolinecolor: '#9ca3af',
-      zerolinewidth: 1.5
-    }},
-    yaxis: {{
-      title: {{ text: 'Frequency', font: {{ size: 13, color: '#111827' }} }},
-      tickfont: {{ size: 11, color: '#6b7280' }},
-      showgrid: true,
-      gridcolor: '#e5e7eb'
-    }},
-    margin: {{ l: 60, r: 20, t: 20, b: 50 }},
-    showlegend: false,
-    bargap: 0.05
-  }};
-
-  const config = {{
-    displayModeBar: false,
-    responsive: true
-  }};
-
-  Plotly.newPlot('histogramChart', [trace], layout, config);
-
-  // Add vertical line for player's actual return
-  const shapes = [{{
-    type: 'line',
-    x0: playerReturn,
-    x1: playerReturn,
-    y0: 0,
-    y1: 1,
-    yref: 'paper',
-    line: {{
-      color: '#c53030',  // Red line
-      width: 3,
-      dash: 'dash'
+    // Create bins
+    const bins = new Array(50).fill(0);
+    const binEdges = [];
+    for (let i = 0; i <= 50; i++) {{
+      binEdges.push(minVal + i * binSize);
     }}
-  }}];
 
-  const annotations = [{{
-    x: playerReturn,
-    y: 1,
-    yref: 'paper',
-    text: `Your Return: ${{playerReturn.toFixed(1)}}%`,
-    showarrow: true,
-    arrowhead: 2,
-    arrowsize: 1,
-    arrowwidth: 2,
-    arrowcolor: '#c53030',
-    ax: 0,
-    ay: -40,
-    font: {{ size: 11, color: '#c53030', weight: 700 }},
-    bgcolor: '#ffffff',
-    bordercolor: '#c53030',
-    borderwidth: 1,
-    borderpad: 4
-  }}];
+    // Count values in each bin
+    simReturns.forEach(val => {{
+      const binIndex = Math.min(49, Math.floor((val - minVal) / binSize));
+      bins[binIndex]++;
+    }});
 
-  Plotly.relayout('histogramChart', {{ shapes: shapes, annotations: annotations }});
+    // Calculate bin centers for x-axis
+    const binCenters = [];
+    for (let i = 0; i < 50; i++) {{
+      binCenters.push((binEdges[i] + binEdges[i + 1]) / 2);
+    }}
+
+    // Create Plotly bar chart
+    const trace = {{
+      x: binCenters,
+      y: bins,
+      type: 'bar',
+      marker: {{
+        color: '#000000',  // Black bars
+        line: {{ width: 0 }}
+      }},
+      width: binSize * 0.95,  // 95% of bin width for small gaps
+      hovertemplate: 'Return: %{{x:.1f}}%<br>Frequency: %{{y}}<extra></extra>'
+    }};
+
+    const layout = {{
+      plot_bgcolor: '#ffffff',  // White background
+      paper_bgcolor: '#ffffff',
+      font: {{ family: '"Source Sans Pro", system-ui, Arial, sans-serif', size: 12, color: '#111827' }},
+      xaxis: {{
+        title: {{ text: 'Net Return (%)', font: {{ size: 13, color: '#111827' }} }},
+        tickfont: {{ size: 11, color: '#6b7280' }},
+        showgrid: true,
+        gridcolor: '#e5e7eb',
+        zeroline: true,
+        zerolinecolor: '#9ca3af',
+        zerolinewidth: 1.5
+      }},
+      yaxis: {{
+        title: {{ text: 'Frequency', font: {{ size: 13, color: '#111827' }} }},
+        tickfont: {{ size: 11, color: '#6b7280' }},
+        showgrid: true,
+        gridcolor: '#e5e7eb'
+      }},
+      margin: {{ l: 60, r: 20, t: 20, b: 50 }},
+      showlegend: false,
+      bargap: 0
+    }};
+
+    const config = {{
+      displayModeBar: false,
+      responsive: true
+    }};
+
+    Plotly.newPlot('histogramChart', [trace], layout, config);
+
+    // Add vertical line for player's actual return
+    const shapes = [{{
+      type: 'line',
+      x0: playerReturn,
+      x1: playerReturn,
+      y0: 0,
+      y1: 1,
+      yref: 'paper',
+      line: {{
+        color: '#c53030',  // Red line
+        width: 3,
+        dash: 'dash'
+      }}
+    }}];
+
+    const annotations = [{{
+      x: playerReturn,
+      y: 1,
+      yref: 'paper',
+      text: `Your Return: ${{playerReturn.toFixed(1)}}%`,
+      showarrow: true,
+      arrowhead: 2,
+      arrowsize: 1,
+      arrowwidth: 2,
+      arrowcolor: '#c53030',
+      ax: 0,
+      ay: -40,
+      font: {{ size: 11, color: '#c53030', weight: 700 }},
+      bgcolor: '#ffffff',
+      bordercolor: '#c53030',
+      borderwidth: 1,
+      borderpad: 4
+    }}];
+
+    Plotly.relayout('histogramChart', {{ shapes: shapes, annotations: annotations }});
+  }} else {{
+    // Create probability table for <50 unique values
+    const totalCount = simReturns.length;
+    const playerRounded = Math.round(playerReturn * 10) / 10;
+
+    let tableHTML = `
+      <div style="max-height: 400px; overflow-y: auto; font-family: 'Source Sans Pro', system-ui, Arial, sans-serif;">
+        <table style="width: 100%; border-collapse: collapse; background: #ffffff;">
+          <thead style="position: sticky; top: 0; background: #f9fafb; z-index: 10;">
+            <tr style="border-bottom: 2px solid #e5e7eb;">
+              <th style="padding: 12px 16px; text-align: left; font-size: 13px; font-weight: 600; color: #111827;">Return (%)</th>
+              <th style="padding: 12px 16px; text-align: right; font-size: 13px; font-weight: 600; color: #111827;">Frequency</th>
+              <th style="padding: 12px 16px; text-align: right; font-size: 13px; font-weight: 600; color: #111827;">Probability</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+
+    uniqueValues.forEach((value, index) => {{
+      const count = valueCounts[value];
+      const probability = (count / totalCount * 100).toFixed(2);
+      const isPlayerReturn = Math.abs(value - playerRounded) < 0.01;
+
+      const rowStyle = isPlayerReturn
+        ? 'background: #fee2e2; border-left: 4px solid #c53030;'
+        : (index % 2 === 0 ? 'background: #ffffff;' : 'background: #f9fafb;');
+
+      const returnStyle = isPlayerReturn
+        ? 'font-weight: 700; color: #c53030;'
+        : 'color: #111827;';
+
+      tableHTML += `
+        <tr style="${{rowStyle}} border-bottom: 1px solid #e5e7eb;">
+          <td style="padding: 10px 16px; font-size: 13px; ${{returnStyle}}">
+            ${{value.toFixed(1)}}${{isPlayerReturn ? ' ← Your Return' : ''}}
+          </td>
+          <td style="padding: 10px 16px; text-align: right; font-size: 13px; color: #6b7280;">
+            ${{count.toLocaleString()}}
+          </td>
+          <td style="padding: 10px 16px; text-align: right; font-size: 13px; color: #6b7280;">
+            ${{probability}}%
+          </td>
+        </tr>
+      `;
+    }});
+
+    tableHTML += `
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    document.getElementById('histogramChart').innerHTML = tableHTML;
+  }}
 }}
 
 // Create histogram on page load
