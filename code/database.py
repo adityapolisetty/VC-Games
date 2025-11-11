@@ -25,31 +25,38 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
 
-    # Migration: Add 'completed' column if it doesn't exist
-    try:
-        cur.execute("SELECT completed FROM game_sessions LIMIT 1")
-    except sqlite3.OperationalError:
-        print("[db] Adding 'completed' column to game_sessions table...")
-        cur.execute("ALTER TABLE game_sessions ADD COLUMN completed BOOLEAN DEFAULT 0")
-        conn.commit()
-        print("[db] Migration complete!")
+    # Helper function to check if table exists
+    def table_exists(table_name):
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+        return cur.fetchone() is not None
 
-    # Migration: Add 'concentration_index' and 'stage1_fraction' columns if they don't exist
-    try:
-        cur.execute("SELECT concentration_index FROM game_results LIMIT 1")
-    except sqlite3.OperationalError:
-        print("[db] Adding 'concentration_index' column to game_results table...")
-        cur.execute("ALTER TABLE game_results ADD COLUMN concentration_index REAL")
-        conn.commit()
-        print("[db] Migration complete!")
+    # Migration: Add 'completed' column if it doesn't exist (only if table exists)
+    if table_exists('game_sessions'):
+        try:
+            cur.execute("SELECT completed FROM game_sessions LIMIT 1")
+        except sqlite3.OperationalError:
+            print("[db] Adding 'completed' column to game_sessions table...")
+            cur.execute("ALTER TABLE game_sessions ADD COLUMN completed BOOLEAN DEFAULT 0")
+            conn.commit()
+            print("[db] Migration complete!")
 
-    try:
-        cur.execute("SELECT stage1_fraction FROM game_results LIMIT 1")
-    except sqlite3.OperationalError:
-        print("[db] Adding 'stage1_fraction' column to game_results table...")
-        cur.execute("ALTER TABLE game_results ADD COLUMN stage1_fraction REAL")
-        conn.commit()
-        print("[db] Migration complete!")
+    # Migration: Add 'concentration_index' and 'stage1_fraction' columns if they don't exist (only if table exists)
+    if table_exists('game_results'):
+        try:
+            cur.execute("SELECT concentration_index FROM game_results LIMIT 1")
+        except sqlite3.OperationalError:
+            print("[db] Adding 'concentration_index' column to game_results table...")
+            cur.execute("ALTER TABLE game_results ADD COLUMN concentration_index REAL")
+            conn.commit()
+            print("[db] Migration complete!")
+
+        try:
+            cur.execute("SELECT stage1_fraction FROM game_results LIMIT 1")
+        except sqlite3.OperationalError:
+            print("[db] Adding 'stage1_fraction' column to game_results table...")
+            cur.execute("ALTER TABLE game_results ADD COLUMN stage1_fraction REAL")
+            conn.commit()
+            print("[db] Migration complete!")
 
     # Game sessions table
     cur.execute("""
