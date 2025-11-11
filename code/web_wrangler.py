@@ -190,8 +190,17 @@ class _H(BaseHTTPRequestHandler):
             _POSTED.set()  # Backward compatibility
             if isinstance(self.server.ctx.get("results"), dict):
                 self.server.ctx["results"]["player"] = data.get("player_name") or ""
+
+            # Send response with redirect hint for results-ready stages
+            stage = self.server.ctx.get("stage", 1)
             self.send_response(200)
+            self.send_header("Content-Type", "application/json")
             self.end_headers()
+            response = {"status": "success", "stage": stage}
+            if stage >= 2:
+                # Hint that results will be available (client should wait/poll)
+                response["next"] = "results_pending"
+            self.wfile.write(json.dumps(response).encode("utf-8"))
             return
 
         if self.path == "/end":

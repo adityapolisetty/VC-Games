@@ -814,7 +814,29 @@ document.addEventListener("DOMContentLoaded", () => {
       overlayMsg.textContent = "Preparing results…";
       overlay.style.display = "flex";
       document.getElementById("performanceModal").style.display = "none";
-      setTimeout(() => { location.href = "/results"; }, 600);
+
+      // Poll for /results page readiness (handles simulation delay)
+      function pollForResults(attempts = 0) {
+        if (attempts > 30) {
+          overlayMsg.textContent = "Results taking longer than expected...";
+          setTimeout(() => { location.href = "/results"; }, 1000);
+          return;
+        }
+
+        fetch("/results", { method: "HEAD" })
+          .then(response => {
+            if (response.ok) {
+              location.href = "/results";
+            } else {
+              setTimeout(() => pollForResults(attempts + 1), 500);
+            }
+          })
+          .catch(() => {
+            setTimeout(() => pollForResults(attempts + 1), 500);
+          });
+      }
+
+      setTimeout(() => pollForResults(), 600);
     });
   }
 
