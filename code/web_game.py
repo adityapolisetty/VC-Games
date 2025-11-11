@@ -491,6 +491,18 @@ if __name__ == "__main__":
             print(f"[ERROR] Game encountered an error: {e}")
             import traceback
             traceback.print_exc()
+
+            # Cleanup all active HTTP servers before restarting
+            from web_wrangler import cleanup_all_servers
+            cleanup_all_servers()
+
+            # Delete abandoned session if it exists
+            if session_id:
+                try:
+                    delete_session(session_id)
+                except Exception as cleanup_error:
+                    print(f"[ERROR] Failed to delete session: {cleanup_error}")
+
             print("[game] Restarting game in 3 seconds...")
             import time
             time.sleep(3)

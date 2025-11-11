@@ -16,6 +16,7 @@ _BROWSER_OPENED = False  # guard to open browser only once per process
 # Session management - use dict to track per-session events
 _SESSIONS = {}  # {session_id: {'actions': data, 'posted': Event, 'ended': Event}}
 _CURRENT_SESSION = None  # Track current active session
+_ACTIVE_SERVERS = []  # Track all running HTTP servers for cleanup
 
 _ACTIONS = None  # Backward compatibility
 _POSTED = threading.Event()  # Backward compatibility
@@ -24,6 +25,20 @@ _END_EVENT = threading.Event()  # Backward compatibility
 _HTML = pathlib.Path(__file__).with_name("stage_actions.html")
 
 _ASSETS_DIR = pathlib.Path(__file__).with_name("assets")
+
+
+def cleanup_all_servers():
+    """Shutdown and close all active HTTP servers."""
+    global _ACTIVE_SERVERS
+    print(f"[web] Cleaning up {len(_ACTIVE_SERVERS)} active servers...")
+    for srv in _ACTIVE_SERVERS:
+        try:
+            srv.shutdown()
+            srv.server_close()
+        except Exception as e:
+            print(f"[web] Error closing server: {e}")
+    _ACTIVE_SERVERS.clear()
+    print("[web] Server cleanup complete")
 _FONT = pathlib.Path(__file__).with_name("imperial.woff2") 
 _SSP_REG = pathlib.Path(__file__).with_name("SourceSansPro-Regular.woff2")
 _SSP_REG_ALT = pathlib.Path(__file__).with_name("SourceSansPro-Regular.ttf.woff2")
@@ -695,6 +710,10 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
         except OSError:
             raise e
     srv.ctx = ctx
+
+    # Register server for cleanup
+    global _ACTIVE_SERVERS
+    _ACTIVE_SERVERS.append(srv)
 
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     actual_port = getattr(srv, 'server_address', (None, port))[1]
