@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+.tab-btn { padding: 10px; cursor: pointer; }
+.tab-btn.active { background: black; color: white; }
+.tab-content { display: none; padding: 20px; }
+.tab-content.active { display: block; }
+</style>
+</head>
+<body>
+<h1>Tab Test</h1>
+
+<div class="tab-nav">
+  <button class="tab-btn active" data-tab="summary">Summary</button>
+  <button class="tab-btn" data-tab="frontier">Frontier</button>
+  <button class="tab-btn" data-tab="leaderboard">Leaderboard</button>
+</div>
+
+<div id="summary-tab" class="tab-content active">
+  <h2>Summary Content</h2>
+  <p>This is the summary tab</p>
+</div>
+
+<div id="frontier-tab" class="tab-content">
+  <h2>Frontier Content</h2>
+  <p>This is the frontier tab</p>
+</div>
+
+<div id="leaderboard-tab" class="tab-content">
+  <h2>Leaderboard Content</h2>
+  <p>This is the leaderboard tab</p>
+</div>
+
+<script>
+console.log('Script loading...');
+
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('[init] DOM ready');
+
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  console.log('[init] Found', tabButtons.length, 'tab buttons');
+
+  tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const targetTab = btn.dataset.tab;
+      console.log('[tabs] Switching to:', targetTab);
+
+      // Update buttons
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      // Update content
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      const targetContent = document.getElementById(targetTab + '-tab');
+      if (targetContent) {
+        targetContent.classList.add('active');
+      } else {
+        console.error('[tabs] Could not find:', targetTab);
+      }
+    });
+  });
+
+  console.log('[init] Complete');
+});
+</script>
+</body>
+</html>

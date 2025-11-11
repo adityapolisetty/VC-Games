@@ -14,7 +14,8 @@
       "Bash(curl:*)",
       "Bash(lsof:*)",
       "WebSearch",
-      "WebFetch(domain:codepen.io)"
+      "WebFetch(domain:codepen.io)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []

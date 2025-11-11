@@ -201,7 +201,7 @@
   <header class="nav">
     <div class="nav-left">
       <a href="#" id="rulesLink">Rules</a>
-      <a href="https://ib-vc-simulation-dynamic.streamlit.app/#b" target="_blank" id="wonkLink">Wonkish</a>
+      <a href="https://ib-vc-simulation-dynamic.streamlit.app/#b" target="_blank" id="wonkLink">Simulation</a>
     </div>
     <div class="title"><span id="stageIndicator"></span></div>
     <div class="right">
@@ -963,7 +963,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function doEnter(){
     if (enterBtn) enterBtn.disabled = true; // guard against double-click
-    const nm=(nameInput.value||"Team Alpha").trim();
+    const nm=(nameInput.value||"").trim();
+
+    // Validate player name is not empty
+    if (!nm) {
+      alert("Please enter a name");
+      enterBtn.disabled = false;
+      return;
+    }
+
     const gt = (document.querySelector('input[name="gameType"]:checked')||{value:'g1'}).value;
 
     console.log('[enter] Opening game in new tab for:', nm, gt);
@@ -997,6 +1005,13 @@ document.addEventListener("DOMContentLoaded", () => {
             console.log(`[enter] Server not ready, retrying (${retryCount}/${maxRetries})...`);
             setTimeout(trySubmit, 500);
             return;
+          }
+          if (resp.status === 400) {
+            // Validation error (e.g., empty name)
+            return resp.json().then(data => {
+              alert(data.message || "Please enter a name");
+              enterBtn.disabled = false;
+            });
           }
           if (!resp.ok) {
             throw new Error(`Server error: ${resp.status}`);

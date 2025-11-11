@@ -95,6 +95,7 @@ def init_db():
             session_id INTEGER NOT NULL,
             total_invested REAL,
             total_payoff REAL,
+            gross_return_mult REAL,
             net_return REAL,
             net_return_pct REAL,
             n_invested INTEGER,
@@ -109,6 +110,21 @@ def init_db():
     """)
 
     conn.commit()
+
+    # Migrate existing tables to add gross_return_mult if needed
+    try:
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(game_results)")
+        columns = [row[1] for row in cur.fetchall()]
+
+        if 'gross_return_mult' not in columns:
+            print("[db] Migrating game_results table to add gross_return_mult column...")
+            cur.execute("ALTER TABLE game_results ADD COLUMN gross_return_mult REAL")
+            conn.commit()
+            print("[db] Migration completed successfully")
+    except Exception as e:
+        print(f"[db] Migration check/execution failed: {e}")
+
     conn.close()
     print(f"[db] Database initialized at {DB_FILE}")
 
@@ -177,15 +193,16 @@ def log_game_results(session_id: int, results: dict):
     cur.execute("""
         INSERT INTO game_results (
             session_id, total_invested, total_payoff,
-            net_return, net_return_pct, n_invested,
+            gross_return_mult, net_return, net_return_pct, n_invested,
             ace_hits, king_hits, queen_hits, player_weights,
             concentration_index, stage1_fraction
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         session_id,
         results.get("invested", 0.0),
         results.get("invested", 0.0) + results.get("net_return", 0.0),  # total_payoff = invested + net_return
+        results.get("gross_return_mult", 0.0),
         results.get("net_return", 0.0),
         results.get("net_return_pct", 0.0),
         results.get("n_invested", 0),
@@ -254,11 +271,11 @@ def delete_session(session_id: int):
 
 
 def get_leaderboard(limit: int = 10) -> list:
-    """Get top players ranked by net return percentage.
+    """Get top players ranked by gross return multiplier.
 
     Only includes completed sessions with custom names (excludes 'Team Alpha').
     Filters to median signal games only for fair comparison.
-    Returns list of dicts with: rank, team_name, net_return_pct, n_invested
+    Returns list of dicts with: rank, team_name, gross_return_mult, n_invested
     """
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row  # Return rows as dicts
@@ -267,7 +284,7 @@ def get_leaderboard(limit: int = 10) -> list:
     cur.execute("""
         SELECT
             gs.team_name,
-            gr.net_return_pct,
+            gr.gross_return_mult,
             gr.n_invested,
             gs.timestamp_end
         FROM game_results gr
@@ -277,7 +294,7 @@ def get_leaderboard(limit: int = 10) -> list:
           AND gs.team_name != ''
           AND gs.team_name != 'Team Alpha'
           AND gs.signal_mode = 'median'
-        ORDER BY gr.net_return_pct DESC
+        ORDER BY gr.gross_return_mult DESC
         LIMIT ?
     """, (limit,))
 
@@ -290,7 +307,7 @@ def get_leaderboard(limit: int = 10) -> list:
         leaderboard.append({
             'rank': i,
             'team_name': row['team_name'],
-            'net_return_pct': row['net_return_pct'],
+            'gross_return_mult': row['gross_return_mult'],
             'n_invested': row['n_invested'],
             'timestamp': row['timestamp_end']
         })
@@ -300,47 +317,53 @@ def get_leaderboard(limit: int = 10) -> list:
 
 
 def get_leaderboard_by_signal_type(signal_type: str, limit: int = 10) -> list:
-    """Get top players ranked by net return percentage for a specific signal type.
+    """Get ALL players ranked by gross return multiplier for a specific signal type.
 
-    Only includes completed sessions with custom names (excludes 'Team Alpha').
-    Returns list of dicts with: rank, team_name, net_return_pct, n_invested
+    Includes all completed sessions (no exclusions).
+    Returns list of dicts with: rank, team_name, gross_return_mult, n_invested, total_signals
+    Note: Fetches ALL entries, assigns proper ranks with tie handling, displays top `limit`
     """
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row  # Return rows as dicts
     cur = conn.cursor()
 
+    # Fetch ALL entries (no LIMIT in SQL), we'll handle ranking and display limit in Python
+    # Sort by: gross_return_mult DESC, total_signals ASC (ties broken by lower signal cost), timestamp ASC
     cur.execute("""
         SELECT
             gs.team_name,
-            gr.net_return_pct,
+            (gr.total_payoff * 1.0 / gr.total_invested) AS gross_return_mult,
             gr.n_invested,
-            gs.timestamp_end
+            gs.timestamp_end,
+            (SELECT COALESCE(SUM(sa.signals_spent), 0)
+             FROM stage_actions sa
+             WHERE sa.session_id = gs.id) AS total_signals
         FROM game_results gr
         JOIN game_sessions gs ON gr.session_id = gs.id
         WHERE gs.completed = 1
           AND gs.team_name IS NOT NULL
           AND gs.team_name != ''
-          AND gs.team_name != 'Team Alpha'
           AND gs.signal_mode = ?
-        ORDER BY gr.net_return_pct DESC
-        LIMIT ?
-    """, (signal_type, limit))
+        ORDER BY gross_return_mult DESC, total_signals ASC, gs.timestamp_end ASC
+    """, (signal_type,))
 
     rows = cur.fetchall()
     conn.close()
 
-    # Convert to list of dicts with rank
+    # Convert to list of dicts with proper ranking
+    # Ties broken by signal cost (already in ORDER BY), so each position gets unique rank
     leaderboard = []
     for i, row in enumerate(rows, start=1):
         leaderboard.append({
-            'rank': i,
+            'rank': i,  # Sequential rank (ties already broken by signal cost)
             'team_name': row['team_name'],
-            'net_return_pct': row['net_return_pct'],
+            'gross_return_mult': row['gross_return_mult'],
             'n_invested': row['n_invested'],
+            'total_signals': row['total_signals'],
             'timestamp': row['timestamp_end']
         })
 
-    print(f"[db] Retrieved {signal_type} signal leaderboard with {len(leaderboard)} entries")
+    print(f"[db] Retrieved {signal_type} signal leaderboard with {len(leaderboard)} entries (all players ranked)")
     return leaderboard
 
 

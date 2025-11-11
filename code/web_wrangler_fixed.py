@@ -330,28 +330,152 @@ def _results_page(stats: dict) -> str:
     """Generate results HTML page"""
     hit_ace_label = "Yes" if (stats.get("ace_hits", 0) or 0) > 0 else "No"
 
+    # Format gross return multipliers (0 decimals when 0, 2 decimals otherwise)
+    g1_val = stats.get('g1', 0)
+    g2_val = stats.get('g2', 0)
+    gross_val = stats.get('gross_return_mult', 0)
+    g1_formatted = f"{g1_val:.0f}" if g1_val == 0 else f"{g1_val:.2f}"
+    g2_formatted = f"{g2_val:.0f}" if g2_val == 0 else f"{g2_val:.2f}"
+    gross_formatted = f"{gross_val:.0f}" if gross_val == 0 else f"{gross_val:.2f}"
+
+    # Format Ace/King/Queen payoff strings with stage breakdown
+    # Show "-" when 0, otherwise show two-line format with * for times and x for multiplier
+
+    # ACE
+    ace_payoff_s1 = stats.get('ace_payoff_s1', 0)
+    ace_invested_s1 = stats.get('ace_invested_s1', 0)
+    if ace_payoff_s1 == 0:
+        ace_s1_str = "-"
+    else:
+        ace_mult_s1 = ace_payoff_s1 / ace_invested_s1 if ace_invested_s1 > 0 else 0
+        ace_s1_str = f'£{ace_payoff_s1:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{ace_invested_s1:.0f} * {ace_mult_s1:.2f}x)</span>'
+
+    ace_payoff_s2 = stats.get('ace_payoff_s2', 0)
+    ace_invested_s2 = stats.get('ace_invested_s2', 0)
+    if ace_payoff_s2 == 0:
+        ace_s2_str = "-"
+    else:
+        ace_mult_s2 = ace_payoff_s2 / ace_invested_s2 if ace_invested_s2 > 0 else 0
+        ace_s2_str = f'£{ace_payoff_s2:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{ace_invested_s2:.0f} * {ace_mult_s2:.2f}x)</span>'
+
+    ace_payoff_total = stats.get('ace_payoff', 0)
+    ace_invested_total = stats.get('ace_invested', 0)
+    if ace_payoff_total == 0:
+        ace_total_str = "-"
+    else:
+        ace_mult_total = ace_payoff_total / ace_invested_total if ace_invested_total > 0 else 0
+        ace_total_str = f'£{ace_payoff_total:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{ace_invested_total:.0f} * {ace_mult_total:.2f}x)</span>'
+
+    # KING
+    king_payoff_s1 = stats.get('king_payoff_s1', 0)
+    king_invested_s1 = stats.get('king_invested_s1', 0)
+    if king_payoff_s1 == 0:
+        king_s1_str = "-"
+    else:
+        king_mult_s1 = king_payoff_s1 / king_invested_s1 if king_invested_s1 > 0 else 0
+        king_s1_str = f'£{king_payoff_s1:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{king_invested_s1:.0f} * {king_mult_s1:.2f}x)</span>'
+
+    king_payoff_s2 = stats.get('king_payoff_s2', 0)
+    king_invested_s2 = stats.get('king_invested_s2', 0)
+    if king_payoff_s2 == 0:
+        king_s2_str = "-"
+    else:
+        king_mult_s2 = king_payoff_s2 / king_invested_s2 if king_invested_s2 > 0 else 0
+        king_s2_str = f'£{king_payoff_s2:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{king_invested_s2:.0f} * {king_mult_s2:.2f}x)</span>'
+
+    king_payoff_total = stats.get('king_payoff', 0)
+    king_invested_total = stats.get('king_invested', 0)
+    if king_payoff_total == 0:
+        king_total_str = "-"
+    else:
+        king_mult_total = king_payoff_total / king_invested_total if king_invested_total > 0 else 0
+        king_total_str = f'£{king_payoff_total:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{king_invested_total:.0f} * {king_mult_total:.2f}x)</span>'
+
+    # QUEEN
+    queen_payoff_s1 = stats.get('queen_payoff_s1', 0)
+    queen_invested_s1 = stats.get('queen_invested_s1', 0)
+    if queen_payoff_s1 == 0:
+        queen_s1_str = "-"
+    else:
+        queen_mult_s1 = queen_payoff_s1 / queen_invested_s1 if queen_invested_s1 > 0 else 0
+        queen_s1_str = f'£{queen_payoff_s1:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{queen_invested_s1:.0f} * {queen_mult_s1:.2f}x)</span>'
+
+    queen_payoff_s2 = stats.get('queen_payoff_s2', 0)
+    queen_invested_s2 = stats.get('queen_invested_s2', 0)
+    if queen_payoff_s2 == 0:
+        queen_s2_str = "-"
+    else:
+        queen_mult_s2 = queen_payoff_s2 / queen_invested_s2 if queen_invested_s2 > 0 else 0
+        queen_s2_str = f'£{queen_payoff_s2:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{queen_invested_s2:.0f} * {queen_mult_s2:.2f}x)</span>'
+
+    queen_payoff_total = stats.get('queen_payoff', 0)
+    queen_invested_total = stats.get('queen_invested', 0)
+    if queen_payoff_total == 0:
+        queen_total_str = "-"
+    else:
+        queen_mult_total = queen_payoff_total / queen_invested_total if queen_invested_total > 0 else 0
+        queen_total_str = f'£{queen_payoff_total:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{queen_invested_total:.0f} * {queen_mult_total:.2f}x)</span>'
+
     # Generate leaderboard rows
-    leaderboard = stats.get("leaderboard", [])
+    leaderboard = stats.get("leaderboard", [])  # All entries with proper ranks
     signal_type_label = stats.get("signal_type_label", "")
+    current_player_name = stats.get('player', '')
 
     if leaderboard:
         leaderboard_rows = ""
+        current_player_in_top10 = False
+        current_player_entry = None
+
+        # Find current player in full leaderboard
         for entry in leaderboard:
-            # Highlight current player if they're on the leaderboard
-            row_style = 'background:#fef3c7;font-weight:700;' if entry['team_name'] == stats.get('player', '') else ''
+            if entry['team_name'] == current_player_name:
+                current_player_entry = entry
+                break
+
+        # Display top 10 only
+        for i, entry in enumerate(leaderboard[:10]):
+            # Check if this is the current player
+            is_current_player = entry['team_name'] == current_player_name
+            if is_current_player:
+                current_player_in_top10 = True
+
+            # Black background with white text for current player
+            if is_current_player:
+                row_style = 'background:#000000;color:#ffffff;border-left:4px solid #c53030;'
+                text_color = '#ffffff'
+                return_color = '#ffffff'
+            else:
+                row_style = ''
+                text_color = '#111827'
+                return_color = '#059669' if entry.get('gross_return_mult', 0) >= 1.0 else '#c53030'
+
             leaderboard_rows += f"""
             <tr style="{row_style}">
-              <td style="padding:12px 16px;border-bottom:1px solid var(--b);text-align:center;font-weight:700;color:#111827;">#{entry['rank']}</td>
-              <td style="padding:12px 16px;border-bottom:1px solid var(--b);color:#111827;">{entry['team_name']}</td>
-              <td style="padding:12px 16px;border-bottom:1px solid var(--b);text-align:right;font-weight:700;color:{'#059669' if entry['net_return_pct'] >= 0 else '#c53030'};">{entry['net_return_pct']:.2f}%</td>
-              <td style="padding:12px 16px;border-bottom:1px solid var(--b);text-align:right;color:#6b7280;">{entry['n_invested']}</td>
+              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:center;font-weight:700;color:{text_color};">#{entry['rank']}</td>
+              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;color:{text_color};">{entry['team_name']}</td>
+              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:{return_color};">{entry.get('gross_return_mult', 0):.2f}×</td>
+              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;color:{text_color};">£{entry.get('total_signals', 0):.0f}</td>
+              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:center;color:{text_color};">{entry.get('n_invested', 0)}</td>
             </tr>
             """
+
+        # Add current player's stats if not in top 10
+        if not current_player_in_top10 and current_player_entry:
+            leaderboard_rows += f"""
+            <tr style="background:#000000;color:#ffffff;border-top:2px solid #c53030;border-left:4px solid #c53030;">
+              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:center;font-weight:700;color:#ffffff;">#{current_player_entry['rank']}</td>
+              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#ffffff;font-weight:700;">{current_player_entry['team_name']} (You)</td>
+              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#ffffff;">{current_player_entry.get('gross_return_mult', 0):.2f}×</td>
+              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;color:#ffffff;">£{current_player_entry.get('total_signals', 0):.0f}</td>
+              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:center;color:#ffffff;">{current_player_entry.get('n_invested', 0)}</td>
+            </tr>
+            """
+
         leaderboard_empty_msg = ""
     else:
         leaderboard_rows = """
             <tr>
-              <td colspan="4" style="padding:40px;text-align:center;color:#6b7280;">
+              <td colspan="5" style="padding:40px;text-align:center;color:#6b7280;">
                 No players yet! Be the first to complete a {signal_type_label} signal game.
               </td>
             </tr>
@@ -393,9 +517,9 @@ def _results_page(stats: dict) -> str:
   .tab-content{{display:none}}
   .tab-content.active{{display:block}}
 
-  .summary-box{{max-width:520px}}
+  .summary-box{{width:100%}}
 
-  .stat-grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
+  .stat-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}}
   .stat{{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--b);border-radius:10px;background:#fafafa}}
   .stat-label{{color:#6b7280;font-size:14px}}
   .stat-value{{font-weight:700;color:#111827}}
@@ -420,7 +544,7 @@ def _results_page(stats: dict) -> str:
 <body>
 
 <div class="brandbar">
-  <div class="brand-center">{stats.get('player','') or 'Team Alpha'} Performance</div>
+  <div class="brand-center">{stats.get('player','') or 'Team Alpha'}'s performance</div>
 </div>
 
 <header class="nav">
@@ -443,19 +567,71 @@ def _results_page(stats: dict) -> str:
 
     <!-- Summary Tab -->
     <div id="summary-tab" class="tab-content active">
-      <h3 style="margin-top:0;">Performance Summary</h3>
-      <div style="display:grid;grid-template-columns:520px 1fr;gap:24px;align-items:start;">
-        <!-- Left: Stats Grid -->
-        <div class="summary-box">
-          <div class="stat-grid">
-            <div class="stat"><div class="stat-label">Budget</div><div class="stat-value">£100.00</div></div>
-            <div class="stat"><div class="stat-label">Total invested</div><div class="stat-value">£{stats.get('invested',0):.2f}</div></div>
-            <div class="stat"><div class="stat-label">Net return on budget</div><div class="stat-value">{stats.get('net_return_pct',0):.2f}%</div></div>
-            <div class="stat"><div class="stat-label">Spent on signals</div><div class="stat-value">£{stats.get('signals_spent',0):.2f}</div></div>
-            <div class="stat"><div class="stat-label">Piles invested</div><div class="stat-value">{stats.get('n_invested',0)}</div></div>
-            <div class="stat"><div class="stat-label">Hit an Ace?</div><div class="stat-value">{hit_ace_label}</div></div>
-            <div class="stat"><div class="stat-label">No. of King hits</div><div class="stat-value">{stats.get('king_hits',0)}</div></div>
-            <div class="stat"><div class="stat-label">No. of Queen hits</div><div class="stat-value">{stats.get('queen_hits',0)}</div></div>
+      <!-- Info Boxes Row -->
+      <div class="summary-box" style="margin-bottom:24px;">
+        <div class="stat-grid">
+          <div class="stat"><div class="stat-label">Budget</div><div class="stat-value">£100</div></div>
+          <div class="stat"><div class="stat-label">Piles invested</div><div class="stat-value">{stats.get('n_invested',0)}</div></div>
+          <div class="stat"><div class="stat-label">Spent on signals</div><div class="stat-value">£{stats.get('signals_spent',0):.0f}</div></div>
+        </div>
+      </div>
+
+      <!-- Breakdown Table (Left) and Distribution (Right) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;">
+        <!-- Left: Breakdown Table -->
+        <div style="border:1px solid var(--b);border-radius:12px;overflow:hidden;background:var(--panel);">
+          <div style="padding:20px 20px 16px 20px;border-bottom:1px solid var(--b);background:#f9fafb;">
+            <h4 style="margin:0;color:#111827;">Breakdown</h4>
+          </div>
+          <div style="overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead style="background:#f9fafb;border-bottom:2px solid var(--b);">
+                <tr>
+                  <th style="padding:12px 16px;text-align:left;font-size:14px;font-weight:700;color:#111827;">Metric</th>
+                  <th style="padding:12px 16px;text-align:right;font-size:14px;font-weight:700;color:#111827;">Stage 1</th>
+                  <th style="padding:12px 16px;text-align:right;font-size:14px;font-weight:700;color:#111827;">Stage 2</th>
+                  <th style="padding:12px 16px;text-align:right;font-size:14px;font-weight:700;color:#111827;">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;">Invested</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('investable_stage1',0):.0f}</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('investable_stage2',0):.0f}</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('invested',0):.0f}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;">Payoff</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('stage1_payoff',0):.0f}</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('stage2_payoff',0):.0f}</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{(stats.get('stage1_payoff',0) + stats.get('stage2_payoff',0)):.0f}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;">Gross Return</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:{'#059669' if g1_val >= 1.0 else '#c53030'};">{g1_formatted}×</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:{'#059669' if g2_val >= 1.0 else '#c53030'};">{g2_formatted}×</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:{'#059669' if gross_val >= 1.0 else '#c53030'};">{gross_formatted}×</td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#6b7280;font-weight:500;">Payoff from Ace Hits</td>
+                  <td style="padding:12px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;text-align:right;">{ace_s1_str}</td>
+                  <td style="padding:12px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;text-align:right;">{ace_s2_str}</td>
+                  <td style="padding:12px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;text-align:right;">{ace_total_str}</td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#6b7280;font-weight:500;">Payoff from King Hits</td>
+                  <td style="padding:12px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;text-align:right;">{king_s1_str}</td>
+                  <td style="padding:12px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;text-align:right;">{king_s2_str}</td>
+                  <td style="padding:12px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;text-align:right;">{king_total_str}</td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#6b7280;font-weight:500;">Payoff from Queen Hits</td>
+                  <td style="padding:12px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;text-align:right;">{queen_s1_str}</td>
+                  <td style="padding:12px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;text-align:right;">{queen_s2_str}</td>
+                  <td style="padding:12px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;text-align:right;">{queen_total_str}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -463,13 +639,13 @@ def _results_page(stats: dict) -> str:
         <div style="border:1px solid var(--b);border-radius:12px;padding:20px;background:var(--panel);">
           <h4 style="margin:0 0 12px 0;color:#111827;">Distribution of Returns</h4>
           <p style="font-size:13px;color:#6b7280;margin:0 0 16px 0;">
-            Based on 10,000 simulations with your allocation strategy ({stats.get('sim_metadata',{}).get('n_signals',0)} {stats.get('sim_metadata',{}).get('signal_type','')} signals)
+            Based on 50,000 simulations with your allocation strategy ({stats.get('sim_metadata',{}).get('n_signals',0)} {stats.get('sim_metadata',{}).get('signal_type','')} signals)
           </p>
-          <div id="histogramChart" style="width:100%;height:350px;"></div>
-          <div style="margin-top:16px;padding:12px;background:#f9fafb;border-radius:8px;font-size:13px;color:#6b7280;">
+          <div id="histogramChart" style="width:100%;min-height:200px;"></div>
+          <div style="margin-top:-8px;padding:12px;background:#f9fafb;border-radius:8px;font-size:13px;color:#6b7280;">
             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
-              <div><strong>Mean Return:</strong> {stats.get('sim_metadata',{}).get('mean',0):.2f}%</div>
-              <div><strong>Std Dev:</strong> {stats.get('sim_metadata',{}).get('std',0):.2f}%</div>
+              <div><strong>Mean Return:</strong> {stats.get('sim_metadata',{}).get('mean',0):.2f}×</div>
+              <div><strong>Std Dev:</strong> {stats.get('sim_metadata',{}).get('std',0):.2f}×</div>
             </div>
           </div>
         </div>
@@ -506,17 +682,18 @@ def _results_page(stats: dict) -> str:
 
     <!-- Leaderboard Tab -->
     <div id="leaderboard-tab" class="tab-content">
-      <h3 style="margin-top:0;">Top 10 Players ({signal_type_label} Signal)</h3>
-      <p style="color:#6b7280;font-size:14px;margin:0 0 20px 0;">Ranked by net return percentage • Only {signal_type_label.lower()} signal games • Custom names only</p>
+      <h3 style="margin-top:0;">Top 10 Players</h3>
+      <p style="color:#6b7280;font-size:14px;margin:0 0 20px 0;">Ranked by gross return multiplier • Only {signal_type_label.lower()} signal games</p>
 
-      <div style="max-width:640px;margin:0 auto;border:1px solid var(--b);border-radius:12px;overflow:hidden;background:var(--panel);">
+      <div style="max-width:900px;margin:0 auto;border:1px solid var(--b);border-radius:12px;overflow:hidden;background:var(--panel);">
         <table style="width:100%;border-collapse:collapse;">
           <thead style="background:#f9fafb;border-bottom:2px solid var(--b);">
             <tr>
-              <th style="padding:14px 20px;text-align:center;font-weight:700;color:#111827;width:70px;">Rank</th>
-              <th style="padding:14px 20px;text-align:left;font-weight:700;color:#111827;">Player</th>
-              <th style="padding:14px 20px;text-align:right;font-weight:700;color:#111827;width:120px;">Net Return</th>
-              <th style="padding:14px 20px;text-align:center;font-weight:700;color:#111827;width:90px;">Piles</th>
+              <th style="padding:12px 16px;text-align:center;font-size:14px;font-weight:700;color:#111827;white-space:nowrap;">Rank</th>
+              <th style="padding:12px 16px;text-align:left;font-size:14px;font-weight:700;color:#111827;white-space:nowrap;">Player</th>
+              <th style="padding:12px 16px;text-align:right;font-size:14px;font-weight:700;color:#111827;white-space:nowrap;">Gross Return</th>
+              <th style="padding:12px 16px;text-align:right;font-size:14px;font-weight:700;color:#111827;white-space:nowrap;">Signal Cost</th>
+              <th style="padding:12px 16px;text-align:center;font-size:14px;font-weight:700;color:#111827;white-space:nowrap;"># of Piles Invested</th>
             </tr>
           </thead>
           <tbody>
@@ -705,10 +882,10 @@ function createFrontierChart() {{
   }});
 }}
 
-// Create histogram chart or probability table based on unique values
+// Create 5-bin distribution table with player indicator
 function createHistogramChart() {{
   const simReturns = {json.dumps(stats.get('sim_returns', []))};
-  const playerReturn = {stats.get('net_return_pct', 0):.2f};
+  const playerReturn = {stats.get('gross_return_mult', 0):.3f};
 
   console.log('[histogram] Simulation returns count:', simReturns.length);
   console.log('[histogram] Player return:', playerReturn);
@@ -719,177 +896,106 @@ function createHistogramChart() {{
     return;
   }}
 
-  // Count unique values and their frequencies
-  const valueCounts = {{}};
+  // Always create exactly 5 bins
+  const numBins = 5;
+  const minVal = Math.min(...simReturns);
+  const maxVal = Math.max(...simReturns);
+
+  console.log('[histogram] Min:', minVal, 'Max:', maxVal);
+
+  // Handle edge case where all returns are identical
+  let binSize = (maxVal - minVal) / numBins;
+  if (binSize === 0 || !isFinite(binSize)) {{
+    binSize = 0.1; // Fallback for identical values
+  }}
+
+  // Create bins
+  const bins = [];
+  for (let i = 0; i < numBins; i++) {{
+    const binMin = minVal + i * binSize;
+    const binMax = minVal + (i + 1) * binSize;
+    bins.push({{
+      min: binMin,
+      max: binMax,
+      count: 0,
+      label: `${{binMin.toFixed(2)}}× - ${{binMax.toFixed(2)}}×`
+    }});
+  }}
+
+  // Count values in each bin
+  const totalCount = simReturns.length;
   simReturns.forEach(val => {{
-    const rounded = Math.round(val * 10) / 10;  // Round to 1 decimal place
-    valueCounts[rounded] = (valueCounts[rounded] || 0) + 1;
+    if (binSize > 0 && isFinite(val)) {{
+      let binIndex = Math.floor((val - minVal) / binSize);
+      binIndex = Math.max(0, Math.min(numBins - 1, binIndex)); // Clamp to valid range
+      bins[binIndex].count++;
+    }} else {{
+      // All values identical - put everything in first bin
+      bins[0].count++;
+    }}
   }});
 
-  const uniqueValues = Object.keys(valueCounts).map(Number).sort((a, b) => a - b);
-  const numUnique = uniqueValues.length;
+  // Determine which bin the player is in
+  let playerBinIndex = -1;
+  if (isFinite(playerReturn)) {{
+    if (binSize > 0) {{
+      let binIndex = Math.floor((playerReturn - minVal) / binSize);
+      playerBinIndex = Math.max(0, Math.min(numBins - 1, binIndex));
+    }} else {{
+      playerBinIndex = 0; // All in first bin
+    }}
+  }}
 
-  console.log('[histogram] Unique values:', numUnique);
+  console.log('[histogram] Player bin index:', playerBinIndex);
+  console.log('[histogram] Bin counts:', bins.map(b => b.count));
 
-  // Decision: histogram (>=50 unique) or probability table (<50 unique)
-  if (numUnique >= 50) {{
-    // Create 50-bin histogram using Plotly
-    const minVal = Math.min(...simReturns);
-    const maxVal = Math.max(...simReturns);
-    const binSize = (maxVal - minVal) / 50;
+  // Create table HTML
+  let tableHTML = `
+    <div style="max-height: 400px; overflow-y: auto; margin-bottom: 0; font-family: 'Source Sans Pro', system-ui, Arial, sans-serif;">
+      <table style="width: 100%; border-collapse: collapse; background: #ffffff; margin-bottom: 0;">
+        <thead style="position: sticky; top: 0; background: #f9fafb; z-index: 10;">
+          <tr style="border-bottom: 2px solid #e5e7eb;">
+            <th style="padding: 12px 16px; text-align: left; font-size: 14px; font-weight: 700; color: #111827;">Gross Return Range</th>
+            <th style="padding: 12px 16px; text-align: right; font-size: 14px; font-weight: 700; color: #111827;">Frequency</th>
+            <th style="padding: 12px 16px; text-align: right; font-size: 14px; font-weight: 700; color: #111827;">Probability</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
 
-    // Create bins
-    const bins = new Array(50).fill(0);
-    const binEdges = [];
-    for (let i = 0; i <= 50; i++) {{
-      binEdges.push(minVal + i * binSize);
+  bins.forEach((bin, index) => {{
+    // Skip bins with zero count
+    if (bin.count === 0) {{
+      return;
     }}
 
-    // Count values in each bin
-    simReturns.forEach(val => {{
-      const binIndex = Math.min(49, Math.floor((val - minVal) / binSize));
-      bins[binIndex]++;
-    }});
+    const probability = (bin.count / totalCount * 100).toFixed(2);
+    const isPlayerBin = index === playerBinIndex;
 
-    // Calculate bin centers for x-axis
-    const binCenters = [];
-    for (let i = 0; i < 50; i++) {{
-      binCenters.push((binEdges[i] + binEdges[i + 1]) / 2);
-    }}
+    const rowStyle = isPlayerBin
+      ? 'background: #000000; color: #ffffff; border-left: 4px solid #c53030;'
+      : (index % 2 === 0 ? 'background: #ffffff;' : 'background: #f9fafb;');
 
-    // Create Plotly bar chart
-    const trace = {{
-      x: binCenters,
-      y: bins,
-      type: 'bar',
-      marker: {{
-        color: '#000000',  // Black bars
-        line: {{ width: 0 }}
-      }},
-      width: binSize * 0.95,  // 95% of bin width for small gaps
-      hovertemplate: 'Return: %{{x:.1f}}%<br>Frequency: %{{y}}<extra></extra>'
-    }};
-
-    const layout = {{
-      plot_bgcolor: '#ffffff',  // White background
-      paper_bgcolor: '#ffffff',
-      font: {{ family: '"Source Sans Pro", system-ui, Arial, sans-serif', size: 12, color: '#111827' }},
-      xaxis: {{
-        title: {{ text: 'Net Return (%)', font: {{ size: 13, color: '#111827' }} }},
-        tickfont: {{ size: 11, color: '#6b7280' }},
-        showgrid: true,
-        gridcolor: '#e5e7eb',
-        zeroline: true,
-        zerolinecolor: '#9ca3af',
-        zerolinewidth: 1.5
-      }},
-      yaxis: {{
-        title: {{ text: 'Frequency', font: {{ size: 13, color: '#111827' }} }},
-        tickfont: {{ size: 11, color: '#6b7280' }},
-        showgrid: true,
-        gridcolor: '#e5e7eb'
-      }},
-      margin: {{ l: 60, r: 20, t: 20, b: 50 }},
-      showlegend: false,
-      bargap: 0
-    }};
-
-    const config = {{
-      displayModeBar: false,
-      responsive: true
-    }};
-
-    Plotly.newPlot('histogramChart', [trace], layout, config);
-
-    // Add vertical line for player's actual return
-    const shapes = [{{
-      type: 'line',
-      x0: playerReturn,
-      x1: playerReturn,
-      y0: 0,
-      y1: 1,
-      yref: 'paper',
-      line: {{
-        color: '#c53030',  // Red line
-        width: 3,
-        dash: 'dash'
-      }}
-    }}];
-
-    const annotations = [{{
-      x: playerReturn,
-      y: 1,
-      yref: 'paper',
-      text: `Your Return: ${{playerReturn.toFixed(1)}}%`,
-      showarrow: true,
-      arrowhead: 2,
-      arrowsize: 1,
-      arrowwidth: 2,
-      arrowcolor: '#c53030',
-      ax: 0,
-      ay: -40,
-      font: {{ size: 11, color: '#c53030', weight: 700 }},
-      bgcolor: '#ffffff',
-      bordercolor: '#c53030',
-      borderwidth: 1,
-      borderpad: 4
-    }}];
-
-    Plotly.relayout('histogramChart', {{ shapes: shapes, annotations: annotations }});
-  }} else {{
-    // Create probability table for <50 unique values
-    const totalCount = simReturns.length;
-    const playerRounded = Math.round(playerReturn * 10) / 10;
-
-    let tableHTML = `
-      <div style="max-height: 400px; overflow-y: auto; font-family: 'Source Sans Pro', system-ui, Arial, sans-serif;">
-        <table style="width: 100%; border-collapse: collapse; background: #ffffff;">
-          <thead style="position: sticky; top: 0; background: #f9fafb; z-index: 10;">
-            <tr style="border-bottom: 2px solid #e5e7eb;">
-              <th style="padding: 12px 16px; text-align: left; font-size: 13px; font-weight: 600; color: #111827;">Return (%)</th>
-              <th style="padding: 12px 16px; text-align: right; font-size: 13px; font-weight: 600; color: #111827;">Frequency</th>
-              <th style="padding: 12px 16px; text-align: right; font-size: 13px; font-weight: 600; color: #111827;">Probability</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
-
-    uniqueValues.forEach((value, index) => {{
-      const count = valueCounts[value];
-      const probability = (count / totalCount * 100).toFixed(2);
-      const isPlayerReturn = Math.abs(value - playerRounded) < 0.01;
-
-      const rowStyle = isPlayerReturn
-        ? 'background: #fee2e2; border-left: 4px solid #c53030;'
-        : (index % 2 === 0 ? 'background: #ffffff;' : 'background: #f9fafb;');
-
-      const returnStyle = isPlayerReturn
-        ? 'font-weight: 700; color: #c53030;'
-        : 'color: #111827;';
-
-      tableHTML += `
-        <tr style="${{rowStyle}} border-bottom: 1px solid #e5e7eb;">
-          <td style="padding: 10px 16px; font-size: 13px; ${{returnStyle}}">
-            ${{value.toFixed(1)}}${{isPlayerReturn ? ' ← Your Return' : ''}}
-          </td>
-          <td style="padding: 10px 16px; text-align: right; font-size: 13px; color: #6b7280;">
-            ${{count.toLocaleString()}}
-          </td>
-          <td style="padding: 10px 16px; text-align: right; font-size: 13px; color: #6b7280;">
-            ${{probability}}%
-          </td>
-        </tr>
-      `;
-    }});
+    const textColor = isPlayerBin ? '#ffffff' : '#111827';
+    const cellColor = isPlayerBin ? '#ffffff' : '#6b7280';
 
     tableHTML += `
-          </tbody>
-        </table>
-      </div>
+      <tr style="${{rowStyle}}">
+        <td style="padding: 10px 16px; font-size: 14px; border-bottom: 1px solid #e5e7eb; color: ${{textColor}}; font-weight: ${{isPlayerBin ? '700' : '400'}}">${{bin.label}}${{isPlayerBin ? ' ← Your return' : ''}}</td>
+        <td style="padding: 10px 16px; font-size: 14px; text-align: right; border-bottom: 1px solid #e5e7eb; color: ${{cellColor}};">${{bin.count.toLocaleString()}}</td>
+        <td style="padding: 10px 16px; font-size: 14px; text-align: right; border-bottom: 1px solid #e5e7eb; color: ${{cellColor}};">${{probability}}%</td>
+      </tr>
     `;
+  }});
 
-    document.getElementById('histogramChart').innerHTML = tableHTML;
-  }}
+  tableHTML += `
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  document.getElementById('histogramChart').innerHTML = tableHTML;
+  console.log('[histogram] Created 5-bin distribution table');
 }}
 
 // Create histogram on page load

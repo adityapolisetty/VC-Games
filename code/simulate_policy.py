@@ -24,24 +24,30 @@ from fns import NUM_PILES, CARDS_PER_PILE, ACE_RANK, BUDGET
 
 
 def _hvals(scale_pay: int, scale_param: float, ace_payout: float, half: bool = False) -> np.ndarray:
-    """Compute per-rank payoff values (matching frontier.py)"""
+    """Compute per-rank payoff values with custom scaling: Ace=20×, King=5×, Queen=1.25×, Others=0×"""
     ranks_all = np.arange(2, 15, dtype=int)
-    if scale_pay == 0:
-        v = np.array([float(ace_payout) if r == ACE_RANK else 0.0 for r in ranks_all], float)
-    else:
-        v = np.array([float(ace_payout) * (float(scale_param) ** max(0, ACE_RANK - r)) for r in ranks_all], float)
+    v = np.zeros(len(ranks_all), float)
+    for i, r in enumerate(ranks_all):
+        if r == 14:  # Ace
+            v[i] = float(ace_payout)
+        elif r == 13:  # King
+            v[i] = float(ace_payout) * 0.25
+        elif r == 12:  # Queen
+            v[i] = float(ace_payout) * 0.0625
+        # else: 0.0 (already initialized)
     if half:
         v = 0.5 * v
     return v
 
 
 def _per_dollar_realized(max_rank: np.ndarray, scale_pay: int, scale_param: float, ace_payout: float) -> np.ndarray:
-    """Compute realized payoff per dollar invested (matching frontier.py)"""
+    """Compute realized payoff per dollar invested with custom scaling: Ace=20×, King=5×, Queen=1.25×, Others=0×"""
     r = np.asarray(max_rank, int)
-    if scale_pay == 0:
-        return np.where(r == ACE_RANK, float(ace_payout), 0.0).astype(float)
-    steps = (ACE_RANK - r).clip(min=0)
-    return (float(ace_payout) * (float(scale_param) ** steps)).astype(float)
+    result = np.where(r == 14, float(ace_payout),           # Ace: 20×
+             np.where(r == 13, float(ace_payout) * 0.25,    # King: 5×
+             np.where(r == 12, float(ace_payout) * 0.0625,  # Queen: 1.25×
+             0.0)))                                           # Others: 0×
+    return result.astype(float)
 
 
 def _compute_concentration_index(weights: np.ndarray) -> float:
@@ -67,6 +73,12 @@ def run_policy_simulation(
     post_npz_path: str = "precomp_output/post_mc.npz",
     rounds: int = 10000,
     base_seed: int = None,
+    actual_board_seed: int = None,
+    actual_signaled_piles: set = None,
+    actual_weights_stage1: np.ndarray = None,
+    actual_weights_stage2: np.ndarray = None,
+    weight_pattern_stage1: np.ndarray = None,
+    weight_pattern_stage2: np.ndarray = None,
 ) -> Tuple[np.ndarray, Dict]:
     """
     Simulate player's policy across many random boards.
@@ -81,8 +93,14 @@ def run_policy_simulation(
         scale_param: Scale parameter (e.g., 0.25)
         player_concentration: Target concentration index for portfolio
         post_npz_path: Path to precomputed posteriors NPZ
-        rounds: Number of simulation rounds
+        rounds: Number of simulation rounds (including actual board)
         base_seed: Base RNG seed (None = random)
+        actual_board_seed: Seed for actual board played (if provided, will be simulated as round 0)
+        actual_signaled_piles: Set of pile indices that had signals in actual game (for round 0)
+        actual_weights_stage1: Actual Stage 1 investment amounts per pile (for round 0)
+        actual_weights_stage2: Actual Stage 2 investment amounts per pile (for round 0)
+        weight_pattern_stage1: Normalized weight fractions for Stage 1 (9 values, sum to 1.0) - used for rounds 1+
+        weight_pattern_stage2: Normalized weight fractions for Stage 2 (9 values, sum to 1.0) - used for rounds 1+
 
     Returns:
         (returns_array, metadata_dict)
@@ -195,24 +213,30 @@ def run_policy_simulation(
     # Determine investment pattern based on concentration index
     # Higher concentration = fewer piles with unequal weights
     # We'll approximate by investing in top k piles with concentration-weighted distribution
-    # For simplicity: use equal weights across top k piles where k is chosen to match concentration
-
-    # Concentration index ≈ 1/k for equal weights across k piles
-    # So k ≈ 1 / concentration_index
-    if player_concentration > 0:
-        n_piles_invest = max(1, min(NUM_PILES, int(round(1.0 / player_concentration))))
-    else:
-        n_piles_invest = NUM_PILES  # Fully diversified
+    # Note: player_concentration is passed but only used for metadata/display
+    # Weight patterns are always provided from web_game.py, so no fallback logic needed
 
     for r in range(rounds):
-        # Generate new board
-        rng = default_rng(round_seed(base_seed, r))
+        # For round 0: use actual board if provided, otherwise generate with seed(0)
+        # For rounds 1+: always use consistent indexing seed(1), seed(2), etc.
+        if r == 0 and actual_board_seed is not None:
+            # Use the actual board played as round 0
+            rng = default_rng(actual_board_seed)
+        else:
+            # Generate random board using round index as offset (consistent indexing)
+            rng = default_rng(round_seed(base_seed, r))
+
         has_ace, hands, medians, top2sum, max_rank, min_rank = _deal_cards_global_deck(rng)
 
-        # Random permutation for signal purchases
-        pi = rng.permutation(NUM_PILES)
-        chosen_idx = pi[:n_signals]
-        chosen_set = set(int(x) for x in np.asarray(chosen_idx, int))
+        # Determine which piles have signals
+        if r == 0 and actual_signaled_piles is not None:
+            # Round 0: Use actual signaled piles from player's game
+            chosen_set = set(int(x) for x in actual_signaled_piles)
+        else:
+            # Other rounds: Random permutation for signal purchases
+            pi = rng.permutation(NUM_PILES)
+            chosen_idx = pi[:n_signals]
+            chosen_set = set(int(x) for x in np.asarray(chosen_idx, int))
 
         # Compute Stage 1 expected values
         buckets = np.asarray(medians if signal_type == "median" else top2sum, int)
@@ -222,13 +246,20 @@ def run_policy_simulation(
             vec = np.asarray(post_table.get(int(buckets[j]), prior_vec), float) if (j in chosen_set) else prior_vec
             s1[j] = float(np.dot(h1, vec))
 
-        # Rank piles by Stage 1 expected value (descending)
-        order1 = np.argsort(-s1)
-
-        # Invest in top n_piles_invest piles with equal weights
-        top_piles = order1[:n_piles_invest]
-        inv1_amounts = np.zeros(NUM_PILES, float)
-        inv1_amounts[top_piles] = investable1 / n_piles_invest
+        # Determine Stage 1 investments
+        if r == 0 and actual_weights_stage1 is not None:
+            # Round 0: Use actual Stage 1 investments
+            inv1_amounts = np.asarray(actual_weights_stage1, float)
+        else:
+            # Rounds 1+: Apply player's weight pattern to EV-sorted piles
+            # Sort piles by EV (descending) to get ranking
+            order1 = np.argsort(-s1)
+            # Apply weight pattern: pattern[i] goes to pile at position i in EV ranking
+            inv1_amounts = np.zeros(NUM_PILES, float)
+            pattern = np.asarray(weight_pattern_stage1, float)
+            for pos, pile_idx in enumerate(order1):
+                if pos < len(pattern):
+                    inv1_amounts[pile_idx] = pattern[pos] * investable1
 
         # Stage 1 payoff
         p_real = _per_dollar_realized(np.asarray(max_rank, int), scale_pay, scale_param, ace_payout)
@@ -255,16 +286,23 @@ def run_policy_simulation(
                     vec = np.asarray(r2_marginal[r2k, :], float) if (0 <= r2k < 13) else prior_vec
                 s2[k] = float(np.dot(h2, vec))
 
-            # Rerank within support
-            support_s2 = [(s2[k], k) for k in stage1_support]
-            support_s2.sort(reverse=True)  # Highest EV first
+            # Determine Stage 2 investments
+            if r == 0 and actual_weights_stage2 is not None:
+                # Round 0: Use actual Stage 2 investments
+                inv2_amounts = np.asarray(actual_weights_stage2, float)
+            else:
+                # Rounds 1+: Apply weight pattern to EV-sorted piles within support
+                support_s2 = [(s2[k], k) for k in stage1_support]
+                support_s2.sort(reverse=True)  # Highest EV first
+                sorted_support_piles = [k for _, k in support_s2]
 
-            # Invest Stage 2 budget in top piles within support (same concentration pattern)
-            n_piles_stage2 = min(n_piles_invest, len(stage1_support))
-            top_stage2_piles = [k for _, k in support_s2[:n_piles_stage2]]
-
-            inv2_amounts = np.zeros(NUM_PILES, float)
-            inv2_amounts[top_stage2_piles] = budget2 / n_piles_stage2
+                # Apply weight pattern directly (no renormalization)
+                # Pattern already sums to 1.0 from Stage 1 extraction
+                inv2_amounts = np.zeros(NUM_PILES, float)
+                pattern = np.asarray(weight_pattern_stage2, float)
+                for pos, pile_idx in enumerate(sorted_support_piles):
+                    if pos < len(pattern):
+                        inv2_amounts[pile_idx] = pattern[pos] * budget2
 
             # Stage 2 payoff (0.5x multiplier)
             p_real_stage2 = 0.5 * p_real
@@ -272,17 +310,10 @@ def run_policy_simulation(
         else:
             stage2_payoff = 0.0
 
-        # Net return calculation (matching frontier formula)
-        total_invest = investable1 + budget2
-        c1 = investable1 / BUDGET
-        c2 = budget2 / BUDGET
-        signal_cost_fraction = signal_cost_total / BUDGET
-
-        g1 = stage1_payoff / investable1 if investable1 > 0 else 0.0
-        g2 = stage2_payoff / budget2 if budget2 > 0 else 0.0
-
-        net_return_pct = 100.0 * (c1 * (g1 - 1.0) + c2 * (g2 - 1.0) - signal_cost_fraction)
-        returns[r] = net_return_pct
+        # Gross return calculation (Total Payoff / Budget)
+        total_payoff = stage1_payoff + stage2_payoff
+        gross_return_multiplier = total_payoff / BUDGET if BUDGET > 0 else 0.0
+        returns[r] = gross_return_multiplier
 
     # Compute statistics
     metadata = {

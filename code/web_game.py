@@ -410,6 +410,9 @@ if __name__ == "__main__":
             g1 = stage1_payoff / investable_stage1 if investable_stage1 > 0 else 0.0
             g2 = stage2_payoff / investable_stage2 if investable_stage2 > 0 else 0.0
 
+            # Gross return multiplier (total payout / total investment)
+            gross_return_mult = total_payoff / total_invest if total_invest > 0 else 0.0
+
             # Net return using frontier formula
             net_return_pct = 100.0 * (c1 * (g1 - 1.0) + c2 * (g2 - 1.0) - signal_cost_fraction)
             net_return_abs = total_payoff - total_invest
@@ -430,27 +433,80 @@ if __name__ == "__main__":
             # Concentration index (Σw² / 10000) - risk proxy for MV frontier
             concentration_index = sum(w ** 2 for w in player_weights) / 10000.0
 
-            # Count ace/king/queen hits in surviving invested cards
+            # Count ace/king/queen hits and track invested amounts and payoffs
+            # Track both stage-specific and total values
             ace_hits = 0
             king_hits = 0
             queen_hits = 0
+
+            # Total invested/payoff
+            ace_invested_total = 0.0
+            king_invested_total = 0.0
+            queen_invested_total = 0.0
+            ace_payoff_total = 0.0
+            king_payoff_total = 0.0
+            queen_payoff_total = 0.0
+
+            # Stage-specific invested
+            ace_invested_s1 = 0.0
+            ace_invested_s2 = 0.0
+            king_invested_s1 = 0.0
+            king_invested_s2 = 0.0
+            queen_invested_s1 = 0.0
+            queen_invested_s2 = 0.0
+
+            # Stage-specific payoff
+            ace_payoff_s1 = 0.0
+            ace_payoff_s2 = 0.0
+            king_payoff_s1 = 0.0
+            king_payoff_s2 = 0.0
+            queen_payoff_s1 = 0.0
+            queen_payoff_s2 = 0.0
+
             if len(pay) > 0:
                 for _, row in pay.iterrows():
                     card_inv = float(row.get("stake", 0))
                     if card_inv > 0:
                         max_rank = int(row.get("N", 0))
+
+                        # Extract stage-specific values
+                        card_inv_s1 = float(row.get("inv1", 0))
+                        card_inv_s2 = float(row.get("inv2", 0))
+                        card_payoff_s1 = float(row.get("payout1", 0))
+                        card_payoff_s2 = float(row.get("payout2", 0))
+                        card_payoff_total = float(row.get("payout", 0))
+
                         if max_rank == 14:  # Ace
                             ace_hits += 1
+                            ace_invested_total += card_inv
+                            ace_payoff_total += card_payoff_total
+                            ace_invested_s1 += card_inv_s1
+                            ace_invested_s2 += card_inv_s2
+                            ace_payoff_s1 += card_payoff_s1
+                            ace_payoff_s2 += card_payoff_s2
                         elif max_rank == 13:  # King
                             king_hits += 1
+                            king_invested_total += card_inv
+                            king_payoff_total += card_payoff_total
+                            king_invested_s1 += card_inv_s1
+                            king_invested_s2 += card_inv_s2
+                            king_payoff_s1 += card_payoff_s1
+                            king_payoff_s2 += card_payoff_s2
                         elif max_rank == 12:  # Queen
                             queen_hits += 1
+                            queen_invested_total += card_inv
+                            queen_payoff_total += card_payoff_total
+                            queen_invested_s1 += card_inv_s1
+                            queen_invested_s2 += card_inv_s2
+                            queen_payoff_s1 += card_payoff_s1
+                            queen_payoff_s2 += card_payoff_s2
 
             stats = {
                 "player": team_name,         # player name from Stage 0
                 "wallet_left": wallet,       # remaining budget
                 "invested": total_invest,    # total invested £
                 "signals_spent": total_signals_spend,     # total spent on signals £
+                "gross_return_mult": gross_return_mult,   # multiplier (payoff/investment)
                 "net_return": net_return_abs,             # £
                 "net_return_pct": net_return_pct,         # % (frontier formula)
                 "n_invested": n_invested,
@@ -461,18 +517,76 @@ if __name__ == "__main__":
                 "queen_hits": queen_hits,
                 "concentration_index": concentration_index,  # Σw²/10000 for MV frontier
                 "stage1_fraction": stage1_fraction,          # % of stakes in Stage 1
+                # Stage breakdown data
+                "stage1_payoff": stage1_payoff,
+                "stage2_payoff": stage2_payoff,
+                "investable_stage1": investable_stage1,
+                "investable_stage2": investable_stage2,
+                "c1": c1,
+                "c2": c2,
+                "g1": g1,
+                "g2": g2,
+                # Card type payoffs and invested amounts (totals)
+                "ace_invested": ace_invested_total,
+                "king_invested": king_invested_total,
+                "queen_invested": queen_invested_total,
+                "ace_payoff": ace_payoff_total,
+                "king_payoff": king_payoff_total,
+                "queen_payoff": queen_payoff_total,
+                # Card type stage-specific invested amounts
+                "ace_invested_s1": ace_invested_s1,
+                "ace_invested_s2": ace_invested_s2,
+                "king_invested_s1": king_invested_s1,
+                "king_invested_s2": king_invested_s2,
+                "queen_invested_s1": queen_invested_s1,
+                "queen_invested_s2": queen_invested_s2,
+                # Card type stage-specific payoffs
+                "ace_payoff_s1": ace_payoff_s1,
+                "ace_payoff_s2": ace_payoff_s2,
+                "king_payoff_s1": king_payoff_s1,
+                "king_payoff_s2": king_payoff_s2,
+                "queen_payoff_s1": queen_payoff_s1,
+                "queen_payoff_s2": queen_payoff_s2,
             }
 
             # Log results to database
             log_game_results(session_id=session_id, results=stats)
 
-            # ---- Run Policy Simulation (10k rounds) ----
-            print("[game] Running policy simulation (10k rounds)...")
+            # Mark session as completed BEFORE fetching leaderboard
+            # This ensures current player appears in their own leaderboard
+            mark_session_completed(session_id=session_id)
+
+            # ---- Run Policy Simulation (50k rounds) ----
+            print("[game] Running policy simulation (50k rounds)...")
             total_n_signals = signal_count_stage1 + signal_count_stage2
             # Calculate stage1_alloc from actual budget allocation
             # stage1_alloc = (stage1_stakes + signal_costs_stage1) / WALLET0
             budget_stage1 = stage1_stakes + total_signal_cost_stage1
             stage1_alloc = budget_stage1 / WALLET0 if WALLET0 > 0 else 0.5
+
+            # Extract player's actual game data for exact strategy replication
+            # 1. Track which piles received signals (for Round 0 exact replication)
+            signaled_piles = set()
+            for idx, row in df.iterrows():
+                pile_id = int(row["card_id"])
+                for sig_col in ["s1", "s2", "s3", "s4"]:
+                    if sig_col in df.columns and pd.notna(row.get(sig_col)):
+                        signaled_piles.add(pile_id)
+                        break
+
+            # 2. Actual dollar amounts invested per pile (for Round 0)
+            actual_weights_stage1 = df["inv1"].values.astype(float)  # Shape: (9,)
+            actual_weights_stage2 = df["inv2"].values.astype(float)  # Shape: (9,)
+
+            # 3. Normalized weight patterns (for Rounds 1+ strategy replication)
+            inv1_total = actual_weights_stage1.sum()
+            weight_pattern_stage1 = actual_weights_stage1 / inv1_total if inv1_total > 0 else np.zeros(9)
+
+            inv2_total = actual_weights_stage2.sum()
+            weight_pattern_stage2 = actual_weights_stage2 / inv2_total if inv2_total > 0 else np.zeros(9)
+
+            print(f"[game] Extracted strategy: {len(signaled_piles)} signaled piles, S1 pattern sum={weight_pattern_stage1.sum():.3f}, S2 pattern sum={weight_pattern_stage2.sum():.3f}")
+
             try:
                 sim_returns, sim_metadata = run_policy_simulation(
                     n_signals=total_n_signals,
@@ -483,7 +597,13 @@ if __name__ == "__main__":
                     scale_pay=0,  # Hardcoded for now (ace-only payoff)
                     scale_param=0.0,
                     player_concentration=concentration_index,
-                    rounds=10000,
+                    rounds=50000,
+                    actual_board_seed=game_seed,                    # Exact board replication
+                    actual_signaled_piles=signaled_piles,           # Exact signals
+                    actual_weights_stage1=actual_weights_stage1,     # Dollar amounts S1
+                    actual_weights_stage2=actual_weights_stage2,     # Dollar amounts S2
+                    weight_pattern_stage1=weight_pattern_stage1,     # Strategy pattern S1
+                    weight_pattern_stage2=weight_pattern_stage2,     # Strategy pattern S2
                 )
                 # Compute percentiles for 5 probability bins (quintiles)
                 # Shows most likely return ranges: 0-20%, 20-40%, 40-60%, 60-80%, 80-100%
@@ -502,12 +622,13 @@ if __name__ == "__main__":
                 # Pass the actual returns array for histogram generation
                 stats["sim_returns"] = sim_returns.tolist()  # Convert numpy array to list for JSON
                 stats["sim_metadata"] = sim_metadata
-                print(f"[game] Simulation complete: mean={sim_metadata['mean']:.2f}%, std={sim_metadata['std']:.2f}%")
+                print(f"[game] Simulation complete: mean={sim_metadata['mean']:.2f}×, std={sim_metadata['std']:.2f}×")
                 print(f"[game] Computed percentiles from {len(sim_returns)} simulation points")
             except Exception as e:
                 print(f"[game] Policy simulation failed: {e}")
                 stats["sim_quintiles"] = {}  # Empty quintiles on error
                 stats["sim_metadata"] = {}
+                stats["sim_returns"] = []  # Ensure key exists for JavaScript template
 
             # ---- Fetch Leaderboard (for this signal type only) ----
             print(f"[game] Fetching leaderboard for {mode} signal games...")
@@ -522,10 +643,7 @@ if __name__ == "__main__":
             print("[web] Results ready. Server will stay up until 'End Game' is clicked.")
             _ = run_ui(stage=3, df=df, wallet=wallet, results=stats, signal_mode=mode, signal_cost=cost, session_id=session_id)
 
-            # Mark session as completed (player clicked End Game)
-            mark_session_completed(session_id=session_id)
-
-            # Close database session
+            # Close database session (session already marked completed above)
             close_session(session_id=session_id)
 
             # Optional console dump
