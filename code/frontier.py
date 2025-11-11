@@ -46,7 +46,7 @@ ACE_PAYOUT = 20.0
 SCALE_PARAM_ON = 0.25
 ALPHA_GRID = np.linspace(0, 1.0, 21) 
 UNITS = 9
-SD_STEP = 0.1  # percentage points
+SD_STEP = 0.01  # percentage points
 
 
 # -----------------------

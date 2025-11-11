@@ -823,11 +823,25 @@ def _build_frontier_fig(fd, sd_step, y_range_override=None, cmin_override=None, 
             )
             hover_texts.append(hover_text)
 
+        # Use smaller markers without labels for fine-grained SD binning
+        if sd_step <= 0.1:
+            marker_size = 8
+            plot_mode = "markers"
+            text_vals = None
+            textposition_val = None
+            textfont_val = None
+        else:
+            marker_size = 16
+            plot_mode = "markers+text"
+            text_vals = [str(n_sig)] * len(keep_idx)
+            textposition_val = "middle center"
+            textfont_val = dict(size=11, color="white")
+
         fig.add_trace(go.Scatter(
-            x=xs, y=ys, mode="markers+text", name=f"N = {n_sig}",
-            marker=dict(size=16, color=cs, colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
+            x=xs, y=ys, mode=plot_mode, name=f"N = {n_sig}",
+            marker=dict(size=marker_size, color=cs, colorscale=[[0, "#2b8cbe"], [1, "#08306b"]],
                         cmin=vmin_global, cmax=vmax_global, showscale=False, line=dict(width=0)),
-            text=[str(n_sig)] * len(keep_idx), textposition="middle center", textfont=dict(size=11, color="white"),
+            text=text_vals, textposition=textposition_val, textfont=textfont_val,
             hovertemplate="%{hovertext}<extra></extra>", hovertext=hover_texts, showlegend=False, opacity=ALPHA,
         ))
 
@@ -1112,7 +1126,7 @@ elif view == "Mean-Variance Frontier":
         with rowA[1]:
             signal_cost_A = st.select_slider("Signal cost", options=[0, 3, 9], value=3, format_func=lambda v: f"£{v}", key="signal_cost_A")
         with rowA[2]:
-            sd_step_A = st.select_slider("SD binning", options=[0.1, 1, 2, 5], value=5, format_func=lambda v: f"{v}pp bin", key="sd_step_A")
+            sd_step_A = st.select_slider("SD binning", options=[0.01, 0.1, 1, 2, 5], value=5, format_func=lambda v: f"{v}pp bin", key="sd_step_A")
         rowA2 = st.columns([1])
         with rowA2[0]:
             n_signals_A = st.select_slider("Number of signals", options=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, "All"], value="All", format_func=lambda v: "All" if v == "All" else str(v), key="n_signals_A")
@@ -1138,7 +1152,7 @@ elif view == "Mean-Variance Frontier":
         with rowB[1]:
             signal_cost_B = st.select_slider("Signal cost", options=[0, 3, 9], value=3, format_func=lambda v: f"£{v}", key="signal_cost_B")
         with rowB[2]:
-            sd_step_B = st.select_slider("SD binning", options=[0.1, 1, 2, 5], value=5, format_func=lambda v: f"{v}pp bin", key="sd_step_B")
+            sd_step_B = st.select_slider("SD binning", options=[0.01, 0.1, 1, 2, 5], value=5, format_func=lambda v: f"{v}pp bin", key="sd_step_B")
         rowB2 = st.columns([1])
         with rowB2[0]:
             n_signals_B = st.select_slider("Number of signals", options=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, "All"], value="All", format_func=lambda v: "All" if v == "All" else str(v), key="n_signals_B")
