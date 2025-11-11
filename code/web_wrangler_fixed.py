@@ -266,6 +266,21 @@ class _H(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length", "0"))
             data = json.loads(self.rfile.read(n).decode("utf-8"))
 
+            # CRITICAL: Validate that server is at the correct stage
+            submitted_stage = data.get("stage", -1)
+            with _SERVER_LOCK:
+                current_stage = _GAME_STATE['stage']
+
+            # If submission doesn't match current stage, reject it
+            if submitted_stage != current_stage:
+                print(f"[server] WARNING: Rejected submission for stage {submitted_stage} (server at stage {current_stage})")
+                self.send_response(409)  # Conflict
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                response = {"status": "error", "message": f"Server not ready (at stage {current_stage}, expected {submitted_stage})"}
+                self.wfile.write(json.dumps(response).encode("utf-8"))
+                return
+
             # Store submitted data (CRITICAL FIX: Thread-safe access)
             with _SESSION_LOCK:
                 _SESSION_DATA = data
@@ -277,6 +292,7 @@ class _H(BaseHTTPRequestHandler):
                     _GAME_STATE['ctx']["results"]["player"] = data.get("player_name") or ""
 
             # Send success response
+            print(f"[server] Accepted submission for stage {submitted_stage}")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -443,13 +459,13 @@ def _results_page(stats: dict) -> str:
           </div>
         </div>
 
-        <!-- Right: Return Probability Table -->
+        <!-- Right: Return Distribution Histogram -->
         <div style="border:1px solid var(--b);border-radius:12px;padding:20px;background:var(--panel);">
-          <h4 style="margin:0 0 12px 0;color:#111827;">Probability of Returns</h4>
+          <h4 style="margin:0 0 12px 0;color:#111827;">Distribution of Returns</h4>
           <p style="font-size:13px;color:#6b7280;margin:0 0 16px 0;">
             Based on 10,000 simulations with your allocation strategy ({stats.get('sim_metadata',{}).get('n_signals',0)} {stats.get('sim_metadata',{}).get('signal_type','')} signals)
           </p>
-          <div id="probabilityTable"></div>
+          <div id="histogramChart" style="width:100%;height:350px;"></div>
           <div style="margin-top:16px;padding:12px;background:#f9fafb;border-radius:8px;font-size:13px;color:#6b7280;">
             <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
               <div><strong>Mean Return:</strong> {stats.get('sim_metadata',{}).get('mean',0):.2f}%</div>
@@ -685,80 +701,128 @@ function createFrontierChart() {{
   }});
 }}
 
-// Create probability table showing 5 most likely return ranges
-function createProbabilityTable() {{
+// Create histogram chart showing distribution of returns
+function createHistogramChart() {{
   const quintiles = {json.dumps(stats.get('sim_quintiles', {}))};
   const playerReturn = {stats.get('net_return_pct', 0):.2f};
 
-  console.log('[probability] Quintiles data:', quintiles);
-  console.log('[probability] Player return:', playerReturn);
+  console.log('[histogram] Quintiles data:', quintiles);
+  console.log('[histogram] Player return:', playerReturn);
 
   // Check if quintile data exists
   if (!quintiles || Object.keys(quintiles).length === 0) {{
-    document.getElementById('probabilityTable').innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">No simulation data available</div>';
+    document.getElementById('histogramChart').innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">No simulation data available</div>';
     return;
   }}
 
-  // Build 5 probability bins (quintiles) - each 20% probability
-  const bins = [
-    {{ range: [quintiles.min, quintiles.p20], label: 'First Quintile' }},
-    {{ range: [quintiles.p20, quintiles.p40], label: 'Second Quintile' }},
-    {{ range: [quintiles.p40, quintiles.p60], label: 'Third Quintile' }},
-    {{ range: [quintiles.p60, quintiles.p80], label: 'Fourth Quintile' }},
-    {{ range: [quintiles.p80, quintiles.max], label: 'Fifth Quintile' }}
+  // Create histogram bins from quintiles (5 equal probability bins)
+  // Each bin represents 20% of the data (2000 simulations out of 10000)
+  const binEdges = [
+    quintiles.min,
+    quintiles.p20,
+    quintiles.p40,
+    quintiles.p60,
+    quintiles.p80,
+    quintiles.max
   ];
 
-  console.log('[probability] Bins constructed:', bins);
+  // Bin centers for x-axis
+  const binCenters = [];
+  const binCounts = [];
+  const binWidths = [];
 
-  // Determine which bin contains player's return
-  let playerBin = -1;
-  if (playerReturn >= quintiles.min && playerReturn < quintiles.p20) playerBin = 0;
-  else if (playerReturn >= quintiles.p20 && playerReturn < quintiles.p40) playerBin = 1;
-  else if (playerReturn >= quintiles.p40 && playerReturn < quintiles.p60) playerBin = 2;
-  else if (playerReturn >= quintiles.p60 && playerReturn < quintiles.p80) playerBin = 3;
-  else if (playerReturn >= quintiles.p80) playerBin = 4;
+  for (let i = 0; i < binEdges.length - 1; i++) {{
+    const center = (binEdges[i] + binEdges[i + 1]) / 2;
+    const width = binEdges[i + 1] - binEdges[i];
+    binCenters.push(center);
+    binCounts.push(2000);  // Each quintile has 20% of 10000 = 2000
+    binWidths.push(width);
+  }}
 
-  let tableHTML = '<table style="width:100%;border-collapse:collapse;font-size:14px;">';
-  tableHTML += '<thead><tr style="border-bottom:2px solid #e5e7eb;">';
-  tableHTML += '<th style="text-align:left;padding:12px;color:#6b7280;font-weight:600;">Scenario</th>';
-  tableHTML += '<th style="text-align:right;padding:12px;color:#6b7280;font-weight:600;">Return Range</th>';
-  tableHTML += '</tr></thead><tbody>';
+  // Create Plotly bar chart
+  const trace = {{
+    x: binCenters,
+    y: binCounts,
+    type: 'bar',
+    marker: {{
+      color: '#000000',  // Black bars
+      line: {{ width: 0 }}
+    }},
+    width: binWidths,
+    hovertemplate: 'Return: %{{x:.1f}}%<br>Count: %{{y}}<extra></extra>'
+  }};
 
-  bins.forEach((bin, i) => {{
-    const isPlayerBin = i === playerBin;
-    const bgColor = isPlayerBin ? '#fef3c7' : 'transparent';
-    const fontWeight = i === 2 ? '600' : '400';  // Emphasize middle bin
-    const minColor = bin.range[0] >= 0 ? '#059669' : '#dc2626';
-    const maxColor = bin.range[1] >= 0 ? '#059669' : '#dc2626';
+  const layout = {{
+    plot_bgcolor: '#ffffff',  // White background
+    paper_bgcolor: '#ffffff',
+    font: {{ family: '"Source Sans Pro", system-ui, Arial, sans-serif', size: 12, color: '#111827' }},
+    xaxis: {{
+      title: {{ text: 'Net Return (%)', font: {{ size: 13, color: '#111827' }} }},
+      tickfont: {{ size: 11, color: '#6b7280' }},
+      showgrid: true,
+      gridcolor: '#e5e7eb',
+      zeroline: true,
+      zerolinecolor: '#9ca3af',
+      zerolinewidth: 1.5
+    }},
+    yaxis: {{
+      title: {{ text: 'Frequency', font: {{ size: 13, color: '#111827' }} }},
+      tickfont: {{ size: 11, color: '#6b7280' }},
+      showgrid: true,
+      gridcolor: '#e5e7eb'
+    }},
+    margin: {{ l: 60, r: 20, t: 20, b: 50 }},
+    showlegend: false,
+    bargap: 0.05
+  }};
 
-    tableHTML += `<tr style="border-bottom:1px solid #f3f4f6;background:${{bgColor}};">`;
-    tableHTML += `<td style="padding:12px;font-weight:${{fontWeight}};color:#111827;">`;
-    tableHTML += bin.label;
-    tableHTML += `</td>`;
-    tableHTML += `<td style="padding:12px;text-align:right;font-family:monospace;">`;
-    tableHTML += `<span style="color:${{minColor}};font-weight:600;">${{bin.range[0].toFixed(1)}}%</span>`;
-    tableHTML += ` to `;
-    tableHTML += `<span style="color:${{maxColor}};font-weight:600;">${{bin.range[1].toFixed(1)}}%</span>`;
-    tableHTML += `</td>`;
-    tableHTML += '</tr>';
-  }});
+  const config = {{
+    displayModeBar: false,
+    responsive: true
+  }};
 
-  tableHTML += '</tbody></table>';
+  Plotly.newPlot('histogramChart', [trace], layout, config);
 
-  // Add player's actual return
-  const returnColor = playerReturn >= 0 ? '#059669' : '#dc2626';
-  const binLabel = playerBin >= 0 ? bins[playerBin].label : 'Unknown';
-  tableHTML += `<div style="margin-top:16px;padding:12px;background:#f9fafb;border-radius:8px;border:1px solid #e5e7eb;">`;
-  tableHTML += `<strong>Your Actual Return:</strong> <span style="color:${{returnColor}};font-weight:700;">${{playerReturn.toFixed(2)}}%</span> `;
-  tableHTML += `<span style="color:#6b7280;">(${{binLabel}} of simulations)</span>`;
-  tableHTML += '</div>';
+  // Add vertical line for player's actual return
+  const shapes = [{{
+    type: 'line',
+    x0: playerReturn,
+    x1: playerReturn,
+    y0: 0,
+    y1: 1,
+    yref: 'paper',
+    line: {{
+      color: '#c53030',  // Red line
+      width: 3,
+      dash: 'dash'
+    }}
+  }}];
 
-  document.getElementById('probabilityTable').innerHTML = tableHTML;
+  const annotations = [{{
+    x: playerReturn,
+    y: 1,
+    yref: 'paper',
+    text: `Your Return: ${{playerReturn.toFixed(1)}}%`,
+    showarrow: true,
+    arrowhead: 2,
+    arrowsize: 1,
+    arrowwidth: 2,
+    arrowcolor: '#c53030',
+    ax: 0,
+    ay: -40,
+    font: {{ size: 11, color: '#c53030', weight: 700 }},
+    bgcolor: '#ffffff',
+    bordercolor: '#c53030',
+    borderwidth: 1,
+    borderpad: 4
+  }}];
+
+  Plotly.relayout('histogramChart', {{ shapes: shapes, annotations: annotations }});
 }}
 
-// Create probability table on page load
-if (document.getElementById('probabilityTable')) {{
-  createProbabilityTable();
+// Create histogram on page load
+if (document.getElementById('histogramChart')) {{
+  createHistogramChart();
 }}
 
 // Create chart when frontier tab is visible
@@ -782,8 +846,10 @@ def reset_game_state():
     # CRITICAL FIX: Thread-safe session data reset
     with _SESSION_LOCK:
         _SESSION_DATA = None
-    _SESSION_EVENT.clear()
-    print("[server] Game state reset to defaults")
+    # IMPORTANT: Don't clear the event here - let run_ui() handle it
+    # Clearing it here can cause race conditions where the game loop
+    # is still waiting on the event when /reset is called
+    print("[server] Game state reset to defaults (stage=0, ctx cleared)")
 
 
 def update_game_state(stage: int, ctx: dict):

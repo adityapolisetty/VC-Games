@@ -984,21 +984,40 @@ document.addEventListener("DOMContentLoaded", () => {
       client_budget_remaining: 100
     };
 
-    fetch("/submit", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)})
-      .then(() => {
-        console.log('[enter] Stage 0 submitted, opening game tab...');
-        // Open game in new tab - server will now be at Stage 1
-        window.open("/game", "_blank");
+    // Retry logic for server not ready (409 conflict)
+    const maxRetries = 10;
+    let retryCount = 0;
 
-        // Re-enable enter button so user can start another game after this one ends
-        setTimeout(() => {
+    function trySubmit() {
+      fetch("/submit", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)})
+        .then(resp => {
+          if (resp.status === 409 && retryCount < maxRetries) {
+            // Server not ready yet (still processing previous game), retry
+            retryCount++;
+            console.log(`[enter] Server not ready, retrying (${retryCount}/${maxRetries})...`);
+            setTimeout(trySubmit, 500);
+            return;
+          }
+          if (!resp.ok) {
+            throw new Error(`Server error: ${resp.status}`);
+          }
+          console.log('[enter] Stage 0 submitted, opening game tab...');
+          // Open game in new tab - server will now be at Stage 1
+          window.open("/game", "_blank");
+
+          // Re-enable enter button so user can start another game after this one ends
+          setTimeout(() => {
+            enterBtn.disabled = false;
+          }, 1000);
+        })
+        .catch((err) => {
+          console.error('[enter] Submit failed:', err);
+          alert("Failed to start game. Server may not be ready. Try again in a moment.");
           enterBtn.disabled = false;
-        }, 1000);
-      })
-      .catch(() => {
-        alert("Failed to start game. Is Python running?");
-        enterBtn.disabled = false;
-      });
+        });
+    }
+
+    trySubmit();
   }
 
   // Poll server until Stage 1 with cards is ready
