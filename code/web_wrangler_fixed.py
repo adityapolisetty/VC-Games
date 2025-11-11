@@ -663,6 +663,9 @@ function createProbabilityTable() {{
   const quintiles = {json.dumps(stats.get('sim_quintiles', {}))};
   const playerReturn = {stats.get('net_return_pct', 0):.2f};
 
+  console.log('[probability] Quintiles data:', quintiles);
+  console.log('[probability] Player return:', playerReturn);
+
   // Check if quintile data exists
   if (!quintiles || Object.keys(quintiles).length === 0) {{
     document.getElementById('probabilityTable').innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">No simulation data available</div>';
@@ -671,12 +674,14 @@ function createProbabilityTable() {{
 
   // Build 5 probability bins (quintiles) - each 20% probability
   const bins = [
-    {{ prob: '20%', range: [quintiles.min, quintiles.p20], label: 'Bottom 20%' }},
-    {{ prob: '20%', range: [quintiles.p20, quintiles.p40], label: '20-40%' }},
-    {{ prob: '20%', range: [quintiles.p40, quintiles.p60], label: '40-60% (Middle)' }},
-    {{ prob: '20%', range: [quintiles.p60, quintiles.p80], label: '60-80%' }},
-    {{ prob: '20%', range: [quintiles.p80, quintiles.max], label: 'Top 20%' }}
+    {{ range: [quintiles.min, quintiles.p20], label: 'First Quintile' }},
+    {{ range: [quintiles.p20, quintiles.p40], label: 'Second Quintile' }},
+    {{ range: [quintiles.p40, quintiles.p60], label: 'Third Quintile' }},
+    {{ range: [quintiles.p60, quintiles.p80], label: 'Fourth Quintile' }},
+    {{ range: [quintiles.p80, quintiles.max], label: 'Fifth Quintile' }}
   ];
+
+  console.log('[probability] Bins constructed:', bins);
 
   // Determine which bin contains player's return
   let playerBin = -1;
@@ -688,8 +693,8 @@ function createProbabilityTable() {{
 
   let tableHTML = '<table style="width:100%;border-collapse:collapse;font-size:14px;">';
   tableHTML += '<thead><tr style="border-bottom:2px solid #e5e7eb;">';
-  tableHTML += '<th style="text-align:left;padding:10px;color:#6b7280;font-weight:600;">Likelihood</th>';
-  tableHTML += '<th style="text-align:center;padding:10px;color:#6b7280;font-weight:600;">Return Range</th>';
+  tableHTML += '<th style="text-align:left;padding:12px;color:#6b7280;font-weight:600;">Scenario</th>';
+  tableHTML += '<th style="text-align:right;padding:12px;color:#6b7280;font-weight:600;">Return Range</th>';
   tableHTML += '</tr></thead><tbody>';
 
   bins.forEach((bin, i) => {{
@@ -700,10 +705,10 @@ function createProbabilityTable() {{
     const maxColor = bin.range[1] >= 0 ? '#059669' : '#dc2626';
 
     tableHTML += `<tr style="border-bottom:1px solid #f3f4f6;background:${{bgColor}};">`;
-    tableHTML += `<td style="padding:12px;font-weight:${{fontWeight}};">`;
-    tableHTML += `<span style="font-weight:700;">${{bin.prob}}</span> <span style="color:#6b7280;">${{bin.label}}</span>`;
+    tableHTML += `<td style="padding:12px;font-weight:${{fontWeight}};color:#111827;">`;
+    tableHTML += bin.label;
     tableHTML += `</td>`;
-    tableHTML += `<td style="padding:12px;text-align:center;font-family:monospace;">`;
+    tableHTML += `<td style="padding:12px;text-align:right;font-family:monospace;">`;
     tableHTML += `<span style="color:${{minColor}};font-weight:600;">${{bin.range[0].toFixed(1)}}%</span>`;
     tableHTML += ` to `;
     tableHTML += `<span style="color:${{maxColor}};font-weight:600;">${{bin.range[1].toFixed(1)}}%</span>`;

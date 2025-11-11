@@ -882,10 +882,9 @@ document.addEventListener("DOMContentLoaded", () => {
   } else if (loadingStage2 && STAGE === 2) {
     // Successfully loaded Stage 2 - show app with Stage 2 content
     showApp();
-  } else if (STAGE === 0 || STAGE === 1){
-    // Stage 0 (no game) or Stage 1 (fresh game): Show login screen
-    // Always clear ALL client-side state to start fresh
-    console.log('[init] Stage 0/1 - clearing all client-side state and showing login');
+  } else if (STAGE === 0){
+    // Stage 0 (no active game): Show login screen and clear all state
+    console.log('[init] Stage 0 - clearing all client-side state and showing login');
     localStorage.removeItem("player_name");
     localStorage.removeItem("game_type");
     localStorage.removeItem("activity_v1");
@@ -893,6 +892,52 @@ document.addEventListener("DOMContentLoaded", () => {
     // Clear any stale cache by adding timestamp to future requests
     window.gameStartTime = Date.now();
     showLogin();
+  } else if (STAGE === 1){
+    // Stage 1: Check if player has already entered (page reload after Enter button)
+    const n=localStorage.getItem("player_name");
+    if(n && SEED.cards && SEED.cards.length > 0) {
+      // Player entered and server has cards ready - show game
+      console.log('[init] Stage 1 with player name and cards - showing app');
+      showApp();
+    } else if (n && (!SEED.cards || SEED.cards.length === 0)) {
+      // Player entered but server hasn't prepared cards yet - keep login visible and poll
+      console.log('[init] Stage 1 with player name but no cards - polling for cards');
+      showLogin();
+      // Poll for cards to be ready (server might be preparing them)
+      let pollAttempts = 0;
+      const pollForCards = () => {
+        if (pollAttempts++ > 20) {
+          console.error('[init] Timeout waiting for cards - server may be stuck');
+          // Clear state and show login
+          localStorage.removeItem("player_name");
+          localStorage.removeItem("game_type");
+          showLogin();
+          return;
+        }
+        fetch("/", {cache: "no-store"})
+          .then(resp => resp.text())
+          .then(html => {
+            // Check if cards are now available
+            const match = html.match(/"cards":\s*\[([^\]]+)\]/);
+            if (match && match[1].trim().length > 0) {
+              console.log('[init] Cards now available, reloading...');
+              location.href = "/";
+            } else {
+              setTimeout(pollForCards, 300);
+            }
+          })
+          .catch(() => setTimeout(pollForCards, 300));
+      };
+      setTimeout(pollForCards, 300);
+    } else {
+      // No player name - show login screen
+      console.log('[init] Stage 1 without player name - showing login');
+      localStorage.removeItem("player_name");
+      localStorage.removeItem("game_type");
+      localStorage.removeItem("activity_v1");
+      sessionStorage.removeItem("loading_stage2");
+      showLogin();
+    }
   } else {
     // Stage 2+: Continue existing game if player_name exists
     const n=localStorage.getItem("player_name");
@@ -920,9 +965,11 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem("player_name", nm);
     localStorage.setItem("game_type", gt);
 
-    // Stage 1+ - just show the app view
-    try { initSignalsFromGame(); } catch(_){ }
-    showApp();
+    // CRITICAL FIX: Always reload page to get fresh Stage 1 data from server
+    // This prevents showing stale SEED data from previous game
+    // The server's game loop will have prepared a fresh Stage 1 by now
+    console.log('[enter] Reloading page to fetch fresh Stage 1 data');
+    location.href = "/";
   }
   // No inline onclick; rely on single listener
   if (enterBtn) enterBtn.addEventListener("click", doEnter);
