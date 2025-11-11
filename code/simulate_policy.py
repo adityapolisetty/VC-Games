@@ -91,18 +91,49 @@ def run_policy_simulation(
     """
     # Load posteriors
     import pathlib
-    # Resolve path relative to this script's location
+    import shutil
+
+    # Resolve path - try multiple locations
     script_dir = pathlib.Path(__file__).parent
     p = pathlib.Path(post_npz_path)
+
+    # Try multiple locations in order:
+    # 1. Absolute path or current working directory
+    # 2. Relative to script location
+    # 3. Railway volume (/data/)
+    # 4. Repo root (parent of script dir)
+
+    locations_to_try = [p]
     if not p.is_absolute():
-        # Try relative to script directory first
-        p_relative_to_script = script_dir / post_npz_path
-        if p_relative_to_script.exists():
-            p = p_relative_to_script
-        elif not p.exists():
-            raise FileNotFoundError(f"Posteriors not found at: {p} (tried {p_relative_to_script})")
-    elif not p.exists():
-        raise FileNotFoundError(f"Posteriors not found: {p}")
+        locations_to_try.extend([
+            script_dir / post_npz_path,
+            pathlib.Path("/data") / post_npz_path,
+            script_dir.parent / post_npz_path,
+        ])
+
+    found_path = None
+    for location in locations_to_try:
+        if location.exists():
+            found_path = location
+            break
+
+    # If not found in /data/ but found elsewhere, copy to /data/ for persistence
+    volume_path = pathlib.Path("/data") / post_npz_path
+    if found_path is None:
+        tried_paths = ", ".join(str(loc) for loc in locations_to_try)
+        raise FileNotFoundError(f"Posteriors not found. Tried: {tried_paths}")
+    elif found_path != volume_path and pathlib.Path("/data").exists():
+        # Copy to volume for future runs (Railway best practice)
+        try:
+            volume_path.parent.mkdir(parents=True, exist_ok=True)
+            if not volume_path.exists():
+                print(f"[simulate_policy] Copying posteriors to volume: {volume_path}")
+                shutil.copy2(found_path, volume_path)
+                print(f"[simulate_policy] Copy complete - future runs will use volume cache")
+        except Exception as e:
+            print(f"[simulate_policy] Warning: Could not copy to volume: {e}")
+
+    p = found_path
 
     with np.load(p, allow_pickle=False) as z:
         # Marginal posteriors P(Rmax|signal)
