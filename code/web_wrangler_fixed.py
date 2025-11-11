@@ -315,6 +315,14 @@ class _H(BaseHTTPRequestHandler):
         if self.path == "/reset":
             # Reset game state (used when user clicks restart or game ends)
             print("[server] Received /reset request - clearing all game state")
+
+            # CRITICAL FIX: Signal the waiting game loop to exit properly
+            # Set end_game marker so run_ui() returns None and game loop restarts
+            with _SESSION_LOCK:
+                _SESSION_DATA = {"action": "end_game"}
+            _SESSION_EVENT.set()  # Wake up the waiting run_ui() call
+
+            # Now reset game state for the new game
             reset_game_state()  # Use the proper reset function
 
             self.send_response(200)

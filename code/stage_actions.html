@@ -827,16 +827,28 @@ document.addEventListener("DOMContentLoaded", () => {
   if (restartBtnBrand) {
     restartBtnBrand.onclick = () => {
       if (confirm("Are you sure you want to restart? All progress will be lost.")) {
+        // Disable button to prevent double-clicks during navigation
+        restartBtnBrand.disabled = true;
+        restartBtnBrand.textContent = "Restarting...";
+
         // Clear ALL storage - localStorage AND sessionStorage
         localStorage.clear();
         sessionStorage.clear();
 
-        // Send BOTH /end (to exit game loop) and /reset (to clear state)
-        fetch("/end", {method: "POST"}).catch(() => {});
-        fetch("/reset", {method: "POST"}).catch(() => {});
-
-        // Close this game tab - user returns to landing page tab
-        setTimeout(() => { window.close(); }, 100);
+        // Reset server state and wait for confirmation before navigating
+        fetch("/reset", {method: "POST"})
+          .then(() => {
+            // Server confirmed reset - now navigate to landing page
+            setTimeout(() => {
+              location.href = "/";
+            }, 200);
+          })
+          .catch(() => {
+            // Even if fetch fails, navigate anyway
+            setTimeout(() => {
+              location.href = "/";
+            }, 200);
+          });
       }
     };
   }
