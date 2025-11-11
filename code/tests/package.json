@@ -1,0 +1,28 @@
+{
+  "name": "vc-card-game-tests",
+  "version": "1.0.0",
+  "description": "Playwright end-to-end tests for VC Card Game",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:local": "playwright test",
+    "test:railway": "TEST_URL=$RAILWAY_URL playwright test",
+    "test:smoke": "playwright test --grep '@smoke'",
+    "test:full-flow": "playwright test full_game_flow.spec.ts",
+    "test:restart": "playwright test restart_navigation.spec.ts",
+    "test:edge": "playwright test edge_cases.spec.ts",
+    "report": "playwright show-report",
+    "ui": "playwright test --ui"
+  },
+  "keywords": [
+    "playwright",
+    "e2e",
+    "testing"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.40.0"
+  }
+}

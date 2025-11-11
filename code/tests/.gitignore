@@ -1,0 +1,25 @@
+# Playwright artifacts
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Screenshots and videos
+screenshots/
+videos/
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Locust
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

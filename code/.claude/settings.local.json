@@ -15,7 +15,9 @@
       "Bash(lsof:*)",
       "WebSearch",
       "WebFetch(domain:codepen.io)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(xargs kill:*)",
+      "Bash(npx playwright test:*)"
     ],
     "deny": [],
     "ask": []
