@@ -1215,11 +1215,10 @@ elif view == "Mean-Variance Frontier":
             unsafe_allow_html=True
         )
 
-# ==============================
-# POSTERIORS VIEW
-# ==============================
-
-else:  # view == "Posteriors"
+elif view == "Posteriors":
+    # ==============================
+    # POSTERIORS VIEW
+    # ==============================
 
     # Load unified posterior NPZ (precomp_output/post_mc.npz)
     post_npz_path = Path("precomp_output/post_mc.npz").resolve()

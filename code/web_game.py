@@ -274,8 +274,10 @@ if __name__ == "__main__":
             stage1_invested_ids = [int(cid) for cid in df[df["inv1"] > 0]["card_id"].tolist()]
 
             # ---- Stage 2 ----
+            print(f"[game] Stage 1 complete. Starting Stage 2 with wallet=£{wallet:.2f}")
             # Only allow investing in piles that were invested in Stage 1
             act = run_ui(2, df, wallet, signal_mode=mode, signal_cost=cost, stage1_invested=stage1_invested_ids, stage_history=stage_history)
+            print(f"[game] Stage 2 UI returned, processing actions")
             if act is None:
                 raise RuntimeError("Stage 2 UI returned None - did the server fail?")
             df, s_spent, _ = stage_buy_signals(

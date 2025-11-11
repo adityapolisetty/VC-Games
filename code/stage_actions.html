@@ -268,7 +268,7 @@ window.__enterClick = function(){
 
       <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--b);">
         <div style="font-size:14px; color:#6b7280; margin-bottom:12px;">
-          If you are happy with your investments or don't want to invest in this stage, go ahead and click Finish Stage below
+          If you are happy with your investments or don't want to invest in this stage, go ahead and click the button below
         </div>
         <button id="finishStage" class="btn-cta-sm" style="width:100%;">Finish Stage 1</button>
       </div>
@@ -726,13 +726,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
     fetch("/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
       .then(()=>{
+        console.log('[submit] POST successful, stage:', STAGE);
         if (STAGE === 2) {
           // Stage 2: show performance modal
+          console.log('[submit] Stage 2 complete, showing performance modal');
           const performanceModal = document.getElementById("performanceModal");
           if (performanceModal) performanceModal.style.display = "flex";
         } else {
           // Stage 1: Show loading overlay, wait for server to restart with Stage 2
           // DO NOT clear localStorage - keep player_name and game_type for Stage 2
+          console.log('[submit] Stage 1 complete, waiting for Stage 2...');
           overlayMsg.textContent = "Your investments are hard at work…";
           overlay.style.display = "flex";
           // Mark that we're loading Stage 2 to prevent flash of login page
@@ -749,8 +752,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // Poll server to check when Stage 2 is ready (instead of fixed timeout)
   function pollForStage2Ready() {
     const startTime = Date.now();
-    const maxWait = 30000; // 30 seconds max
-    const pollInterval = 300; // Check every 300ms
+    const maxWait = 15000; // 15 seconds max (should be much faster with proper shutdown)
+    const pollInterval = 200; // Check every 200ms
 
     function checkServer() {
       // Stop polling if flag was cleared (e.g., user navigated away)
@@ -770,34 +773,28 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       // Try to fetch root - if server is ready with Stage 2, it will respond
-      fetch("/", {method: "HEAD", cache: "no-store"})
-        .then(response => {
-          if (response.ok) {
-            // Server responded - now check if it's Stage 2 by fetching the page
-            fetch("/", {cache: "no-store"})
-              .then(resp => resp.text())
-              .then(html => {
-                // Check if HTML contains Stage 2 context (SEED.stage === 2)
-                if (html.includes('"stage":2') || html.includes('"stage": 2')) {
-                  // Stage 2 is ready! Reload will clear flag and show Stage 2
-                  console.log('[poll] Stage 2 detected, reloading...');
-                  location.href = "/";
-                } else {
-                  // Still Stage 1 or transitioning - keep polling
-                  setTimeout(checkServer, pollInterval);
-                }
-              })
-              .catch(() => {
-                // Fetch failed - server might be restarting, keep polling
-                setTimeout(checkServer, pollInterval);
-              });
+      fetch("/", {cache: "no-store"})
+        .then(resp => resp.text())
+        .then(html => {
+          // Check if HTML contains Stage 2 context (SEED.stage === 2)
+          if (html.includes('"stage":2') || html.includes('"stage": 2')) {
+            // Stage 2 is ready! Reload will clear flag and show Stage 2
+            const waitTime = ((Date.now() - startTime) / 1000).toFixed(1);
+            console.log(`[poll] Stage 2 detected after ${waitTime}s, reloading...`);
+            location.href = "/";
           } else {
-            // Server not ready yet - keep polling
+            // Still Stage 1 or transitioning - keep polling
+            if (elapsed > 2000 && elapsed % 2000 < pollInterval) {
+              console.log(`[poll] Still waiting for Stage 2... (${(elapsed/1000).toFixed(1)}s)`);
+            }
             setTimeout(checkServer, pollInterval);
           }
         })
         .catch(() => {
           // Server not responding yet (likely restarting) - keep polling
+          if (elapsed > 2000 && elapsed % 2000 < pollInterval) {
+            console.log(`[poll] Server unavailable, retrying... (${(elapsed/1000).toFixed(1)}s)`);
+          }
           setTimeout(checkServer, pollInterval);
         });
     }

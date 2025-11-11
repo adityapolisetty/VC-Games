@@ -609,6 +609,8 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
     if not session_data:
         print(f"[web] Warning: Session {session_id[:8]} disappeared")
         srv.shutdown()
+        srv.server_close()
+        time.sleep(0.1)
         return None
 
     actions = None
@@ -624,6 +626,8 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
         if not posted_event.wait(timeout=300):  # 5 minute timeout
             print(f"[web] Warning: Stage {stage} timed out waiting for POST")
             srv.shutdown()
+            srv.server_close()
+            time.sleep(0.1)
             # Clean up session
             if session_id in _SESSIONS:
                 del _SESSIONS[session_id]
@@ -639,10 +643,15 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
             ended_event.wait(timeout=300)
             time.sleep(0.2)
 
+    # Shutdown server and wait for thread to finish
+    print(f"[web] Shutting down server for stage {stage}")
     srv.shutdown()
+    srv.server_close()  # Release socket immediately
+    time.sleep(0.1)  # Give thread time to clean up
 
     # Clean up session
     if session_id in _SESSIONS:
         del _SESSIONS[session_id]
 
+    print(f"[web] Stage {stage} complete, returning actions")
     return actions
