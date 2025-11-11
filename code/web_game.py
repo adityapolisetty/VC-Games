@@ -194,17 +194,7 @@ if __name__ == "__main__":
     print("[game] Starting game server. Press Ctrl+C to stop.")
     while True:
         try:
-            # ---- Stage 0: Landing Page ----
-            # Show landing page FIRST, wait for player to click "Enter"
-            # Don't generate board until after Enter is clicked
-            print("[game] Showing landing page...")
-            act = run_ui(0, None, 0, open_browser=open_first, signal_mode=mode, signal_cost=cost)
-            if act is None:
-                print("[game] Landing page returned None - player closed browser")
-                continue  # Restart and show landing page again
-
-            # Player clicked Enter - NOW generate the game board
-            print("[game] Player entered - generating new game...")
+            # 9 piles - generate random seed for each new game
             game_seed = np.random.randint(0, 1_000_000)
             df = draw_deck(n_cards=9, seed=game_seed)
             print(f"[game] New game started with seed: {game_seed}")
@@ -225,7 +215,7 @@ if __name__ == "__main__":
             session_id = None  # Will be created after Stage 1 submission
 
             # ---- Stage 1 ----
-            act = run_ui(1, df, wallet, open_browser=False, signal_mode=mode, signal_cost=cost)  # Don't open browser again
+            act = run_ui(1, df, wallet, open_browser=open_first, signal_mode=mode, signal_cost=cost)
             if act is None:
                 # Player closed browser or restarted - don't create DB session
                 print("[game] Stage 1 returned None - game abandoned before submission")

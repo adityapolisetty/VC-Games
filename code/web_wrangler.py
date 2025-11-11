@@ -654,26 +654,24 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
     }
 
     # Build lightweight cards with optional median/top2 and second_rank fields
-    # For Stage 0 (landing page), df is None so no cards
+    cards_df = df.loc[df["alive"], :].copy()
+    cols = [c for c in ("card_id", "N", "med", "sum2", "second_rank") if c in cards_df.columns]
     cards = []
-    if df is not None and len(df) > 0:
-        cards_df = df.loc[df["alive"], :].copy()
-        cols = [c for c in ("card_id", "N", "med", "sum2", "second_rank") if c in cards_df.columns]
-        for _, r in cards_df[cols].iterrows():
-            rec = {"card_id": int(r.get("card_id"))}
-            if "med" in cols: rec["med"] = int(r.get("med"))
-            if "sum2" in cols: rec["sum2"] = int(r.get("sum2"))
-            if "N" in cols: rec["N"] = int(r.get("N"))
-            if "second_rank" in cols: rec["second_rank"] = int(r.get("second_rank"))
-            cards.append(rec)
+    for _, r in cards_df[cols].iterrows():
+        rec = {"card_id": int(r.get("card_id"))}
+        if "med" in cols: rec["med"] = int(r.get("med"))
+        if "sum2" in cols: rec["sum2"] = int(r.get("sum2"))
+        if "N" in cols: rec["N"] = int(r.get("N"))
+        if "second_rank" in cols: rec["second_rank"] = int(r.get("second_rank"))
+        cards.append(rec)
 
     ctx = {
         "stage": stage,
         "total_budget": 100.0,  # UI label only
         "wallet": float(wallet),
         "cards": cards,
-        "prev_signals": _prev_signals_map(df) if df is not None else {},
-        "prev_invest": _prev_invest_map(df) if df is not None else {},
+        "prev_signals": _prev_signals_map(df),
+        "prev_invest": _prev_invest_map(df),
         "results": results or {},
         "signal_mode": str(signal_mode),
         "signal_cost": float(signal_cost),

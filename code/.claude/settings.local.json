@@ -8,7 +8,8 @@
       "WebFetch(domain:code.claude.com)",
       "Bash(git add:*)",
       "Bash(pip install:*)",
-      "Bash(streamlit:*)"
+      "Bash(streamlit:*)",
+      "Bash(git log:*)"
     ],
     "deny": [],
     "ask": []
