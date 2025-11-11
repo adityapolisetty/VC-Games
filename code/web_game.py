@@ -455,12 +455,13 @@ if __name__ == "__main__":
                     player_concentration=concentration_index,
                     rounds=10000,
                 )
-                stats["sim_returns"] = sim_returns.tolist()
+                # Don't send full 10k returns array to UI (too large for JSON/HTML)
+                # stats["sim_returns"] = sim_returns.tolist()  # Skip full array
                 stats["sim_metadata"] = sim_metadata
                 print(f"[game] Simulation complete: mean={sim_metadata['mean']:.2f}%, std={sim_metadata['std']:.2f}%")
             except Exception as e:
                 print(f"[game] Policy simulation failed: {e}")
-                stats["sim_returns"] = []
+                # stats["sim_returns"] = []  # Skip full array
                 stats["sim_metadata"] = {}
 
             # ---- Show Results (triggered from Stage 2) ----
