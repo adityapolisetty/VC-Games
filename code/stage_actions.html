@@ -911,10 +911,14 @@ document.addEventListener("DOMContentLoaded", () => {
     // Successfully loaded Stage 2 - show app with Stage 2 content
     showApp();
   } else if (STAGE===1){
-    // Stage 1: Fresh game - always clear ALL localStorage to start fresh
+    // Stage 1: Fresh game - always clear ALL client-side state to start fresh
+    console.log('[init] Starting fresh game - clearing all client-side state');
     localStorage.removeItem("player_name");
     localStorage.removeItem("game_type");
     localStorage.removeItem("activity_v1");
+    sessionStorage.removeItem("loading_stage2");
+    // Clear any stale cache by adding timestamp to future requests
+    window.gameStartTime = Date.now();
     showLogin();
   } else {
     // Stage 2+: Continue existing game if player_name exists
@@ -925,7 +929,15 @@ document.addEventListener("DOMContentLoaded", () => {
       overlay.style.display = 'none';
       sessionStorage.removeItem('loading_stage2');
     }
-    else showLogin();
+    else {
+      // No player name but not Stage 1 - clear stale state and show login
+      console.log('[init] Stale state detected (Stage 2+ with no player) - resetting');
+      localStorage.removeItem("player_name");
+      localStorage.removeItem("game_type");
+      localStorage.removeItem("activity_v1");
+      sessionStorage.removeItem("loading_stage2");
+      showLogin();
+    }
   }
 
   function doEnter(){

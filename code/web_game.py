@@ -3,7 +3,7 @@ import numpy as np
 import argparse
 import pandas as pd
 
-from web_wrangler import run_ui  # UI server only
+from web_wrangler_fixed import run_ui, start_persistent_server, reset_game_state  # UI server only - using fixed singleton version
 from sim_res import _deal_cards_global_deck, round_seed
 from database import init_db, create_session, log_stage_action, log_game_results, close_session, mark_session_completed, delete_session
 from simulate_policy import run_policy_simulation
@@ -190,10 +190,17 @@ if __name__ == "__main__":
     # Initialize database (once at startup)
     init_db()
 
+    # Start persistent HTTP server (once at startup)
+    start_persistent_server(port=8765, open_browser=open_first)
+
     # Game loop - restart after each game ends
     print("[game] Starting game server. Press Ctrl+C to stop.")
     while True:
         try:
+            # CRITICAL: Reset all game state before starting new game
+            reset_game_state()
+            print("[game] Game state reset - starting fresh game")
+
             # 9 piles - generate random seed for each new game
             game_seed = np.random.randint(0, 1_000_000)
             df = draw_deck(n_cards=9, seed=game_seed)
@@ -215,7 +222,8 @@ if __name__ == "__main__":
             session_id = None  # Will be created after Stage 1 submission
 
             # ---- Stage 1 ----
-            act = run_ui(1, df, wallet, open_browser=open_first, signal_mode=mode, signal_cost=cost)
+            # Note: open_browser is only used on first server start (already done above)
+            act = run_ui(1, df, wallet, signal_mode=mode, signal_cost=cost)
             if act is None:
                 # Player closed browser or restarted - don't create DB session
                 print("[game] Stage 1 returned None - game abandoned before submission")
@@ -492,9 +500,7 @@ if __name__ == "__main__":
             import traceback
             traceback.print_exc()
 
-            # Cleanup all active HTTP servers before restarting
-            from web_wrangler import cleanup_all_servers
-            cleanup_all_servers()
+            # Note: No server cleanup needed - persistent server continues running
 
             # Delete abandoned session if it exists
             if session_id:

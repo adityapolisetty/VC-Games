@@ -1,0 +1,838 @@
+# web_wrangler.py - REFACTORED: Single persistent server architecture
+import json
+import pathlib
+import threading
+import time
+import webbrowser
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import socket
+import uuid
+
+import pandas as pd
+
+HTTPServer.allow_reuse_address = True
+_BROWSER_OPENED = False  # guard to open browser only once per process
+
+# REFACTORED: Single server instance with dynamic routing based on game state
+_SERVER_INSTANCE = None  # Singleton server
+_SERVER_LOCK = threading.Lock()  # Thread-safe server access
+_GAME_STATE = {
+    'stage': 0,  # Current game stage (0=not started, 1=stage1, 2=stage2, 3=results)
+    'ctx': {},   # Current context data
+    'ready': threading.Event(),  # Signals when stage transition is complete
+}
+_SESSION_EVENT = threading.Event()  # Signals when user submits data
+_SESSION_DATA = None  # Stores submitted data
+
+_HTML = pathlib.Path(__file__).with_name("stage_actions.html")
+_ASSETS_DIR = pathlib.Path(__file__).with_name("assets")
+_FONT = pathlib.Path(__file__).with_name("imperial.woff2")
+_SSP_REG = pathlib.Path(__file__).with_name("SourceSansPro-Regular.woff2")
+_SSP_REG_ALT = pathlib.Path(__file__).with_name("SourceSansPro-Regular.ttf.woff2")
+_SSP_SEMIBOLD = pathlib.Path(__file__).with_name("SourceSansPro-Semibold.woff2")
+_SSP_SEMIBOLD_ALT = pathlib.Path(__file__).with_name("SourceSansPro-Semibold.ttf.woff2")
+
+
+def _prev_signals_map(df: pd.DataFrame) -> dict[int, list[int]]:
+    out = {}
+    for _, r in df.iterrows():
+        sigs = []
+        for k in (1, 2, 3, 4):
+            v = r.get(f"s{k}")
+            if pd.notna(v) and v is not None and str(v) != "None":
+                sigs.append(k)
+        if sigs:
+            out[int(r["card_id"])] = sigs
+    return out
+
+
+def _prev_invest_map(df: pd.DataFrame) -> dict[int, float]:
+    out = {}
+    for _, r in df.iterrows():
+        tot = float(r.get("inv1", 0) or 0) + float(r.get("inv2", 0) or 0) + float(r.get("inv3", 0) or 0)
+        if tot > 0:
+            out[int(r["card_id"])] = tot
+    return out
+
+
+class _H(BaseHTTPRequestHandler):
+    """Request handler with dynamic routing based on game state"""
+
+    def log_message(self, format, *args):
+        """Suppress default logging to reduce noise"""
+        pass
+
+    def do_HEAD(self):
+        """Handle HEAD requests for client polling"""
+        global _GAME_STATE
+
+        if self.path == "/results":
+            # Client is checking if results are ready
+            with _SERVER_LOCK:
+                if _GAME_STATE['stage'] == 3 and _GAME_STATE['ready'].is_set():
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html")
+                    self.end_headers()
+                else:
+                    # Results not ready yet
+                    self.send_response(503)  # Service Unavailable
+                    self.end_headers()
+            return
+
+        # Default: method not allowed
+        self.send_response(405)
+        self.end_headers()
+
+    def do_GET(self):
+        global _GAME_STATE, _SESSION_DATA
+
+        # Health check endpoint for Railway
+        if self.path == "/health":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+            return
+
+        if self.path == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        # Assets handler
+        if self.path.startswith("/assets/"):
+            fname = self.path.rsplit("/", 1)[-1]
+            p = _ASSETS_DIR / fname
+            if p.exists():
+                try:
+                    data = p.read_bytes()
+                except Exception:
+                    self.send_error(404)
+                    return
+                ctype = "font/woff2" if p.suffix == ".woff2" else "application/octet-stream"
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+                self.end_headers()
+                self.wfile.write(data)
+                return
+
+        # Font assets (legacy paths)
+        if self.path == "/assets/imperial.woff2":
+            try:
+                data = _FONT.read_bytes()
+            except FileNotFoundError:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "font/woff2")
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
+        if self.path == "/assets/SourceSansPro-Regular.woff2":
+            try:
+                data = _SSP_REG.read_bytes()
+            except FileNotFoundError:
+                try:
+                    data = _SSP_REG_ALT.read_bytes()
+                except FileNotFoundError:
+                    self.send_error(404)
+                    return
+            self.send_response(200)
+            self.send_header("Content-Type", "font/woff2")
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
+        if self.path == "/assets/SourceSansPro-Semibold.woff2":
+            try:
+                data = _SSP_SEMIBOLD.read_bytes()
+            except FileNotFoundError:
+                try:
+                    data = _SSP_SEMIBOLD_ALT.read_bytes()
+                except FileNotFoundError:
+                    self.send_error(404)
+                    return
+            self.send_response(200)
+            self.send_header("Content-Type", "font/woff2")
+            self.send_header("Cache-Control", "public, max-age=31536000, immutable")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
+        # Main page - serve based on current game state
+        if self.path == "/":
+            with _SERVER_LOCK:
+                ctx = _GAME_STATE['ctx'].copy()
+                stage = _GAME_STATE['stage']
+
+            if stage == 0:
+                # No active game - serve error page
+                self.send_response(503)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
+                self.end_headers()
+                self.wfile.write(b"<html><body><h1>No active game</h1><p>Server is starting up...</p></body></html>")
+                return
+
+            # Serve stage action page
+            html = _HTML.read_text(encoding="utf-8")
+            seed = {
+                "stage": ctx.get("stage", stage),
+                "totalBudget": ctx.get("total_budget", 100.0),
+                "budgetRemaining": ctx.get("wallet", 0.0),
+                "cards": ctx.get("cards", []),
+                "prevSignals": ctx.get("prev_signals", {}),
+                "prevInvest": ctx.get("prev_invest", {}),
+                "stage_history": ctx.get("stage_history", []),
+                "stage1_invested": ctx.get("stage1_invested", []),
+            }
+            html = html.replace("</head>", f"<script>window.SEED={json.dumps(seed)};</script></head>")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            # CRITICAL: Aggressive cache-busting to prevent stale state
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+            self.end_headers()
+            self.wfile.write(html.encode("utf-8"))
+            return
+
+        # Results page
+        if self.path == "/results":
+            with _SERVER_LOCK:
+                ctx = _GAME_STATE['ctx'].copy()
+                stage = _GAME_STATE['stage']
+
+            if stage != 3:
+                # Results not ready yet
+                self.send_response(503)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
+                self.end_headers()
+                self.wfile.write(b"<html><body><h1>Results not ready</h1><p>Simulation in progress...</p></body></html>")
+                return
+
+            stats = ctx.get("results", {})
+            page = _results_page(stats)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            # CRITICAL: Aggressive cache-busting to prevent stale results
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+            self.end_headers()
+            self.wfile.write(page.encode("utf-8"))
+            return
+
+        self.send_error(404)
+
+    def do_POST(self):
+        global _GAME_STATE, _SESSION_DATA, _SESSION_EVENT
+
+        if self.path == "/submit":
+            n = int(self.headers.get("Content-Length", "0"))
+            data = json.loads(self.rfile.read(n).decode("utf-8"))
+
+            # Store submitted data
+            _SESSION_DATA = data
+            _SESSION_EVENT.set()
+
+            # Update player name in results if applicable
+            with _SERVER_LOCK:
+                if isinstance(_GAME_STATE['ctx'].get("results"), dict):
+                    _GAME_STATE['ctx']["results"]["player"] = data.get("player_name") or ""
+
+            # Send success response
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            response = {"status": "success", "message": "Data received"}
+            self.wfile.write(json.dumps(response).encode("utf-8"))
+            return
+
+        if self.path == "/end":
+            # Signal end of game
+            _SESSION_DATA = {"action": "end_game"}
+            _SESSION_EVENT.set()
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+            return
+
+        if self.path == "/reset":
+            # Reset game state (used when user clicks restart or game ends)
+            print("[server] Received /reset request - clearing all game state")
+            reset_game_state()  # Use the proper reset function
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"ok"}')
+            return
+
+        self.send_error(404)
+
+
+def _results_page(stats: dict) -> str:
+    """Generate results HTML page"""
+    hit_ace_label = "Yes" if (stats.get("ace_hits", 0) or 0) > 0 else "No"
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Performance - VC Card Games</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js" charset="utf-8"></script>
+<style>
+  @font-face{{font-family:'Source Sans Pro'; font-style:normal; font-weight:400; font-display:swap; src: local('Source Sans Pro Regular'), local('SourceSansPro-Regular'), url('/assets/SourceSansPro-Regular.woff2') format('woff2'), url('/assets/SourceSansPro-Regular.ttf.woff2') format('woff2');}}
+  @font-face{{font-family:'Source Sans Pro'; font-style:normal; font-weight:600; font-display:swap; src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url('/assets/SourceSansPro-Semibold.woff2') format('woff2'), url('/assets/SourceSansPro-Semibold.ttf.woff2') format('woff2');}}
+  :root {{ --blue:#2b6cb0; --red:#c53030; --green:#059669; --bg:#ffffff; --panel:#ffffff; --cta:#f59e0b; --ctatxt:#111827; --b:#e5e7eb; --infoW:72px; }}
+  *{{box-sizing:border-box}}
+  body{{margin:0;font-family:"Source Sans Pro", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif; background:var(--bg); color:#111827; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale}}
+
+  .brandbar{{display:flex;align-items:center;justify-content:center;gap:12px;padding:8px 12px;border-bottom:1px solid var(--b);background:var(--panel);position:sticky;top:0;z-index:20;font-size:22px}}
+  .brand-center{{font-weight:900}}
+
+  header.nav{{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--b);background:var(--panel);position:sticky;top:40px;z-index:10}}
+  .nav .title{{font-weight:600;font-size:14px;color:#111827}}
+  .right{{display:flex;gap:16px}}
+  .budget{{font-weight:700}}
+  .muted{{color:#4b5563}}
+
+  .wrap{{display:grid;grid-template-columns:1fr calc(420px - 170px + (var(--infoW)/2));gap:20px;padding:40px 20px 20px;margin-left:72px}}
+
+  .content-panel{{border:1px solid var(--b);border-radius:12px;padding:20px;background:var(--panel)}}
+
+  .tab-nav{{display:flex;gap:8px;margin-bottom:20px;border-bottom:2px solid var(--b);padding-bottom:8px}}
+  .tab-btn{{padding:10px 16px;background:transparent;border:none;color:#6b7280;font-weight:600;cursor:pointer;border-radius:6px 6px 0 0;transition:all .15s}}
+  .tab-btn:hover{{background:#f3f4f6;color:#111827}}
+  .tab-btn.active{{background:#111827;color:#e5e7eb}}
+
+  .tab-content{{display:none}}
+  .tab-content.active{{display:block}}
+
+  .summary-box{{max-width:520px}}
+
+  .stat-grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px}}
+  .stat{{display:flex;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--b);border-radius:10px;background:#fafafa}}
+  .stat-label{{color:#6b7280;font-size:14px}}
+  .stat-value{{font-weight:700;color:#111827}}
+
+  aside{{position:sticky;top:104px;height:fit-content;border:1px solid var(--b);border-radius:12px;padding:16px;background:var(--panel)}}
+
+  .btn, .btn-cta, .btn-cta-sm, .btn-ghost {{cursor:pointer}}
+  .btn{{padding:10px 14px;border-radius:10px;border:1px solid var(--b);background:#111827;color:#e5e7eb;transition:transform .15s, filter .15s, box-shadow .15s;font-weight:700}}
+  .btn[disabled]{{opacity:.5;cursor:not-allowed}}
+  .btn-cta, .btn-cta-sm, .btn-ghost{{padding:10px 14px;border-radius:10px;border:1px solid var(--b);background:#111827;color:#e5e7eb;width:auto;font-weight:700}}
+  .btn-ghost{{min-width:50px;text-align:center;background:#ffffff;color:#111827;margin-left:16px}}
+  .btn:hover, .btn-cta:hover, .btn-cta-sm:hover, .btn-ghost:hover{{transform:translateY(-1px);filter:brightness(1.1) saturate(1.1);box-shadow:0 6px 16px rgba(0,0,0,.18)}}
+  .btn:active, .btn-cta:active, .btn-cta-sm:active, .btn-ghost:active{{transform:none;filter:none;box-shadow:none}}
+
+  .overlay{{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:50}}
+  .overlay .msg{{background:var(--panel);border:1px solid var(--b);border-radius:14px;padding:24px 28px;font-weight:800}}
+
+  #frontierChart{{width:100%;height:600px}}
+  .js-plotly-plot .plotly .main-svg{{overflow:visible !important}}
+</style>
+</head>
+<body>
+
+<div class="brandbar">
+  <div class="brand-center">{stats.get('player','') or 'Team Alpha'} Performance</div>
+</div>
+
+<header class="nav">
+  <div class="title">End of Game</div>
+  <div class="right">
+    <div class="budget">Invested £{stats.get('invested',0):.2f}</div>
+    <div class="budget">Signals £{stats.get('signals_spent',0):.2f}</div>
+    <div class="budget">Remaining £{stats.get('wallet_left',0):.2f}</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <section class="content-panel">
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="summary">Summary</button>
+      <button class="tab-btn" data-tab="frontier">Frontier Analysis</button>
+    </div>
+
+    <!-- Summary Tab -->
+    <div id="summary-tab" class="tab-content active">
+      <h3 style="margin-top:0;">Performance Summary</h3>
+      <div style="display:grid;grid-template-columns:520px 1fr;gap:24px;align-items:start;">
+        <!-- Left: Stats Grid -->
+        <div class="summary-box">
+          <div class="stat-grid">
+            <div class="stat"><div class="stat-label">Budget</div><div class="stat-value">£100.00</div></div>
+            <div class="stat"><div class="stat-label">Total invested</div><div class="stat-value">£{stats.get('invested',0):.2f}</div></div>
+            <div class="stat"><div class="stat-label">Net return on budget</div><div class="stat-value">{stats.get('net_return_pct',0):.2f}%</div></div>
+            <div class="stat"><div class="stat-label">Spent on signals</div><div class="stat-value">£{stats.get('signals_spent',0):.2f}</div></div>
+            <div class="stat"><div class="stat-label">Piles invested</div><div class="stat-value">{stats.get('n_invested',0)}</div></div>
+            <div class="stat"><div class="stat-label">No. Ace hits</div><div class="stat-value">{hit_ace_label}</div></div>
+            <div class="stat"><div class="stat-label">No. King hits</div><div class="stat-value">{stats.get('king_hits',0)}</div></div>
+            <div class="stat"><div class="stat-label">No. Queen hits</div><div class="stat-value">{stats.get('queen_hits',0)}</div></div>
+          </div>
+        </div>
+
+        <!-- Right: Return Distribution Histogram -->
+        <div style="border:1px solid var(--b);border-radius:12px;padding:20px;background:var(--panel);">
+          <h4 style="margin:0 0 12px 0;color:#111827;">Your Strategy Distribution</h4>
+          <p style="font-size:13px;color:#6b7280;margin:0 0 16px 0;">
+            Simulated 10,000 rounds with your policy ({stats.get('sim_metadata',{}).get('n_signals',0)} signals, {stats.get('sim_metadata',{}).get('signal_type','')})
+          </p>
+          <div id="distributionChart" style="width:100%;height:400px;"></div>
+          <div style="margin-top:12px;font-size:13px;color:#6b7280;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+            <div><strong>Mean:</strong> {stats.get('sim_metadata',{}).get('mean',0):.2f}%</div>
+            <div><strong>Std Dev:</strong> {stats.get('sim_metadata',{}).get('std',0):.2f}%</div>
+            <div><strong>Your Percentile:</strong> <span id="playerPercentile">--</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Frontier Tab -->
+    <div id="frontier-tab" class="tab-content">
+      <h3 style="margin-top:0;">Mean-Variance Frontier</h3>
+      <div id="frontierChart"></div>
+
+      <!-- Detail panel -->
+      <div id="detailPanel" style="margin-top:16px;padding:16px;border:1px solid var(--b);border-radius:8px;background:#f9fafb;display:none;">
+        <h4 style="margin:0 0 12px 0;color:#111827;">Strategy Details</h4>
+        <div style="margin-bottom:8px;"><strong>Signals:</strong> <span id="detailSignals">-</span></div>
+        <div style="margin-bottom:8px;"><strong>Portfolio Weights:</strong></div>
+        <div id="detailWeights" style="font-family:monospace;font-size:13px;color:#6b7280;margin-bottom:12px;"></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          <div style="padding:8px;background:white;border-radius:6px;text-align:center;">
+            <div style="font-size:12px;color:#6b7280;">Ace hits</div>
+            <div id="detailAce" style="font-size:18px;font-weight:700;color:#111827;">-</div>
+          </div>
+          <div style="padding:8px;background:white;border-radius:6px;text-align:center;">
+            <div style="font-size:12px;color:#6b7280;">King hits</div>
+            <div id="detailKing" style="font-size:18px;font-weight:700;color:#111827;">-</div>
+          </div>
+          <div style="padding:8px;background:white;border-radius:6px;text-align:center;">
+            <div style="font-size:12px;color:#6b7280;">Queen hits</div>
+            <div id="detailQueen" style="font-size:18px;font-weight:700;color:#111827;">-</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside>
+    <h3 style="margin:0 0 16px 0;">Actions</h3>
+    <button id="endBtn" class="btn">Quit Game</button>
+  </aside>
+</div>
+
+<div id="ov" class="overlay"><div class="msg">Hope you enjoyed the game</div></div>
+
+<script>
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {{
+  btn.addEventListener('click', () => {{
+    const targetTab = btn.dataset.tab;
+
+    // Update buttons
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    // Update content
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById(targetTab + '-tab').classList.add('active');
+  }});
+}});
+
+// End game button
+document.getElementById('endBtn').onclick = () => {{
+  const btn = document.getElementById('endBtn');
+  btn.disabled = true;
+  document.getElementById('ov').style.display = 'flex';
+
+  // Send end signal and reset session
+  fetch('/end', {{method:'POST'}})
+    .then(() => fetch('/reset', {{method:'POST'}}))
+    .catch(()=>{{}});
+
+  // Clear localStorage to reset game state
+  localStorage.removeItem('player_name');
+  localStorage.removeItem('game_type');
+  localStorage.removeItem('activity_v1');
+
+  // Redirect to landing page after 2 seconds
+  setTimeout(()=>{{
+    window.location.href = '/';
+  }}, 2000);
+}};
+
+// Create Plotly frontier chart (matching vis_f.py formatting)
+function createFrontierChart() {{
+  // Mockup frontier data (n=0 to n=5 signals)
+  const frontierData = [
+    {{ n: 0, sd: [15, 16, 17, 18, 19], mean: [5, 8, 10, 11, 12], weights: [[11,11,11,11,11,11,11,11,12], [11,11,11,11,11,11,11,11,12], [11,11,11,11,11,11,11,11,12], [11,11,11,11,11,11,11,11,12], [11,11,11,11,11,11,11,11,12]], ace: 0, king: 0, queen: 0 }},
+    {{ n: 1, sd: [14, 15, 16, 17], mean: [12, 15, 17, 18], weights: [[20,15,15,10,10,10,10,5,5], [20,15,15,10,10,10,10,5,5], [20,15,15,10,10,10,10,5,5], [20,15,15,10,10,10,10,5,5]], ace: 1, king: 2, queen: 1 }},
+    {{ n: 2, sd: [13, 14, 15], mean: [18, 22, 24], weights: [[25,20,15,12,10,8,5,3,2], [25,20,15,12,10,8,5,3,2], [25,20,15,12,10,8,5,3,2]], ace: 1, king: 3, queen: 2 }},
+    {{ n: 3, sd: [12, 13], mean: [25, 28], weights: [[28,22,18,12,8,6,3,2,1], [28,22,18,12,8,6,3,2,1]], ace: 2, king: 3, queen: 2 }},
+    {{ n: 4, sd: [11, 12], mean: [30, 32], weights: [[30,25,18,12,8,4,2,1,0], [30,25,18,12,8,4,2,1,0]], ace: 2, king: 4, queen: 3 }},
+  ];
+
+  // Player data
+  const playerWeights = {stats.get('player_weights', '[0,0,0,0,0,0,0,0,0]')};
+  const playerAce = {stats.get('ace_hits', 0)};
+  const playerKing = {stats.get('king_hits', 0)};
+  const playerQueen = {stats.get('queen_hits', 0)};
+
+  // Calculate player position (mockup - place near middle)
+  const playerSD = 13.5;
+  const playerMean = 20;
+
+  // Calculate color values (concentration measure)
+  function calcConcentration(weights) {{
+    return weights.reduce((sum, w) => sum + w*w, 0) / 10000; // Normalize to [0,1]
+  }}
+
+  const traces = [];
+  const ALPHA = 0.7;
+
+  // Add frontier traces
+  frontierData.forEach(series => {{
+    const colors = series.weights.map(w => calcConcentration(w));
+
+    traces.push({{
+      x: series.sd,
+      y: series.mean,
+      mode: 'markers+text',
+      name: `n=${{series.n}}`,
+      marker: {{
+        size: 16,
+        color: colors,
+        colorscale: [[0, '#2b8cbe'], [1, '#08306b']],
+        showscale: false,
+        line: {{ width: 0 }}
+      }},
+      text: Array(series.sd.length).fill(String(series.n)),
+      textposition: 'middle center',
+      textfont: {{ size: 11, color: 'white' }},
+      hovertemplate: `n=${{series.n}}<br>Mean: %{{y:.2f}}%<br>SD: %{{x:.2f}}%<extra></extra>`,
+      showlegend: false,
+      opacity: ALPHA,
+      customdata: series.weights.map((w, i) => ({{ weights: w, n: series.n, ace: series.ace, king: series.king, queen: series.queen }}))
+    }});
+  }});
+
+  // Add player marker (red)
+  traces.push({{
+    x: [playerSD],
+    y: [playerMean],
+    mode: 'markers+text',
+    name: 'You',
+    marker: {{
+      size: 20,
+      color: '#c53030',
+      line: {{ width: 2, color: '#fff' }}
+    }},
+    text: ['You'],
+    textposition: 'middle center',
+    textfont: {{ size: 11, color: 'white', weight: 700 }},
+    hovertemplate: 'Your Strategy<br>Mean: %{{y:.2f}}%<br>SD: %{{x:.2f}}%<extra></extra>',
+    showlegend: false,
+    opacity: 0.9,
+    customdata: [{{ weights: playerWeights, n: 'Player', ace: playerAce, king: playerKing, queen: playerQueen }}]
+  }});
+
+  const layout = {{
+    template: 'plotly_white',
+    font: {{ family: 'Roboto, Arial, sans-serif', size: 15 }},
+    xaxis: {{
+      title: {{ text: 'Standard Deviation (%)', font: {{ size: 13 }} }},
+      tickfont: {{ size: 16 }},
+      showgrid: true,
+      gridcolor: 'rgba(128,128,128,0.1)'
+    }},
+    yaxis: {{
+      title: {{ text: 'Mean Return (%)', font: {{ size: 13 }} }},
+      tickfont: {{ size: 16 }},
+      showgrid: true,
+      gridcolor: 'rgba(128,128,128,0.1)'
+    }},
+    height: 600,
+    hovermode: 'closest',
+    margin: {{ l: 60, r: 10, t: 40, b: 50 }},
+    plot_bgcolor: '#fafafa'
+  }};
+
+  const config = {{ responsive: true, displayModeBar: false }};
+
+  Plotly.newPlot('frontierChart', traces, layout, config);
+
+  // Add click handler for showing details
+  document.getElementById('frontierChart').on('plotly_click', function(data) {{
+    if (data.points.length > 0) {{
+      const point = data.points[0];
+      const customData = point.customdata;
+
+      if (customData) {{
+        const detailPanel = document.getElementById('detailPanel');
+        document.getElementById('detailSignals').textContent = customData.n === 'Player' ? 'Your Strategy' : customData.n;
+        document.getElementById('detailWeights').innerHTML = customData.weights.map((w, i) => `Pile ${{i+1}}: £${{w.toFixed(2)}}`).join('<br>');
+        document.getElementById('detailAce').textContent = customData.ace;
+        document.getElementById('detailKing').textContent = customData.king;
+        document.getElementById('detailQueen').textContent = customData.queen;
+        detailPanel.style.display = 'block';
+      }}
+    }}
+  }});
+}}
+
+// Create distribution histogram (always visible in Summary tab)
+function createDistributionHistogram() {{
+  const simReturns = {json.dumps(stats.get('sim_returns', []))};
+  const playerReturn = {stats.get('net_return_pct', 0):.2f};
+
+  if (simReturns.length === 0) {{
+    document.getElementById('distributionChart').innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">No simulation data available</div>';
+    return;
+  }}
+
+  // Calculate player's percentile
+  const belowPlayer = simReturns.filter(r => r < playerReturn).length;
+  const percentile = (belowPlayer / simReturns.length * 100).toFixed(1);
+  document.getElementById('playerPercentile').textContent = percentile + '%';
+
+  // Create histogram with 100 bins
+  const trace = {{
+    x: simReturns,
+    type: 'histogram',
+    nbinsx: 100,
+    marker: {{
+      color: '#6b7280',
+      line: {{ color: '#111827', width: 0.5 }}
+    }},
+    opacity: 0.7,
+    name: 'Simulated Returns'
+  }};
+
+  // Add vertical line for player's actual return
+  const shapes = [{{
+    type: 'line',
+    x0: playerReturn,
+    x1: playerReturn,
+    y0: 0,
+    y1: 1,
+    yref: 'paper',
+    line: {{
+      color: '#111827',
+      width: 3,
+      dash: 'dash'
+    }}
+  }}];
+
+  const layout = {{
+    xaxis: {{
+      title: 'Net Return (%)',
+      color: '#111827',
+      gridcolor: '#e5e7eb',
+      zeroline: true,
+      zerolinecolor: '#9ca3af',
+      zerolinewidth: 1
+    }},
+    yaxis: {{
+      title: 'Frequency',
+      color: '#111827',
+      gridcolor: '#e5e7eb'
+    }},
+    paper_bgcolor: '#fafafa',
+    plot_bgcolor: '#fafafa',
+    font: {{ family: 'ui-sans-serif, system-ui, sans-serif', size: 12, color: '#111827' }},
+    margin: {{ l: 50, r: 20, t: 20, b: 50 }},
+    showlegend: false,
+    shapes: shapes,
+    annotations: [{{
+      x: playerReturn,
+      y: 1.05,
+      yref: 'paper',
+      text: 'Your Return',
+      showarrow: false,
+      font: {{ size: 11, color: '#111827', weight: 700 }},
+      xanchor: 'center'
+    }}]
+  }};
+
+  const config = {{
+    responsive: true,
+    displayModeBar: false
+  }};
+
+  Plotly.newPlot('distributionChart', [trace], layout, config);
+}}
+
+// Create histogram on page load
+if (document.getElementById('distributionChart')) {{
+  createDistributionHistogram();
+}}
+
+// Create chart when frontier tab is visible
+document.querySelector('[data-tab="frontier"]').addEventListener('click', function() {{
+  if (!document.getElementById('frontierChart').innerHTML) {{
+    createFrontierChart();
+  }}
+}});
+</script>
+</body>
+</html>"""
+
+
+def reset_game_state():
+    """Reset game state to fresh defaults (called when starting new game)"""
+    global _GAME_STATE, _SESSION_DATA, _SESSION_EVENT
+    with _SERVER_LOCK:
+        _GAME_STATE['stage'] = 0
+        _GAME_STATE['ctx'] = {}
+        _GAME_STATE['ready'].clear()
+    _SESSION_DATA = None
+    _SESSION_EVENT.clear()
+    print("[server] Game state reset to defaults")
+
+
+def update_game_state(stage: int, ctx: dict):
+    """Update game state for the persistent server"""
+    global _GAME_STATE
+    with _SERVER_LOCK:
+        _GAME_STATE['stage'] = stage
+        _GAME_STATE['ctx'] = ctx.copy()
+        _GAME_STATE['ready'].set()  # Signal that state is ready
+    print(f"[server] Game state updated: stage={stage}")
+
+
+def start_persistent_server(port: int = 8765, open_browser: bool = False):
+    """Start the persistent HTTP server (called once at startup)"""
+    import os
+    global _SERVER_INSTANCE, _BROWSER_OPENED
+
+    with _SERVER_LOCK:
+        if _SERVER_INSTANCE is not None:
+            print("[server] Persistent server already running")
+            return _SERVER_INSTANCE
+
+        # Use PORT from environment (Railway) or fallback to default
+        port = int(os.environ.get("PORT", port))
+        host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+
+        # Create server
+        try:
+            srv = HTTPServer((host, port), _H)
+        except OSError as e:
+            print(f"[server] Failed to bind to port {port}: {e}")
+            raise
+
+        # Start server thread
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        _SERVER_INSTANCE = srv
+
+        actual_port = srv.server_address[1]
+        url = f"http://127.0.0.1:{actual_port}/"
+        print(f"[server] Persistent server started at {url}")
+
+        # Open browser once
+        if open_browser and not _BROWSER_OPENED:
+            try:
+                webbrowser.open(url)
+                _BROWSER_OPENED = True
+            except Exception:
+                pass
+
+        return srv
+
+
+def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None = None,
+           port: int = 8765, open_browser: bool = False,
+           signal_mode: str = "median", signal_cost: float = 5.0,
+           stage1_invested: list | None = None, stage_history: list | None = None,
+           session_id: int | None = None):
+    """REFACTORED: Update game state and wait for user submission
+
+    No longer creates/destroys servers - just updates state on persistent server.
+    """
+    global _SESSION_DATA, _SESSION_EVENT, _GAME_STATE
+
+    # Ensure persistent server is running
+    if _SERVER_INSTANCE is None:
+        start_persistent_server(port=port, open_browser=open_browser)
+
+    # Reset session state
+    _SESSION_DATA = None
+    _SESSION_EVENT.clear()
+
+    # Build context (same as before)
+    cards_df = df.loc[df["alive"], :].copy()
+    cols = [c for c in ("card_id", "N", "med", "sum2", "second_rank") if c in cards_df.columns]
+    cards = []
+    for _, r in cards_df[cols].iterrows():
+        rec = {"card_id": int(r.get("card_id"))}
+        if "med" in cols: rec["med"] = int(r.get("med"))
+        if "sum2" in cols: rec["sum2"] = int(r.get("sum2"))
+        if "N" in cols: rec["N"] = int(r.get("N"))
+        if "second_rank" in cols: rec["second_rank"] = int(r.get("second_rank"))
+        cards.append(rec)
+
+    ctx = {
+        "stage": stage,
+        "total_budget": 100.0,
+        "wallet": float(wallet),
+        "cards": cards,
+        "prev_signals": _prev_signals_map(df),
+        "prev_invest": _prev_invest_map(df),
+        "results": results or {},
+        "signal_mode": str(signal_mode),
+        "signal_cost": float(signal_cost),
+        "stage1_invested": stage1_invested or [],
+        "stage_history": stage_history or [],
+        "session_id": session_id,
+    }
+
+    # Update game state on persistent server
+    update_game_state(stage, ctx)
+    print(f"[web] Stage {stage} ready, waiting for user action...")
+
+    # Wait for user submission
+    if results and stage >= 3:
+        # Results stage: wait for end game click
+        print(f"[web] Results stage - waiting for 'End Game' click")
+        if not _SESSION_EVENT.wait(timeout=300):  # 5 minute timeout
+            print(f"[web] Warning: Results stage timed out")
+            return None
+    else:
+        # Game stage: wait for POST submission
+        if not _SESSION_EVENT.wait(timeout=300):
+            print(f"[web] Warning: Stage {stage} timed out waiting for submission")
+            return None
+
+    # Get submitted data
+    actions = _SESSION_DATA
+    print(f"[web] Stage {stage} complete, returning actions")
+    return actions
+
+
+def shutdown_server():
+    """Shutdown the persistent server (called on application exit)"""
+    global _SERVER_INSTANCE
+    with _SERVER_LOCK:
+        if _SERVER_INSTANCE:
+            print("[server] Shutting down persistent server...")
+            _SERVER_INSTANCE.shutdown()
+            _SERVER_INSTANCE.server_close()
+            _SERVER_INSTANCE = None
+            print("[server] Server shutdown complete")
