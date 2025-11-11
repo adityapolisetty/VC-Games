@@ -517,26 +517,66 @@ document.querySelectorAll('.tab-btn').forEach(btn => {{
   }});
 }});
 
-// End game button
+// Quit game button - return to landing page
 document.getElementById('endBtn').onclick = () => {{
   const btn = document.getElementById('endBtn');
+  const overlay = document.getElementById('ov');
+  const overlayMsg = overlay.querySelector('.msg');
+
   btn.disabled = true;
-  document.getElementById('ov').style.display = 'flex';
+  overlay.style.display = 'flex';
+  overlayMsg.textContent = 'Ending game...';
 
-  // Send end signal and reset session
+  // Clear ALL storage FIRST to ensure fresh start
+  localStorage.clear();
+  sessionStorage.clear();
+
+  // Send end signal
   fetch('/end', {{method:'POST'}})
-    .then(() => fetch('/reset', {{method:'POST'}}))
-    .catch(()=>{{}});
+    .then(() => {{
+      overlayMsg.textContent = 'Waiting for new game...';
 
-  // Clear localStorage to reset game state
-  localStorage.removeItem('player_name');
-  localStorage.removeItem('game_type');
-  localStorage.removeItem('activity_v1');
+      // Poll server until Stage 0 is ready
+      const startTime = Date.now();
+      const maxWait = 10000; // 10 seconds max
 
-  // Redirect to landing page after 2 seconds
-  setTimeout(()=>{{
-    window.location.href = '/';
-  }}, 2000);
+      function pollForStage0() {{
+        if (Date.now() - startTime > maxWait) {{
+          console.error('[quit] Timeout waiting for Stage 0');
+          overlayMsg.textContent = 'Error: Server timeout. Please refresh the page.';
+          return;
+        }}
+
+        fetch('/', {{cache: 'no-store'}})
+          .then(resp => resp.text())
+          .then(html => {{
+            // Check if server is at Stage 0 (landing page)
+            const stageMatch = html.match(/"stage":\s*(\d+)/);
+            const stage = stageMatch ? parseInt(stageMatch[1]) : -1;
+
+            if (stage === 0) {{
+              console.log('[quit] Stage 0 ready, redirecting...');
+              overlayMsg.textContent = 'Redirecting...';
+              // Navigate to landing page
+              window.location.href = '/?t=' + Date.now();
+            }} else {{
+              console.log('[quit] Server at stage', stage, '- waiting for Stage 0...');
+              setTimeout(pollForStage0, 300);
+            }}
+          }})
+          .catch(err => {{
+            console.log('[quit] Server not ready, retrying...', err);
+            setTimeout(pollForStage0, 300);
+          }});
+      }}
+
+      // Start polling after small delay
+      setTimeout(pollForStage0, 500);
+    }})
+    .catch((err) => {{
+      console.error('[quit] Error ending game:', err);
+      overlayMsg.textContent = 'Error ending game. Please refresh the page.';
+    }});
 }};
 
 // Create Plotly frontier chart (matching vis_f.py formatting)
@@ -829,17 +869,17 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
         _SESSION_DATA = None
     _SESSION_EVENT.clear()
 
-    # Build context (same as before)
-    cards_df = df.loc[df["alive"], :].copy()
-    cols = [c for c in ("card_id", "N", "med", "sum2", "second_rank") if c in cards_df.columns]
+    # Build context (handle Stage 0 with no cards)
     cards = []
-    for _, r in cards_df[cols].iterrows():
-        rec = {"card_id": int(r.get("card_id"))}
-        if "med" in cols: rec["med"] = int(r.get("med"))
-        if "sum2" in cols: rec["sum2"] = int(r.get("sum2"))
-        if "N" in cols: rec["N"] = int(r.get("N"))
-        if "second_rank" in cols: rec["second_rank"] = int(r.get("second_rank"))
-        cards.append(rec)
+    if not df.empty:
+        cols = [c for c in ("card_id", "N", "med", "sum2", "second_rank") if c in df.columns]
+        for _, r in df[cols].iterrows():
+            rec = {"card_id": int(r.get("card_id"))}
+            if "med" in cols: rec["med"] = int(r.get("med"))
+            if "sum2" in cols: rec["sum2"] = int(r.get("sum2"))
+            if "N" in cols: rec["N"] = int(r.get("N"))
+            if "second_rank" in cols: rec["second_rank"] = int(r.get("second_rank"))
+            cards.append(rec)
 
     ctx = {
         "stage": stage,

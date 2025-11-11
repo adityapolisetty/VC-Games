@@ -196,16 +196,34 @@ if __name__ == "__main__":
     # Game loop - restart after each game ends
     print("[game] Starting game server. Press Ctrl+C to stop.")
     while True:
+        session_id = None  # Initialize outside try block for exception handler
         try:
             # CRITICAL: Reset all game state before starting new game
             reset_game_state()
-            print("[game] Game state reset - starting fresh game")
+            print("[game] Game state reset - ready for landing page")
 
-            # 9 piles - generate random seed for each new game
+            # ---- Stage 0: Landing Page ----
+            # Show landing page and wait for player to enter name and choose game type
+            # Don't deal board yet - wait until Enter is clicked
+            print("[game] Stage 0: Showing landing page, waiting for Enter...")
+            stage0_act = run_ui(0, pd.DataFrame(), 0.0, signal_mode=mode, signal_cost=cost)
+            if stage0_act is None:
+                # Player closed browser or timeout - restart
+                print("[game] Stage 0 returned None - restarting")
+                continue
+
+            # Extract player info from Stage 0 submission
+            team_name = stage0_act.get("player_name", "Team Alpha")
+            game_type = stage0_act.get("game_type", "g1")
+            # Update signal mode based on game type
+            mode = "top2" if game_type == "g2" else "median"
+            print(f"[game] Player '{team_name}' chose game type '{game_type}' (signal mode: {mode})")
+
+            # NOW deal the board (after player has entered)
             game_seed = np.random.randint(0, 1_000_000)
             df = draw_deck(n_cards=9, seed=game_seed)
-            print(f"[game] New game started with seed: {game_seed}")
-            print(f"[game] Board dealt (9 piles):")
+            print(f"[game] Board dealt with seed: {game_seed}")
+            print(f"[game] 9 piles created:")
             for _, row in df.iterrows():
                 rank_label = {14: 'A', 13: 'K', 12: 'Q', 11: 'J'}.get(row['max_rank'], str(row['max_rank']))
                 r2_label = {14: 'A', 13: 'K', 12: 'Q', 11: 'J'}.get(row['second_rank'], str(row['second_rank']))
@@ -219,24 +237,25 @@ if __name__ == "__main__":
             stage_history = []  # Track stage-wise stats
             total_signal_cost_stage1 = 0.0  # Explicit tracker for Stage 1 signals
             total_signal_cost_stage2 = 0.0  # Explicit tracker for Stage 2 signals
-            session_id = None  # Will be created after Stage 1 submission
+            # session_id already initialized outside try block
 
             # ---- Stage 1 ----
-            # Note: open_browser is only used on first server start (already done above)
-            act = run_ui(1, df, wallet, signal_mode=mode, signal_cost=cost)
-            if act is None:
-                # Player closed browser or restarted - don't create DB session
-                print("[game] Stage 1 returned None - game abandoned before submission")
-                continue  # Start fresh game
-
-            # Create database session AFTER Stage 1 submission (game has legitimate progress)
-            team_name = act.get("player_name", "Anonymous")
+            print(f"[game] Starting Stage 1 with signal_mode={mode}")
+            # Create database session NOW (after Stage 0 enter, before Stage 1 actions)
             session_id = create_session(
                 team_name=team_name,
                 seed=game_seed,
                 signal_mode=mode,
                 signal_cost=cost
             )
+
+            act = run_ui(1, df, wallet, signal_mode=mode, signal_cost=cost)
+            if act is None:
+                # Player closed browser or restarted - delete abandoned session
+                print("[game] Stage 1 returned None - game abandoned before submission")
+                if session_id:
+                    delete_session(session_id)
+                continue  # Start fresh game
 
             df, s_spent, _ = stage_buy_signals(
                 df, {int(k): v for k, v in act["purchases"].items()},
@@ -296,8 +315,11 @@ if __name__ == "__main__":
             print(f"[game] Stage 2 UI returned, processing actions")
             if act is None:
                 raise RuntimeError("Stage 2 UI returned None - did the server fail?")
+
+            # Handle missing purchases (Stage 2 may not have signal purchases)
+            purchases = act.get("purchases", {})
             df, s_spent, _ = stage_buy_signals(
-                df, {int(k): v for k, v in act["purchases"].items()},
+                df, {int(k): v for k, v in purchases.items()},
                 budget=wallet,
                 per_signal_cost=cost
             )

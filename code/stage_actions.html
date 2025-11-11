@@ -601,6 +601,9 @@ document.addEventListener("DOMContentLoaded", () => {
         const val = c.current_reveal || '';
         const lab = (SIGNAL_MODE==='top2') ? 'Sum of top 2' : 'Median';
         line.innerHTML = `<span class="med-reveal">${lab} = ${val}</span>`;
+      } else if (STAGE === 2) {
+        // Stage 2: Don't allow signal purchases, show message instead
+        line.innerHTML = `<span class="muted" style="font-style:italic;">Signal purchases only available in Stage 1</span>`;
       } else {
         line.innerHTML = `
           <button type="button" class="btn-cta-sm buy-sig" data-sid="${s.id}" ${locked?'data-locked="1" disabled':''}>Buy signal</button>
@@ -686,7 +689,8 @@ document.addEventListener("DOMContentLoaded", () => {
     cards.forEach(c=>{
       const prev = c.prev_owned;
       const newS = [...c.owned_sids].filter(x=>!prev.has(x));
-      if(newS.length){ purchases[c.card_id] = newS.sort((a,b)=>a-b); newS.forEach(id=>{ const s=SIGNALS.find(x=>x.id===id); if(s) ss+=s.cost; }); }
+      // Only collect signal purchases in Stage 1, not Stage 2
+      if(newS.length && STAGE !== 2){ purchases[c.card_id] = newS.sort((a,b)=>a-b); newS.forEach(id=>{ const s=SIGNALS.find(x=>x.id===id); if(s) ss+=s.cost; }); }
       const stageSum = c.stage_invests.reduce((a,b)=>a+b,0);
       if(stageSum>0){ invest[c.card_id]=Number(stageSum); si+=stageSum; }
     });
@@ -825,10 +829,9 @@ document.addEventListener("DOMContentLoaded", () => {
   if (restartBtnBrand) {
     restartBtnBrand.onclick = () => {
       if (confirm("Are you sure you want to restart? All progress will be lost.")) {
-        // Clear localStorage
-        localStorage.removeItem("player_name");
-        localStorage.removeItem("game_type");
-        localStorage.removeItem("activity_v1");
+        // Clear ALL storage - localStorage AND sessionStorage
+        localStorage.clear();
+        sessionStorage.clear();
         // Call reset endpoint
         fetch("/reset", {method: "POST"}).catch(() => {});
         // Redirect to landing page
@@ -887,33 +890,12 @@ document.addEventListener("DOMContentLoaded", () => {
     showApp();
   } else if (STAGE === 0){
     // Stage 0 (no active game): Show login screen
-    const hasPlayerName = !!localStorage.getItem("player_name");
-
-    if (hasPlayerName) {
-      // User clicked Enter but page loaded at Stage 0
-      // This happens when server hasn't started game loop yet
-      // Show a brief "Loading game..." message then force reload
-      console.log('[init] Stage 0 with player name - game starting, will reload...');
-      showLogin();
-
-      const statusDiv = document.getElementById('enterStatus');
-      if (statusDiv) {
-        statusDiv.style.display = 'block';
-        statusDiv.textContent = 'Loading game...';
-      }
-
-      // Reload after brief delay to catch Stage 1
-      setTimeout(() => {
-        location.reload();
-      }, 300);
-    } else {
-      // Fresh start - clear any stale state
-      console.log('[init] Stage 0 without player name - showing login');
-      localStorage.removeItem("activity_v1");
-      sessionStorage.removeItem("loading_stage2");
-      window.gameStartTime = Date.now();
-      showLogin();
-    }
+    console.log('[init] Stage 0 - showing login');
+    // Clear any stale state
+    localStorage.removeItem("activity_v1");
+    sessionStorage.removeItem("loading_stage2");
+    window.gameStartTime = Date.now();
+    showLogin();
   } else if (STAGE === 1){
     // Stage 1: Check if player has already entered (page reload after Enter button)
     const n=localStorage.getItem("player_name");
@@ -987,30 +969,29 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem("player_name", nm);
     localStorage.setItem("game_type", gt);
 
-    console.log('[enter] Starting new game for:', nm);
-    enterBtn.textContent = 'Starting...';
+    console.log('[enter] Submitting to server:', nm, gt);
 
-    // Show status message
-    const statusDiv = document.getElementById('enterStatus');
-    if (statusDiv) statusDiv.style.display = 'block';
+    // Submit Stage 0 data to server (triggers board dealing)
+    const payload = {
+      stage: 0,
+      player_name: nm,
+      game_type: gt,
+      purchases: {},
+      invest: {},
+      client_spent_signals: 0,
+      client_spent_invest: 0,
+      client_budget_remaining: 100
+    };
 
-    // CRITICAL FIX: Force server reset first, then reload to Stage 1
-    // This ensures clean state even if user is at Stage 3 (results page)
-    fetch("/reset", {method: "POST", cache: "no-store"})
+    fetch("/submit", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)})
       .then(() => {
-        console.log('[enter] Server reset complete, loading game...');
-        if (statusDiv) statusDiv.textContent = 'Loading game...';
-        // Small delay to ensure server processes the reset
-        setTimeout(() => {
-          location.href = "/";
-        }, 150);
+        console.log('[enter] Stage 0 submitted, reloading for Stage 1...');
+        // Reload to get Stage 1 with dealt board
+        location.href = "/";
       })
-      .catch(err => {
-        console.error('[enter] Reset failed:', err);
-        // Still try to load - server might be ready anyway
-        setTimeout(() => {
-          location.href = "/";
-        }, 150);
+      .catch(() => {
+        alert("Failed to start game. Is Python running?");
+        enterBtn.disabled = false;
       });
   }
 

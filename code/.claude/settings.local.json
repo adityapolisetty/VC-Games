@@ -10,7 +10,9 @@
       "Bash(pip install:*)",
       "Bash(streamlit:*)",
       "Bash(git log:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(curl:*)",
+      "Bash(lsof:*)"
     ],
     "deny": [],
     "ask": []
