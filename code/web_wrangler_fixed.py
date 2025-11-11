@@ -453,9 +453,9 @@ def _results_page(stats: dict) -> str:
             <div class="stat"><div class="stat-label">Net return on budget</div><div class="stat-value">{stats.get('net_return_pct',0):.2f}%</div></div>
             <div class="stat"><div class="stat-label">Spent on signals</div><div class="stat-value">£{stats.get('signals_spent',0):.2f}</div></div>
             <div class="stat"><div class="stat-label">Piles invested</div><div class="stat-value">{stats.get('n_invested',0)}</div></div>
-            <div class="stat"><div class="stat-label">No. Ace hits</div><div class="stat-value">{hit_ace_label}</div></div>
-            <div class="stat"><div class="stat-label">No. King hits</div><div class="stat-value">{stats.get('king_hits',0)}</div></div>
-            <div class="stat"><div class="stat-label">No. Queen hits</div><div class="stat-value">{stats.get('queen_hits',0)}</div></div>
+            <div class="stat"><div class="stat-label">Hit an Ace?</div><div class="stat-value">{hit_ace_label}</div></div>
+            <div class="stat"><div class="stat-label">No. of King hits</div><div class="stat-value">{stats.get('king_hits',0)}</div></div>
+            <div class="stat"><div class="stat-label">No. of Queen hits</div><div class="stat-value">{stats.get('queen_hits',0)}</div></div>
           </div>
         </div>
 
