@@ -64,7 +64,7 @@ def run_policy_simulation(
     scale_pay: int,
     scale_param: float,
     player_concentration: float,
-    post_npz_path: str = "../precomp_output/post_mc.npz",
+    post_npz_path: str = "precomp_output/post_mc.npz",
     rounds: int = 10000,
     base_seed: int = None,
 ) -> Tuple[np.ndarray, Dict]:
@@ -91,8 +91,17 @@ def run_policy_simulation(
     """
     # Load posteriors
     import pathlib
+    # Resolve path relative to this script's location
+    script_dir = pathlib.Path(__file__).parent
     p = pathlib.Path(post_npz_path)
-    if not p.exists():
+    if not p.is_absolute():
+        # Try relative to script directory first
+        p_relative_to_script = script_dir / post_npz_path
+        if p_relative_to_script.exists():
+            p = p_relative_to_script
+        elif not p.exists():
+            raise FileNotFoundError(f"Posteriors not found at: {p} (tried {p_relative_to_script})")
+    elif not p.exists():
         raise FileNotFoundError(f"Posteriors not found: {p}")
 
     with np.load(p, allow_pickle=False) as z:
