@@ -152,30 +152,14 @@
     word-wrap: break-word;
   }
 
-  #pickInfo{ display:none; }
-  /* Hide the Alive heading */
-  #aliveTitle{ display:none; }
+  /* DEAD CODE REMOVED: #pickInfo and #aliveTitle elements don't exist in DOM */
   @media (max-width:900px){.hero-wrap{grid-template-columns:1fr;gap:24px;margin-top:8vh}.hero-title{font-size:44px}}
 </style>
 <!-- Python injects window.SEED -->
 </head>
 <body>
 <script>
-// Minimal fail-safe so Enter works even if later JS fails to bind
-window.__enterClick = function(){
-  try{
-    var nmEl=document.getElementById('nameInput');
-    var nm=(nmEl&&nmEl.value?nmEl.value:'Team Alpha').trim();
-    try{ localStorage.setItem('player_name', nm); }catch(_){ }
-    if (typeof window.showApp === 'function') { window.showApp(); return; }
-    // Fallback: toggle views now and try to call showApp shortly (to build grid)
-    var login=document.getElementById('loginSection');
-    var app=document.getElementById('appView');
-    if(login) login.style.display='none';
-    if(app) app.style.display='block';
-    setTimeout(function(){ try{ if (typeof window.showApp==='function') window.showApp(); }catch(_){ } }, 50);
-  }catch(e){ /* swallow */ }
-};
+// DEAD CODE REMOVED: Failsafe Enter handler not needed (proper listener at line ~955)
 </script>
 <div id="brandbar" class="brandbar">
   <div class="brand-left">VC Card Game</div>
@@ -282,8 +266,7 @@ window.__enterClick = function(){
 <div id="stageOverlay" class="overlay"><div class="msg" id="overlayMsg">Your investments are hard at work…</div></div>
 
 <div id="rulesModal" class="modal"><div class="box"><span class="close" data-x="rulesModal">✕</span><h3>Rules</h3><p class="muted">Buy signals and invest per card. Wallet £100 total.</p></div></div>
-<div id="tipsModal"  class="modal"><div class="box"><span class="close" data-x="tipsModal">✕</span><h3>Tips</h3><ul><li>Higher signal overwrites the reveal.</li><li>Card turns green after any investment.</li></ul></div></div>
-<div id="wonkModal"  class="modal"><div class="box"><span class="close" data-x="wonkModal">✕</span><h3>Wonkish</h3><p class="muted">S1 A–7/8–K; S2 A/2–5/6–9/10–K; S3 2–3/4–5/6–7/8–9/10–J/Q–K/A; S4 exact N.</p></div></div>
+<!-- DEAD CODE REMOVED: tipsModal and wonkModal - no links trigger these modals -->
 
 <div id="sigModal" class="modal"><div class="box"><span class="close" data-x="sigModal">✕</span><h3 id="sigTitle">Signal</h3><p id="sigDesc" class="muted"></p></div></div>
 <div id="budgetAlertModal" class="modal"><div class="box"><span class="close" data-x="budgetAlertModal">✕</span><h3>Budget Alert</h3><p id="budgetAlertMsg" class="muted"></p><button class="btn" onclick="document.getElementById('budgetAlertModal').style.display='none'">OK</button></div></div>
@@ -335,8 +318,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const finishStageBtn=document.getElementById("finishStage");
   const sigLines=document.getElementById("sigLines");
   const rulesModal=document.getElementById("rulesModal");
-  const tipsModal=document.getElementById("tipsModal");
-  const wonkModal=document.getElementById("wonkModal");
+  // DEAD CODE REMOVED: tipsModal and wonkModal variables
   const sigModal=document.getElementById("sigModal");
   const sigTitle=document.getElementById("sigTitle");
   const sigDesc=document.getElementById("sigDesc");
@@ -507,26 +489,10 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  function loadActivity(){ try{ return JSON.parse(localStorage.getItem("activity_v1")||"{}"); }catch{ return {}; } }
-  function saveActivity(map){ localStorage.setItem("activity_v1", JSON.stringify(map)); }
+  // DEAD CODE REMOVED: loadActivity(), saveActivity(), and updateActivityWithCurrentStage()
+  // Activity data was saved but never read or used anywhere in the app
 
-  function updateActivityWithCurrentStage(){
-    const act = loadActivity();
-    cards.forEach(c=>{
-      const stageSum = c.stage_invests.reduce((a,b)=>a+b,0);
-      const newSids = [...c.owned_sids].filter(sid=>!c.prev_owned.has(sid));
-      if (stageSum>0 || newSids.length>0){
-      const prev = act[c.card_id] || {N:c.N, invested:0, signals:[]};
-      prev.N = c.N;
-        prev.invested = Number(prev.invested||0) + stageSum;
-        prev.signals = Array.from(new Set([...(prev.signals||[]), ...newSids])).sort((a,b)=>a-b);
-        act[c.card_id] = prev;
-      }
-    });
-    saveActivity(act);
-  }
-
-  // Wreckage rendering removed
+  // DEAD CODE REMOVED: Wreckage rendering
 
   function buildGrid(){
     grid.innerHTML=""; cards=[];
@@ -754,14 +720,17 @@ document.addEventListener("DOMContentLoaded", () => {
   // Poll server to check when Stage 2 is ready (instead of fixed timeout)
   function pollForStage2Ready() {
     const startTime = Date.now();
-    const maxWait = 15000; // 15 seconds max (should be much faster with proper shutdown)
+    const maxWait = 15000; // 15 seconds max (should be much faster with persistent server)
     const pollInterval = 200; // Check every 200ms
+    let serverStage1Confirmed = false; // Track if we've seen Stage 1 to prevent false positives
 
     function checkServer() {
-      // Stop polling if flag was cleared (e.g., user navigated away)
-      if (sessionStorage.getItem('loading_stage2') !== 'true') {
-        console.log('[poll] Loading flag cleared, stopping poll');
-        return;
+      // CRITICAL FIX: Don't exit early on flag clear - only exit on timeout or success
+      // Flag may be cleared by browser events, but we need server confirmation
+      const flagCleared = sessionStorage.getItem('loading_stage2') !== 'true';
+      if (flagCleared && !serverStage1Confirmed) {
+        console.log('[poll] Warning: Flag cleared before server confirmed Stage 1, continuing poll');
+        // Continue polling anyway - server state is source of truth
       }
 
       const elapsed = Date.now() - startTime;
@@ -770,7 +739,7 @@ document.addEventListener("DOMContentLoaded", () => {
         // Timeout - show error and clear flag
         document.getElementById("overlayMsg").textContent = "Server timeout. Please contact support.";
         sessionStorage.removeItem('loading_stage2');
-        console.error('[poll] Timeout after 30 seconds');
+        console.error('[poll] Timeout after 15 seconds');
         return;
       }
 
@@ -783,9 +752,11 @@ document.addEventListener("DOMContentLoaded", () => {
             // Stage 2 is ready! Reload will clear flag and show Stage 2
             const waitTime = ((Date.now() - startTime) / 1000).toFixed(1);
             console.log(`[poll] Stage 2 detected after ${waitTime}s, reloading...`);
+            sessionStorage.removeItem('loading_stage2'); // Clean up flag
             location.href = "/";
           } else {
             // Still Stage 1 or transitioning - keep polling
+            serverStage1Confirmed = true; // We've confirmed server is responsive
             if (elapsed > 2000 && elapsed % 2000 < pollInterval) {
               console.log(`[poll] Still waiting for Stage 2... (${(elapsed/1000).toFixed(1)}s)`);
             }
@@ -793,7 +764,7 @@ document.addEventListener("DOMContentLoaded", () => {
           }
         })
         .catch(() => {
-          // Server not responding yet (likely restarting) - keep polling
+          // Server not responding yet - keep polling (persistent server should always respond)
           if (elapsed > 2000 && elapsed % 2000 < pollInterval) {
             console.log(`[poll] Server unavailable, retrying... (${(elapsed/1000).toFixed(1)}s)`);
           }
@@ -801,7 +772,7 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Start polling after a small initial delay to let server begin shutdown
+    // Start polling after a small initial delay to let server process submission
     setTimeout(checkServer, 500);
   }
 
@@ -843,7 +814,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // modals
   document.querySelectorAll(".close").forEach(x=>x.onclick=()=>{ document.getElementById(x.dataset.x).style.display="none"; });
   document.getElementById("rulesLink").onclick=(e)=>{e.preventDefault();rulesModal.style.display="flex";};
-  [rulesModal,tipsModal,wonkModal,budgetAlertModal,performanceModal].forEach(m=>m.addEventListener("click",(e)=>{ if(e.target===m) m.style.display="none"; }));
+  // DEAD CODE REMOVED: tipsModal and wonkModal from modal click handlers
+  [rulesModal,budgetAlertModal,performanceModal].forEach(m=>m.addEventListener("click",(e)=>{ if(e.target===m) m.style.display="none"; }));
 
   // Restart button handler (in brandbar)
   const restartBtnBrand = document.getElementById("restartBtnBrand");
@@ -910,9 +882,10 @@ document.addEventListener("DOMContentLoaded", () => {
   } else if (loadingStage2 && STAGE === 2) {
     // Successfully loaded Stage 2 - show app with Stage 2 content
     showApp();
-  } else if (STAGE===1){
-    // Stage 1: Fresh game - always clear ALL client-side state to start fresh
-    console.log('[init] Starting fresh game - clearing all client-side state');
+  } else if (STAGE === 0 || STAGE === 1){
+    // Stage 0 (no game) or Stage 1 (fresh game): Show login screen
+    // Always clear ALL client-side state to start fresh
+    console.log('[init] Stage 0/1 - clearing all client-side state and showing login');
     localStorage.removeItem("player_name");
     localStorage.removeItem("game_type");
     localStorage.removeItem("activity_v1");

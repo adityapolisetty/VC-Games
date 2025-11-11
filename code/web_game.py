@@ -4,7 +4,7 @@ import argparse
 import pandas as pd
 
 from web_wrangler_fixed import run_ui, start_persistent_server, reset_game_state  # UI server only - using fixed singleton version
-from sim_res import _deal_cards_global_deck, round_seed
+from sim_res import _deal_cards_global_deck  # DEAD CODE REMOVED: round_seed import (unused)
 from database import init_db, create_session, log_stage_action, log_game_results, close_session, mark_session_completed, delete_session
 from simulate_policy import run_policy_simulation
 
@@ -463,13 +463,21 @@ if __name__ == "__main__":
                     player_concentration=concentration_index,
                     rounds=10000,
                 )
-                # Don't send full 10k returns array to UI (too large for JSON/HTML)
-                # stats["sim_returns"] = sim_returns.tolist()  # Skip full array
+                # CRITICAL FIX: Create histogram bins instead of sending raw data to avoid 502 error
+                # Pre-compute 200-bin histogram on server side, send bin edges + counts
+                # This is much more compact (400 numbers vs 10k) and preserves exact distribution
+                n_bins = 200
+                counts, bin_edges = np.histogram(sim_returns, bins=n_bins)
+                stats["sim_histogram"] = {
+                    "counts": counts.tolist(),      # 200 integers (frequency in each bin)
+                    "bin_edges": bin_edges.tolist() # 201 floats (bin boundaries)
+                }
                 stats["sim_metadata"] = sim_metadata
                 print(f"[game] Simulation complete: mean={sim_metadata['mean']:.2f}%, std={sim_metadata['std']:.2f}%")
+                print(f"[game] Created {n_bins}-bin histogram from {len(sim_returns)} simulation points")
             except Exception as e:
                 print(f"[game] Policy simulation failed: {e}")
-                # stats["sim_returns"] = []  # Skip full array
+                stats["sim_histogram"] = {}  # Empty histogram on error
                 stats["sim_metadata"] = {}
 
             # ---- Show Results (triggered from Stage 2) ----

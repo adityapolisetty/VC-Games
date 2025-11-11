@@ -16,6 +16,7 @@ _BROWSER_OPENED = False  # guard to open browser only once per process
 # REFACTORED: Single server instance with dynamic routing based on game state
 _SERVER_INSTANCE = None  # Singleton server
 _SERVER_LOCK = threading.Lock()  # Thread-safe server access
+_SESSION_LOCK = threading.Lock()  # CRITICAL FIX: Thread-safe session data access
 _GAME_STATE = {
     'stage': 0,  # Current game stage (0=not started, 1=stage1, 2=stage2, 3=results)
     'ctx': {},   # Current context data
@@ -169,29 +170,35 @@ class _H(BaseHTTPRequestHandler):
                 ctx = _GAME_STATE['ctx'].copy()
                 stage = _GAME_STATE['stage']
 
-            if stage == 0:
-                # No active game - serve error page
-                self.send_response(503)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-                self.send_header("Pragma", "no-cache")
-                self.send_header("Expires", "0")
-                self.end_headers()
-                self.wfile.write(b"<html><body><h1>No active game</h1><p>Server is starting up...</p></body></html>")
-                return
-
-            # Serve stage action page
+            # Serve stage action page (including stage=0 for clean login screen)
             html = _HTML.read_text(encoding="utf-8")
-            seed = {
-                "stage": ctx.get("stage", stage),
-                "totalBudget": ctx.get("total_budget", 100.0),
-                "budgetRemaining": ctx.get("wallet", 0.0),
-                "cards": ctx.get("cards", []),
-                "prevSignals": ctx.get("prev_signals", {}),
-                "prevInvest": ctx.get("prev_invest", {}),
-                "stage_history": ctx.get("stage_history", []),
-                "stage1_invested": ctx.get("stage1_invested", []),
-            }
+
+            if stage == 0:
+                # No active game - serve login screen with empty state
+                # This ensures clean UX when refreshing between games
+                seed = {
+                    "stage": 0,
+                    "totalBudget": 100.0,
+                    "budgetRemaining": 0.0,
+                    "cards": [],
+                    "prevSignals": {},
+                    "prevInvest": {},
+                    "stage_history": [],
+                    "stage1_invested": [],
+                }
+            else:
+                # Active game - serve with actual game state
+                seed = {
+                    "stage": ctx.get("stage", stage),
+                    "totalBudget": ctx.get("total_budget", 100.0),
+                    "budgetRemaining": ctx.get("wallet", 0.0),
+                    "cards": ctx.get("cards", []),
+                    "prevSignals": ctx.get("prev_signals", {}),
+                    "prevInvest": ctx.get("prev_invest", {}),
+                    "stage_history": ctx.get("stage_history", []),
+                    "stage1_invested": ctx.get("stage1_invested", []),
+                }
+
             html = html.replace("</head>", f"<script>window.SEED={json.dumps(seed)};</script></head>")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -241,8 +248,9 @@ class _H(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length", "0"))
             data = json.loads(self.rfile.read(n).decode("utf-8"))
 
-            # Store submitted data
-            _SESSION_DATA = data
+            # Store submitted data (CRITICAL FIX: Thread-safe access)
+            with _SESSION_LOCK:
+                _SESSION_DATA = data
             _SESSION_EVENT.set()
 
             # Update player name in results if applicable
@@ -259,8 +267,9 @@ class _H(BaseHTTPRequestHandler):
             return
 
         if self.path == "/end":
-            # Signal end of game
-            _SESSION_DATA = {"action": "end_game"}
+            # Signal end of game (CRITICAL FIX: Thread-safe access)
+            with _SESSION_LOCK:
+                _SESSION_DATA = {"action": "end_game"}
             _SESSION_EVENT.set()
 
             self.send_response(200)
@@ -599,24 +608,46 @@ function createFrontierChart() {{
 
 // Create distribution histogram (always visible in Summary tab)
 function createDistributionHistogram() {{
-  const simReturns = {json.dumps(stats.get('sim_returns', []))};
+  const simHistogram = {json.dumps(stats.get('sim_histogram', {}))};
   const playerReturn = {stats.get('net_return_pct', 0):.2f};
 
-  if (simReturns.length === 0) {{
+  // Check if histogram data exists
+  if (!simHistogram.counts || !simHistogram.bin_edges) {{
     document.getElementById('distributionChart').innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">No simulation data available</div>';
     return;
   }}
 
-  // Calculate player's percentile
-  const belowPlayer = simReturns.filter(r => r < playerReturn).length;
-  const percentile = (belowPlayer / simReturns.length * 100).toFixed(1);
+  const counts = simHistogram.counts;
+  const binEdges = simHistogram.bin_edges;
+
+  // Calculate bin centers for x-axis
+  const binCenters = binEdges.slice(0, -1).map((edge, i) => (edge + binEdges[i + 1]) / 2);
+
+  // Calculate player's percentile from cumulative distribution
+  let totalCount = counts.reduce((sum, c) => sum + c, 0);
+  let cumulativeCount = 0;
+  let playerBinIndex = binEdges.findIndex((edge, i) => i < binEdges.length - 1 && playerReturn >= edge && playerReturn < binEdges[i + 1]);
+
+  if (playerBinIndex === -1) {{
+    // Handle edge cases: player return outside histogram range
+    if (playerReturn < binEdges[0]) playerBinIndex = 0;
+    else playerBinIndex = counts.length - 1;
+  }}
+
+  for (let i = 0; i < playerBinIndex; i++) {{
+    cumulativeCount += counts[i];
+  }}
+  // Add half of player's bin (interpolation)
+  cumulativeCount += counts[playerBinIndex] / 2;
+
+  const percentile = (cumulativeCount / totalCount * 100).toFixed(1);
   document.getElementById('playerPercentile').textContent = percentile + '%';
 
-  // Create histogram with 100 bins
+  // Create bar chart from pre-computed histogram
   const trace = {{
-    x: simReturns,
-    type: 'histogram',
-    nbinsx: 100,
+    x: binCenters,
+    y: counts,
+    type: 'bar',
     marker: {{
       color: '#6b7280',
       line: {{ color: '#111827', width: 0.5 }}
@@ -702,7 +733,9 @@ def reset_game_state():
         _GAME_STATE['stage'] = 0
         _GAME_STATE['ctx'] = {}
         _GAME_STATE['ready'].clear()
-    _SESSION_DATA = None
+    # CRITICAL FIX: Thread-safe session data reset
+    with _SESSION_LOCK:
+        _SESSION_DATA = None
     _SESSION_EVENT.clear()
     print("[server] Game state reset to defaults")
 
@@ -772,8 +805,9 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
     if _SERVER_INSTANCE is None:
         start_persistent_server(port=port, open_browser=open_browser)
 
-    # Reset session state
-    _SESSION_DATA = None
+    # Reset session state (CRITICAL FIX: Thread-safe access)
+    with _SESSION_LOCK:
+        _SESSION_DATA = None
     _SESSION_EVENT.clear()
 
     # Build context (same as before)
@@ -813,21 +847,34 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
         print(f"[web] Results stage - waiting for 'End Game' click")
         if not _SESSION_EVENT.wait(timeout=300):  # 5 minute timeout
             print(f"[web] Warning: Results stage timed out")
+            # CRITICAL FIX: Clean up stale state on timeout to prevent memory leak
+            with _SESSION_LOCK:
+                _SESSION_DATA = None
+            _SESSION_EVENT.clear()
             return None
     else:
         # Game stage: wait for POST submission
         if not _SESSION_EVENT.wait(timeout=300):
             print(f"[web] Warning: Stage {stage} timed out waiting for submission")
+            # CRITICAL FIX: Clean up stale state on timeout to prevent memory leak
+            with _SESSION_LOCK:
+                _SESSION_DATA = None
+            _SESSION_EVENT.clear()
             return None
 
-    # Get submitted data
-    actions = _SESSION_DATA
+    # Get submitted data (CRITICAL FIX: Thread-safe access)
+    with _SESSION_LOCK:
+        actions = _SESSION_DATA
     print(f"[web] Stage {stage} complete, returning actions")
     return actions
 
 
 def shutdown_server():
-    """Shutdown the persistent server (called on application exit)"""
+    """Shutdown the persistent server (called on application exit)
+
+    NOTE: Currently unused but kept for future graceful shutdown implementation.
+    To use, register with atexit or signal handlers for clean exits.
+    """
     global _SERVER_INSTANCE
     with _SERVER_LOCK:
         if _SERVER_INSTANCE:
