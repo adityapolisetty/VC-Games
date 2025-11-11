@@ -194,7 +194,17 @@ if __name__ == "__main__":
     print("[game] Starting game server. Press Ctrl+C to stop.")
     while True:
         try:
-            # 9 piles - generate random seed for each new game
+            # ---- Stage 0: Landing Page ----
+            # Show landing page FIRST, wait for player to click "Enter"
+            # Don't generate board until after Enter is clicked
+            print("[game] Showing landing page...")
+            act = run_ui(0, None, 0, open_browser=open_first, signal_mode=mode, signal_cost=cost)
+            if act is None:
+                print("[game] Landing page returned None - player closed browser")
+                continue  # Restart and show landing page again
+
+            # Player clicked Enter - NOW generate the game board
+            print("[game] Player entered - generating new game...")
             game_seed = np.random.randint(0, 1_000_000)
             df = draw_deck(n_cards=9, seed=game_seed)
             print(f"[game] New game started with seed: {game_seed}")
@@ -215,7 +225,7 @@ if __name__ == "__main__":
             session_id = None  # Will be created after Stage 1 submission
 
             # ---- Stage 1 ----
-            act = run_ui(1, df, wallet, open_browser=open_first, signal_mode=mode, signal_cost=cost)
+            act = run_ui(1, df, wallet, open_browser=False, signal_mode=mode, signal_cost=cost)  # Don't open browser again
             if act is None:
                 # Player closed browser or restarted - don't create DB session
                 print("[game] Stage 1 returned None - game abandoned before submission")
@@ -439,12 +449,16 @@ if __name__ == "__main__":
             # ---- Run Policy Simulation (10k rounds) ----
             print("[game] Running policy simulation (10k rounds)...")
             total_n_signals = signal_count_stage1 + signal_count_stage2
+            # Calculate stage1_alloc from actual budget allocation
+            # stage1_alloc = (stage1_stakes + signal_costs_stage1) / WALLET0
+            budget_stage1 = stage1_stakes + total_signal_cost_stage1
+            stage1_alloc = budget_stage1 / WALLET0 if WALLET0 > 0 else 0.5
             try:
                 sim_returns, sim_metadata = run_policy_simulation(
                     n_signals=total_n_signals,
                     signal_type=mode,
                     signal_cost=cost,
-                    stage1_alloc=alpha,  # Use the alpha parameter from game setup
+                    stage1_alloc=stage1_alloc,  # Calculated from actual budget split
                     ace_payout=ACE_PAYOUT,
                     scale_pay=0,  # Hardcoded for now (ace-only payoff)
                     scale_param=0.0,

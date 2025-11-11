@@ -72,6 +72,8 @@
   input[type="number"]{width:170px;padding:12px;border-radius:10px;border:1px solid #cbd5e1;background:#ffffff;color:#111827;font-size:16px}
   input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
   input[type=number]{-moz-appearance:textfield}
+  /* Radio buttons - black accent color */
+  input[type="radio"]{accent-color:#111827;cursor:pointer;width:18px;height:18px}
 
   .sig-line{display:flex;align-items:center;gap:10px;border:0;background:transparent;border-radius:0;padding:0;margin:8px 0}
   .sig-left{display:flex;align-items:center;gap:12px}
@@ -886,8 +888,8 @@ document.addEventListener("DOMContentLoaded", () => {
   } else if (loadingStage2 && STAGE === 2) {
     // Successfully loaded Stage 2 - show app with Stage 2 content
     showApp();
-  } else if (STAGE===1){
-    // Stage 1: Fresh game - always clear ALL localStorage to start fresh
+  } else if (STAGE===0 || STAGE===1){
+    // Stage 0 (landing page) or Stage 1: Fresh game - always clear ALL localStorage to start fresh
     localStorage.removeItem("player_name");
     localStorage.removeItem("game_type");
     localStorage.removeItem("activity_v1");
@@ -910,8 +912,34 @@ document.addEventListener("DOMContentLoaded", () => {
     const gt = (document.querySelector('input[name="gameType"]:checked')||{value:'g1'}).value;
     localStorage.setItem("player_name", nm);
     localStorage.setItem("game_type", gt);
-    try { initSignalsFromGame(); } catch(_){ }
-    showApp();
+
+    // If Stage 0 (landing page), POST to server to start game
+    if (STAGE === 0) {
+      console.log('[landing] Submitting to start game...');
+      const payload = {
+        stage: 0,
+        player_name: nm,
+        game_type: gt
+      };
+
+      fetch("/submit", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload)
+      }).then(() => {
+        console.log('[landing] Game starting, reloading for Stage 1...');
+        // Server will restart with Stage 1 - reload page
+        location.href = "/";
+      }).catch((err) => {
+        console.error('[landing] Failed to start game:', err);
+        if (enterBtn) enterBtn.disabled = false;
+        alert("Failed to start game. Is the server running?");
+      });
+    } else {
+      // Stage 1+ - just show the app view (old behavior)
+      try { initSignalsFromGame(); } catch(_){ }
+      showApp();
+    }
   }
   // No inline onclick; rely on single listener
   if (enterBtn) enterBtn.addEventListener("click", doEnter);
