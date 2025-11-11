@@ -258,14 +258,14 @@ if __name__ == "__main__":
                 continue  # Start fresh game
 
             df, s_spent, _ = stage_buy_signals(
-                df, {int(k): v for k, v in act["purchases"].items()},
+                df, {int(k): v for k, v in act.get("purchases", {}).items()},
                 budget=wallet,
                 per_signal_cost=cost
             )
             total_signal_cost_stage1 = float(s_spent)
             wallet = max(0.0, wallet - float(s_spent))
 
-            inv_need = {int(k): max(float(v), MIN_INV[1]) for k, v in act["invest"].items() if float(v) > 0}
+            inv_need = {int(k): max(float(v), MIN_INV[1]) for k, v in act.get("invest", {}).items() if float(v) > 0}
             stage1_stakes = sum(inv_need.values())
             need = stage1_stakes
             if need > wallet:

@@ -164,40 +164,58 @@ class _H(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
 
-        # Main page - serve based on current game state
+        # Main page - ALWAYS serve landing page (Stage 0)
         if self.path == "/":
+            html = _HTML.read_text(encoding="utf-8")
+
+            # Always serve Stage 0 (landing page) at root
+            seed = {
+                "stage": 0,
+                "totalBudget": 100.0,
+                "budgetRemaining": 0.0,
+                "cards": [],
+                "prevSignals": {},
+                "prevInvest": {},
+                "stage_history": [],
+                "stage1_invested": [],
+            }
+
+            html = html.replace("</head>", f"<script>window.SEED={json.dumps(seed)};</script></head>")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            # CRITICAL: Aggressive cache-busting to prevent stale state
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+            self.end_headers()
+            self.wfile.write(html.encode("utf-8"))
+            return
+
+        # Game page - serve active game (Stages 1-2)
+        if self.path == "/game" or self.path.startswith("/game?"):
             with _SERVER_LOCK:
                 ctx = _GAME_STATE['ctx'].copy()
                 stage = _GAME_STATE['stage']
 
-            # Serve stage action page (including stage=0 for clean login screen)
-            html = _HTML.read_text(encoding="utf-8")
-
             if stage == 0:
-                # No active game - serve login screen with empty state
-                # This ensures clean UX when refreshing between games
-                seed = {
-                    "stage": 0,
-                    "totalBudget": 100.0,
-                    "budgetRemaining": 0.0,
-                    "cards": [],
-                    "prevSignals": {},
-                    "prevInvest": {},
-                    "stage_history": [],
-                    "stage1_invested": [],
-                }
-            else:
-                # Active game - serve with actual game state
-                seed = {
-                    "stage": ctx.get("stage", stage),
-                    "totalBudget": ctx.get("total_budget", 100.0),
-                    "budgetRemaining": ctx.get("wallet", 0.0),
-                    "cards": ctx.get("cards", []),
-                    "prevSignals": ctx.get("prev_signals", {}),
-                    "prevInvest": ctx.get("prev_invest", {}),
-                    "stage_history": ctx.get("stage_history", []),
-                    "stage1_invested": ctx.get("stage1_invested", []),
-                }
+                # No game active yet - redirect to landing
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.end_headers()
+                return
+
+            # Serve game with actual state
+            html = _HTML.read_text(encoding="utf-8")
+            seed = {
+                "stage": ctx.get("stage", stage),
+                "totalBudget": ctx.get("total_budget", 100.0),
+                "budgetRemaining": ctx.get("wallet", 0.0),
+                "cards": ctx.get("cards", []),
+                "prevSignals": ctx.get("prev_signals", {}),
+                "prevInvest": ctx.get("prev_invest", {}),
+                "stage_history": ctx.get("stage_history", []),
+                "stage1_invested": ctx.get("stage1_invested", []),
+            }
 
             html = html.replace("</head>", f"<script>window.SEED={json.dumps(seed)};</script></head>")
             self.send_response(200)
@@ -517,7 +535,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {{
   }});
 }});
 
-// Quit game button - return to landing page
+// Quit game button - close tab and return to landing
 document.getElementById('endBtn').onclick = () => {{
   const btn = document.getElementById('endBtn');
   const overlay = document.getElementById('ov');
@@ -527,55 +545,24 @@ document.getElementById('endBtn').onclick = () => {{
   overlay.style.display = 'flex';
   overlayMsg.textContent = 'Ending game...';
 
-  // Clear ALL storage FIRST to ensure fresh start
-  localStorage.clear();
-  sessionStorage.clear();
-
-  // Send end signal
+  // Send end signal to server
   fetch('/end', {{method:'POST'}})
     .then(() => {{
-      overlayMsg.textContent = 'Waiting for new game...';
+      overlayMsg.textContent = 'Closing tab...';
 
-      // Poll server until Stage 0 is ready
-      const startTime = Date.now();
-      const maxWait = 10000; // 10 seconds max
+      // Try to close the tab (works since it was opened by window.open)
+      setTimeout(() => {{
+        window.close();
 
-      function pollForStage0() {{
-        if (Date.now() - startTime > maxWait) {{
-          console.error('[quit] Timeout waiting for Stage 0');
-          overlayMsg.textContent = 'Error: Server timeout. Please refresh the page.';
-          return;
-        }}
-
-        fetch('/', {{cache: 'no-store'}})
-          .then(resp => resp.text())
-          .then(html => {{
-            // Check if server is at Stage 0 (landing page)
-            const stageMatch = html.match(/"stage":\s*(\d+)/);
-            const stage = stageMatch ? parseInt(stageMatch[1]) : -1;
-
-            if (stage === 0) {{
-              console.log('[quit] Stage 0 ready, redirecting...');
-              overlayMsg.textContent = 'Redirecting...';
-              // Navigate to landing page
-              window.location.href = '/?t=' + Date.now();
-            }} else {{
-              console.log('[quit] Server at stage', stage, '- waiting for Stage 0...');
-              setTimeout(pollForStage0, 300);
-            }}
-          }})
-          .catch(err => {{
-            console.log('[quit] Server not ready, retrying...', err);
-            setTimeout(pollForStage0, 300);
-          }});
-      }}
-
-      // Start polling after small delay
-      setTimeout(pollForStage0, 500);
+        // If window didn't close (shouldn't happen for tabs opened by JS), show message
+        setTimeout(() => {{
+          overlayMsg.innerHTML = 'Game ended!<br><span style="font-size:14px;font-weight:400;margin-top:8px;display:block;">You can close this tab now</span>';
+        }}, 500);
+      }}, 500);
     }})
     .catch((err) => {{
       console.error('[quit] Error ending game:', err);
-      overlayMsg.textContent = 'Error ending game. Please refresh the page.';
+      overlayMsg.textContent = 'Error ending game. You can close this tab.';
     }});
 }};
 
@@ -924,6 +911,12 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
     # Get submitted data (CRITICAL FIX: Thread-safe access)
     with _SESSION_LOCK:
         actions = _SESSION_DATA
+
+    # Check if this is an end_game signal (restart/quit)
+    if actions and actions.get("action") == "end_game":
+        print(f"[web] Stage {stage} received end_game signal - returning None to restart game loop")
+        return None
+
     print(f"[web] Stage {stage} complete, returning actions")
     return actions
 

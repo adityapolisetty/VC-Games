@@ -152,7 +152,7 @@
     word-wrap: break-word;
   }
 
-  /* DEAD CODE REMOVED: #pickInfo and #aliveTitle elements don't exist in DOM */
+  /* DEAD CODE REMOVED: #pickInfo element doesn't exist in DOM */
   @media (max-width:900px){.hero-wrap{grid-template-columns:1fr;gap:24px;margin-top:8vh}.hero-title{font-size:44px}}
 </style>
 <!-- Python injects window.SEED -->
@@ -211,7 +211,6 @@
 
   <div class="wrap">
     <section>
-      <h3 id="aliveTitle" class="section-title">Alive</h3>
       <div id="grid" class="grid"></div>
     </section>
 
@@ -309,7 +308,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const nameInput=document.getElementById("nameInput");
   const enterBtn=document.getElementById("enterBtn");
   const dashCenter=document.getElementById("dashCenter");
-  const aliveTitle=document.getElementById("aliveTitle");
   const budgetEl=document.getElementById("budget");
   const grid=document.getElementById("grid");
   // Wreckage removed for streamlined UI
@@ -750,8 +748,8 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // Try to fetch root - if server is ready with Stage 2, it will respond
-      fetch("/", {cache: "no-store"})
+      // Try to fetch game page - if server is ready with Stage 2, it will respond
+      fetch("/game", {cache: "no-store"})
         .then(resp => resp.text())
         .then(html => {
           // Check if HTML contains Stage 2 context (SEED.stage === 2)
@@ -760,7 +758,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const waitTime = ((Date.now() - startTime) / 1000).toFixed(1);
             console.log(`[poll] Stage 2 detected after ${waitTime}s, reloading...`);
             sessionStorage.removeItem('loading_stage2'); // Clean up flag
-            location.href = "/";
+            location.href = "/game";
           } else {
             // Still Stage 1 or transitioning - keep polling
             serverStage1Confirmed = true; // We've confirmed server is responsive
@@ -832,10 +830,13 @@ document.addEventListener("DOMContentLoaded", () => {
         // Clear ALL storage - localStorage AND sessionStorage
         localStorage.clear();
         sessionStorage.clear();
-        // Call reset endpoint
+
+        // Send BOTH /end (to exit game loop) and /reset (to clear state)
+        fetch("/end", {method: "POST"}).catch(() => {});
         fetch("/reset", {method: "POST"}).catch(() => {});
-        // Redirect to landing page
-        setTimeout(() => { location.href = "/"; }, 100);
+
+        // Close this game tab - user returns to landing page tab
+        setTimeout(() => { window.close(); }, 100);
       }
     };
   }
@@ -863,12 +864,10 @@ document.addEventListener("DOMContentLoaded", () => {
   if (STAGE === 2){
     // Stage 2: Show performance button text
     if (stageIndicator) stageIndicator.textContent = `Stage ${STAGE}`;
-    aliveTitle.textContent = "Alive";
     finishStageBtn.textContent = "Finish Stage 2";
   } else {
     // Stage 1
     if (stageIndicator) stageIndicator.textContent = `Stage ${STAGE}`;
-    aliveTitle.textContent = "Alive";
     finishStageBtn.textContent = "Finish Stage 1";
   }
 
@@ -918,14 +917,14 @@ document.addEventListener("DOMContentLoaded", () => {
           showLogin();
           return;
         }
-        fetch("/", {cache: "no-store"})
+        fetch("/game", {cache: "no-store"})
           .then(resp => resp.text())
           .then(html => {
             // Check if cards are now available
             const match = html.match(/"cards":\s*\[([^\]]+)\]/);
             if (match && match[1].trim().length > 0) {
               console.log('[init] Cards now available, reloading...');
-              location.href = "/";
+              location.href = "/game";
             } else {
               setTimeout(pollForCards, 300);
             }
@@ -966,12 +965,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (enterBtn) enterBtn.disabled = true; // guard against double-click
     const nm=(nameInput.value||"Team Alpha").trim();
     const gt = (document.querySelector('input[name="gameType"]:checked')||{value:'g1'}).value;
+
+    console.log('[enter] Opening game in new tab for:', nm, gt);
+
+    // Store player info in localStorage for the new tab to pick up
     localStorage.setItem("player_name", nm);
     localStorage.setItem("game_type", gt);
 
-    console.log('[enter] Submitting to server:', nm, gt);
-
-    // Submit Stage 0 data to server (triggers board dealing)
+    // Submit Stage 0 data to server to trigger board dealing
     const payload = {
       stage: 0,
       player_name: nm,
@@ -985,9 +986,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     fetch("/submit", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)})
       .then(() => {
-        console.log('[enter] Stage 0 submitted, reloading for Stage 1...');
-        // Reload to get Stage 1 with dealt board
-        location.href = "/";
+        console.log('[enter] Stage 0 submitted, opening game tab...');
+        // Open game in new tab - server will now be at Stage 1
+        window.open("/game", "_blank");
+
+        // Re-enable enter button so user can start another game after this one ends
+        setTimeout(() => {
+          enterBtn.disabled = false;
+        }, 1000);
       })
       .catch(() => {
         alert("Failed to start game. Is Python running?");
