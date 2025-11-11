@@ -561,6 +561,10 @@ document.getElementById('endBtn').onclick = () => {{
   overlay.style.display = 'flex';
   overlayMsg.textContent = 'Ending game...';
 
+  // CRITICAL: Clear localStorage so landing page doesn't auto-redirect
+  localStorage.clear();
+  sessionStorage.clear();
+
   // Send end signal to server
   fetch('/end', {{method:'POST'}})
     .then(() => {{
