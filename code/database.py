@@ -253,6 +253,97 @@ def delete_session(session_id: int):
     print(f"[db] Deleted session {session_id} and all related data")
 
 
+def get_leaderboard(limit: int = 10) -> list:
+    """Get top players ranked by net return percentage.
+
+    Only includes completed sessions with custom names (excludes 'Team Alpha').
+    Filters to median signal games only for fair comparison.
+    Returns list of dicts with: rank, team_name, net_return_pct, n_invested
+    """
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row  # Return rows as dicts
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT
+            gs.team_name,
+            gr.net_return_pct,
+            gr.n_invested,
+            gs.timestamp_end
+        FROM game_results gr
+        JOIN game_sessions gs ON gr.session_id = gs.id
+        WHERE gs.completed = 1
+          AND gs.team_name IS NOT NULL
+          AND gs.team_name != ''
+          AND gs.team_name != 'Team Alpha'
+          AND gs.signal_mode = 'median'
+        ORDER BY gr.net_return_pct DESC
+        LIMIT ?
+    """, (limit,))
+
+    rows = cur.fetchall()
+    conn.close()
+
+    # Convert to list of dicts with rank
+    leaderboard = []
+    for i, row in enumerate(rows, start=1):
+        leaderboard.append({
+            'rank': i,
+            'team_name': row['team_name'],
+            'net_return_pct': row['net_return_pct'],
+            'n_invested': row['n_invested'],
+            'timestamp': row['timestamp_end']
+        })
+
+    print(f"[db] Retrieved median signal leaderboard with {len(leaderboard)} entries")
+    return leaderboard
+
+
+def get_leaderboard_by_signal_type(signal_type: str, limit: int = 10) -> list:
+    """Get top players ranked by net return percentage for a specific signal type.
+
+    Only includes completed sessions with custom names (excludes 'Team Alpha').
+    Returns list of dicts with: rank, team_name, net_return_pct, n_invested
+    """
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row  # Return rows as dicts
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT
+            gs.team_name,
+            gr.net_return_pct,
+            gr.n_invested,
+            gs.timestamp_end
+        FROM game_results gr
+        JOIN game_sessions gs ON gr.session_id = gs.id
+        WHERE gs.completed = 1
+          AND gs.team_name IS NOT NULL
+          AND gs.team_name != ''
+          AND gs.team_name != 'Team Alpha'
+          AND gs.signal_mode = ?
+        ORDER BY gr.net_return_pct DESC
+        LIMIT ?
+    """, (signal_type, limit))
+
+    rows = cur.fetchall()
+    conn.close()
+
+    # Convert to list of dicts with rank
+    leaderboard = []
+    for i, row in enumerate(rows, start=1):
+        leaderboard.append({
+            'rank': i,
+            'team_name': row['team_name'],
+            'net_return_pct': row['net_return_pct'],
+            'n_invested': row['n_invested'],
+            'timestamp': row['timestamp_end']
+        })
+
+    print(f"[db] Retrieved {signal_type} signal leaderboard with {len(leaderboard)} entries")
+    return leaderboard
+
+
 if __name__ == "__main__":
     # Test database creation
     init_db()

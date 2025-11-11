@@ -296,6 +296,34 @@ def _results_page(stats: dict) -> str:
     """Generate results HTML page"""
     hit_ace_label = "Yes" if (stats.get("ace_hits", 0) or 0) > 0 else "No"
 
+    # Generate leaderboard rows
+    leaderboard = stats.get("leaderboard", [])
+    signal_type_label = stats.get("signal_type_label", "")
+
+    if leaderboard:
+        leaderboard_rows = ""
+        for entry in leaderboard:
+            # Highlight current player if they're on the leaderboard
+            row_style = 'background:#fef3c7;font-weight:700;' if entry['team_name'] == stats.get('player', '') else ''
+            leaderboard_rows += f"""
+            <tr style="{row_style}">
+              <td style="padding:12px 16px;border-bottom:1px solid var(--b);text-align:center;font-weight:700;color:#111827;">#{entry['rank']}</td>
+              <td style="padding:12px 16px;border-bottom:1px solid var(--b);color:#111827;">{entry['team_name']}</td>
+              <td style="padding:12px 16px;border-bottom:1px solid var(--b);text-align:right;font-weight:700;color:{'#059669' if entry['net_return_pct'] >= 0 else '#c53030'};">{entry['net_return_pct']:.2f}%</td>
+              <td style="padding:12px 16px;border-bottom:1px solid var(--b);text-align:right;color:#6b7280;">{entry['n_invested']}</td>
+            </tr>
+            """
+        leaderboard_empty_msg = ""
+    else:
+        leaderboard_rows = """
+            <tr>
+              <td colspan="4" style="padding:40px;text-align:center;color:#6b7280;">
+                No players yet! Be the first to complete a {signal_type_label} signal game.
+              </td>
+            </tr>
+        """
+        leaderboard_empty_msg = ""
+
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -376,6 +404,7 @@ def _results_page(stats: dict) -> str:
     <div class="tab-nav">
       <button class="tab-btn active" data-tab="summary">Summary</button>
       <button class="tab-btn" data-tab="frontier">Frontier Analysis</button>
+      <button class="tab-btn" data-tab="leaderboard">Leaderboard</button>
     </div>
 
     <!-- Summary Tab -->
@@ -437,6 +466,28 @@ def _results_page(stats: dict) -> str:
             <div id="detailQueen" style="font-size:18px;font-weight:700;color:#111827;">-</div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Leaderboard Tab -->
+    <div id="leaderboard-tab" class="tab-content">
+      <h3 style="margin-top:0;">Top 10 Players ({signal_type_label} Signal)</h3>
+      <p style="color:#6b7280;font-size:14px;margin:0 0 20px 0;">Ranked by net return percentage • Only {signal_type_label.lower()} signal games • Custom names only</p>
+
+      <div style="max-width:640px;margin:0 auto;border:1px solid var(--b);border-radius:12px;overflow:hidden;background:var(--panel);">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead style="background:#f9fafb;border-bottom:2px solid var(--b);">
+            <tr>
+              <th style="padding:14px 20px;text-align:center;font-weight:700;color:#111827;width:70px;">Rank</th>
+              <th style="padding:14px 20px;text-align:left;font-weight:700;color:#111827;">Player</th>
+              <th style="padding:14px 20px;text-align:right;font-weight:700;color:#111827;width:120px;">Net Return</th>
+              <th style="padding:14px 20px;text-align:center;font-weight:700;color:#111827;width:90px;">Piles</th>
+            </tr>
+          </thead>
+          <tbody>
+            {leaderboard_rows}
+          </tbody>
+        </table>
       </div>
     </div>
   </section>

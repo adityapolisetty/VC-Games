@@ -5,7 +5,7 @@ import pandas as pd
 
 from web_wrangler_fixed import run_ui, start_persistent_server, reset_game_state  # UI server only - using fixed singleton version
 from sim_res import _deal_cards_global_deck  # DEAD CODE REMOVED: round_seed import (unused)
-from database import init_db, create_session, log_stage_action, log_game_results, close_session, mark_session_completed, delete_session
+from database import init_db, create_session, log_stage_action, log_game_results, close_session, mark_session_completed, delete_session, get_leaderboard_by_signal_type
 from simulate_policy import run_policy_simulation
 
 # ------- game parameters -------
@@ -479,6 +479,13 @@ if __name__ == "__main__":
                 print(f"[game] Policy simulation failed: {e}")
                 stats["sim_histogram"] = {}  # Empty histogram on error
                 stats["sim_metadata"] = {}
+
+            # ---- Fetch Leaderboard (for this signal type only) ----
+            print(f"[game] Fetching leaderboard for {mode} signal games...")
+            leaderboard = get_leaderboard_by_signal_type(signal_type=mode, limit=10)
+            stats["leaderboard"] = leaderboard
+            stats["signal_type_label"] = mode.capitalize()  # For display
+            print(f"[game] Leaderboard has {len(leaderboard)} entries")
 
             # ---- Show Results (triggered from Stage 2) ----
             # Start a persistent server to serve /results page
