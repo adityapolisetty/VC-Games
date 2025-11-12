@@ -661,12 +661,10 @@ if __name__ == "__main__":
             c2 = investable_stage2 / WALLET0 if WALLET0 > 0 else 0.0
             signal_cost_fraction = total_signals_spend / WALLET0 if WALLET0 > 0 else 0.0
 
-            # Gross return multipliers per stage
-            g1 = stage1_payoff / investable_stage1 if investable_stage1 > 0 else 0.0
-            g2 = stage2_payoff / investable_stage2 if investable_stage2 > 0 else 0.0
-
-            # Gross return multiplier (total payout / total investment)
-            gross_return_mult = total_payoff / total_invest if total_invest > 0 else 0.0
+            # Gross return multipliers (payoff / budget)
+            g1 = stage1_payoff / WALLET0 if WALLET0 > 0 else 0.0
+            g2 = stage2_payoff / WALLET0 if WALLET0 > 0 else 0.0
+            gross_return_mult = total_payoff / WALLET0 if WALLET0 > 0 else 0.0
 
             # Net return using frontier formula
             net_return_pct = 100.0 * (c1 * (g1 - 1.0) + c2 * (g2 - 1.0) - signal_cost_fraction)

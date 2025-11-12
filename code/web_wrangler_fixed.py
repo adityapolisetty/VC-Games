@@ -644,7 +644,7 @@ def _results_page(stats: dict) -> str:
                   <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{(stats.get('stage1_payoff',0) + stats.get('stage2_payoff',0)):.0f}</td>
                 </tr>
                 <tr>
-                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;">Gross return (on budget)</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;">Gross return (payoff/budget)</td>
                   <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:{'#059669' if g1_val >= 1.0 else '#c53030'};">{g1_formatted}X</td>
                   <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:{'#059669' if g2_val >= 1.0 else '#c53030'};">{g2_formatted}X</td>
                   <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:{'#059669' if gross_val >= 1.0 else '#c53030'};">{gross_formatted}X</td>
