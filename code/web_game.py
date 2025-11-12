@@ -301,24 +301,42 @@ def step_round(df: pd.DataFrame, round_idx: int):
 def compute_payoffs_at_stage2(df: pd.DataFrame, ace_payout: float = ACE_PAYOUT) -> pd.DataFrame:
     """Compute payoffs after Stage 2 (end of game).
 
-    Stage 1 investments pay full ace_payout for Ace.
-    Stage 2 investments pay 0.5x ace_payout for Ace.
-    Only highest card in pile determines payout (Ace-only model).
+    Graduated payoff model:
+    - Ace (rank 14): 20x investment
+    - King (rank 13): 5x investment (20 * 0.25)
+    - Queen (rank 12): 1.25x investment (20 * 0.0625)
+    - Others: 0x investment
+
+    Stage 1 investments pay full multiplier.
+    Stage 2 investments pay 0.5x multiplier.
     """
     out = df[(df["alive"]) & (df["round"] == 2)].copy()
-
-    # Ace-only model: only Aces pay out
-    is_ace = out["N"] == ACE_RANK
 
     for c in ("inv1", "inv2"):
         if c not in out.columns:
             out[c] = 0.0
 
-    # Stage 1 payout: full ace_payout
-    out["payout1"] = np.where(is_ace, out["inv1"] * ace_payout, 0.0)
+    # Calculate payout multiplier based on card rank (graduated payoffs)
+    rank = out["N"]
+    multiplier = np.where(
+        rank == 14,  # Ace
+        ace_payout,
+        np.where(
+            rank == 13,  # King
+            ace_payout * 0.25,
+            np.where(
+                rank == 12,  # Queen
+                ace_payout * 0.0625,
+                0.0  # All other ranks
+            )
+        )
+    )
 
-    # Stage 2 payout: 0.5x ace_payout
-    out["payout2"] = np.where(is_ace, out["inv2"] * 0.5 * ace_payout, 0.0)
+    # Stage 1 payout: full multiplier
+    out["payout1"] = out["inv1"] * multiplier
+
+    # Stage 2 payout: 0.5x multiplier
+    out["payout2"] = out["inv2"] * 0.5 * multiplier
 
     out["stake"] = out[["inv1", "inv2"]].sum(axis=1)
     out["payout"] = out["payout1"] + out["payout2"]
