@@ -180,21 +180,19 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
     - Different chosen_idx based on n_sig (first n_sig from same permutation)
     - Different rankings based on which piles were observed
 
-    Stage 2 concentration: Each Stage 1 strategy is paired with 4 Stage 2 variants:
+    Stage 2 concentration: Each Stage 1 strategy is paired with 2 Stage 2 variants:
     - 'keep': Maintain Stage 1 weights, reordered by Stage 2 ranking
     - m2=1: 100% in top Stage 2 pile
-    - m2=2: 50%-50% in top 2 Stage 2 piles
-    - m2=3: 33.3% each in top 3 Stage 2 piles
     """
     # Prepare per-chunk accumulators
     # Stage 1: all 9 piles with all weight combinations
     Wm1 = _weight_splits(UNITS, NUM_PILES)
     Ns1 = Wm1.shape[0]
 
-    # Stage 2 concentration levels: 'keep' plus equal-weight top-m2
-    M2_LEVELS = ['keep', 1, 2, 3]
+    # Stage 2 concentration levels: 'keep' plus m2=1 only (50% speedup)
+    M2_LEVELS = ['keep', 1]
 
-    # Build expanded strategy space: each Stage 1 strategy × 4 Stage 2 variants
+    # Build expanded strategy space: each Stage 1 strategy × 2 Stage 2 variants
     strategy_map = []  # List of (stage1_idx, m2_level) tuples
     for i1 in range(Ns1):
         for m2 in M2_LEVELS:
@@ -292,26 +290,25 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         # Vectorized dot product for all 'keep' strategies
         g2_all[0:Ns1] = W_keep @ p_m_stage2
 
-        # For m2=1,2,3: equal weights in top m2 piles within support
-        for m2_idx, m2 in enumerate([1, 2, 3]):
-            start_idx = (m2_idx + 1) * Ns1  # Offset by 1 because 'keep' is first
-            end_idx = (m2_idx + 2) * Ns1
+        # For m2=1 only: 100% in top pile within support
+        m2 = 1
+        start_idx = Ns1  # After 'keep' strategies
+        end_idx = 2 * Ns1
 
-            W_m2 = np.zeros((Ns1, NUM_PILES), float)
-            for i in range(Ns1):
-                mask = (Wm1[i] > 0)
-                if not np.any(mask):
-                    continue
-                support_idx = np.where(mask)[0]
-                # Top m2 piles by Stage 2 ranking (capped at support size)
-                m2_actual = min(m2, len(support_idx))
-                s2_local = s2_m[support_idx]
-                top_local = np.argsort(-s2_local)[:m2_actual]
-                # Equal weights
-                W_m2[i, support_idx[top_local]] = 1.0 / m2_actual
+        W_m2 = np.zeros((Ns1, NUM_PILES), float)
+        for i in range(Ns1):
+            mask = (Wm1[i] > 0)
+            if not np.any(mask):
+                continue
+            support_idx = np.where(mask)[0]
+            # Top pile by Stage 2 ranking
+            s2_local = s2_m[support_idx]
+            top_idx = support_idx[np.argmax(s2_local)]
+            # 100% weight in top pile
+            W_m2[i, top_idx] = 1.0
 
-            # Vectorized dot product
-            g2_all[start_idx:end_idx] = W_m2 @ p_m_stage2
+        # Vectorized dot product
+        g2_all[start_idx:end_idx] = W_m2 @ p_m_stage2
 
         # Replicate g1 for each Stage 2 variant
         g1_expanded = np.repeat(g1_all, len(M2_LEVELS))
@@ -530,7 +527,7 @@ def simulate_and_save_frontier(seed_int, rounds, max_signals, procs, params, sta
         signal_type=st,
         params=norm_params,
         total_rounds=int(rounds),
-        m2_levels=['keep', 1, 2, 3],
+        m2_levels=['keep', 1],
     )
     _save_bins_npz(out_path, sd_levels_by_n, best_means_by_n, best_weights_by_n, best_m2_levels_by_n, best_ace_hits_by_n, best_king_hits_by_n, best_queen_hits_by_n, meta)
 
