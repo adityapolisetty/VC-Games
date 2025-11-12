@@ -16,3 +16,10 @@
 
 !/frontier_output/
 !/frontier_output/**
+
+!/frontier_output_m/
+!/frontier_output_m/**
+
+
+!/precomp_output/
+!/precomp_output/**
