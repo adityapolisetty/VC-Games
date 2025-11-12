@@ -2,6 +2,8 @@
 import numpy as np
 import argparse
 import pandas as pd
+import json
+import os
 
 from web_wrangler_fixed import run_ui, start_persistent_server, reset_game_state  # UI server only - using fixed singleton version
 from sim_res import _deal_cards_global_deck  # DEAD CODE REMOVED: round_seed import (unused)
@@ -15,8 +17,206 @@ ACE_PAYOUT = 20.0  # Default ace payout multiplier
 ACE_RANK = 14
 # Flags: restrict to a single signal type and cost
 SIGNAL_MODE = "median"  # or "top2"
-SIGNAL_COST = 5.0
+SIGNAL_COST = 3.0
 CARD_VALUES = np.arange(2, 15)  # 2..10, J=11, Q=12, K=13, A=14
+
+
+# ===============================
+# Frontier Data Loading
+# ===============================
+def load_all_alpha_frontiers(signal_type: str) -> dict:
+    """Load all pre-computed frontier NPZ files for all alpha values (stage allocations).
+
+    Args:
+        signal_type: "median" or "top2"
+
+    Returns:
+        Dictionary mapping alpha_pct (int, 0-100 in increments of 5) to frontier data:
+        {
+            0: {data for alpha=0.00},
+            5: {data for alpha=0.05},
+            ...
+            100: {data for alpha=1.00}
+        }
+
+        Each frontier data dict contains:
+        {
+            "points_by_n": [  # List of 10 elements (n=0 to n=9 signals)
+                [  # List of frontier points for this n
+                    {
+                        "sd": float,           # Standard deviation (%)
+                        "mean_gross": float,   # Mean gross return multiplier
+                        "max_gross": float,    # Max gross return from simulation
+                        "sharpe": float,       # Sharpe ratio
+                        "weights": [9 floats], # Portfolio weights (sum to 1.0)
+                        "concentration": float, # Sum of squared weights
+                        "ace_hit_rate": float, # Fraction of rounds hitting ace
+                        "king_hit_rate": float,
+                        "queen_hit_rate": float
+                    },
+                    ...
+                ],
+                ...
+            ],
+            "meta": {...}  # Metadata from NPZ file
+        }
+    """
+    # Frontier files are in parent directory
+    frontier_dir = os.path.join(os.path.dirname(__file__), '..', 'frontier_output')
+
+    # Alpha values: 0, 5, 10, ..., 95, 100 (21 files)
+    alpha_values = list(range(0, 105, 5))
+
+    result = {}
+
+    for alpha_pct in alpha_values:
+        # Convert alpha percentage to 3-digit string (e.g., 10 -> "010")
+        alpha_str = f"a{alpha_pct:03d}"
+
+        # File pattern: sc3p0000_sp0_s0_ap20p0000_{signal_type}_a{alpha}.npz
+        filename = f"sc3p0000_sp0_s0_ap20p0000_{signal_type}_{alpha_str}.npz"
+        filepath = os.path.join(frontier_dir, filename)
+
+        if not os.path.exists(filepath):
+            print(f"[frontier] Warning: Missing file {filename}")
+            continue
+
+        try:
+            with np.load(filepath, allow_pickle=True) as z:
+                sd_step = float(z.get('sd_step', 0.1))
+                sd_levels_by_n = z['sd_levels_by_n']        # List of 10 arrays (n=0 to 9)
+                best_means_by_n = z['best_means_by_n']      # Net return percentages
+                best_weights_by_n = z['best_weights_by_n']  # Portfolio weights
+
+                # Optional hit rates
+                ace_hits_by_n = z.get('best_ace_hits_by_n')
+                king_hits_by_n = z.get('best_king_hits_by_n')
+                queen_hits_by_n = z.get('best_queen_hits_by_n')
+
+                # Metadata
+                meta = json.loads(str(z['meta']))
+
+                # Parse frontier points for each n
+                points_by_n = []
+
+                for n in range(10):  # n=0 to n=9 signals
+                    sd_vals = sd_levels_by_n[n]        # 1D array of SD values
+                    mean_vals = best_means_by_n[n]    # 1D array of mean net return %
+                    weight_vecs = best_weights_by_n[n] # 2D array of weight vectors
+
+                    # Handle empty arrays (some n values might have no strategies)
+                    if len(sd_vals) == 0:
+                        points_by_n.append([])
+                        continue
+
+                    # Coarsen frontier: bin by SD (5pp steps) and keep highest mean in each bin
+                    sd_vals, mean_vals, weight_vecs = _coarsen_frontier(
+                        sd_vals, mean_vals, weight_vecs, sd_step=5.0
+                    )
+
+                    # Build frontier points for this n
+                    n_points = []
+                    for i in range(len(sd_vals)):
+                        sd_pct = float(sd_vals[i])
+                        mean_net_pct = float(mean_vals[i])
+
+                        # Convert net return % to gross return multiplier
+                        # net_return = 22.2% -> gross_mult = 1.222
+                        mean_gross = (mean_net_pct / 100.0) + 1.0
+
+                        # Convert SD from net % to gross multiplier
+                        # SD_net = 15% -> SD_gross = 0.15
+                        sd_gross = sd_pct / 100.0
+
+                        # Get weight vector
+                        w_vec = np.asarray(weight_vecs[i], dtype=float)
+
+                        # Calculate concentration (sum of squared weights)
+                        concentration = float(np.sum(w_vec ** 2))
+
+                        # Sharpe ratio: (mean - 1.0) / (sd / 100)
+                        sharpe = (mean_net_pct / sd_pct) if sd_pct > 0 else 0.0
+
+                        # Hit rates (if available)
+                        ace_rate = float(ace_hits_by_n[n][i]) if ace_hits_by_n is not None and len(ace_hits_by_n[n]) > 0 else 0.0
+                        king_rate = float(king_hits_by_n[n][i]) if king_hits_by_n is not None and len(king_hits_by_n[n]) > 0 else 0.0
+                        queen_rate = float(queen_hits_by_n[n][i]) if queen_hits_by_n is not None and len(queen_hits_by_n[n]) > 0 else 0.0
+
+                        # Note: max_gross is not in NPZ, so we'll compute it on frontend from individual simulations
+                        # For now, use mean_gross as placeholder
+                        max_gross = mean_gross * 1.5  # Rough estimate (actual max could be much higher)
+
+                        point = {
+                            "sd": sd_pct,                # SD of net returns (%)
+                            "sd_gross": sd_gross,        # SD of gross returns (multiplier)
+                            "mean_gross": mean_gross,
+                            "max_gross": max_gross,  # Placeholder
+                            "sharpe": sharpe,
+                            "weights": w_vec.tolist(),
+                            "concentration": concentration,
+                            "ace_hit_rate": ace_rate,
+                            "king_hit_rate": king_rate,
+                            "queen_hit_rate": queen_rate
+                        }
+                        n_points.append(point)
+
+                    points_by_n.append(n_points)
+
+                result[alpha_pct] = {
+                    "points_by_n": points_by_n,
+                    "meta": meta
+                }
+
+                print(f"[frontier] Loaded {filename}: {sum(len(pts) for pts in points_by_n)} total points across n=0..9")
+
+        except Exception as e:
+            print(f"[frontier] Error loading {filename}: {e}")
+            continue
+
+    return result
+
+
+def _coarsen_frontier(sd_vals, mean_vals, weight_vecs, sd_step=5.0):
+    """Coarsen frontier by binning SD values (5pp steps) and keeping highest mean in each bin.
+
+    Args:
+        sd_vals: 1D array of SD values (percentage)
+        mean_vals: 1D array of mean values
+        weight_vecs: 2D array of weight vectors
+        sd_step: Binning granularity in percentage points (default 5.0 for 5pp)
+
+    Returns:
+        Tuple of (coarsened_sd, coarsened_mean, coarsened_weights)
+    """
+    if len(sd_vals) == 0:
+        return sd_vals, mean_vals, weight_vecs
+
+    # Bin by SD with 5pp steps (0-5%, 5-10%, 10-15%, etc.)
+    sd_bins = {}
+    for i in range(len(sd_vals)):
+        bin_idx = int(sd_vals[i] / 5.0)  # 5 percentage point bins
+        if bin_idx not in sd_bins:
+            sd_bins[bin_idx] = []
+        sd_bins[bin_idx].append(i)
+
+    # Keep point with highest mean in each bin
+    coarsened_sd = []
+    coarsened_mean = []
+    coarsened_weights = []
+
+    for bin_idx in sorted(sd_bins.keys()):
+        indices = sd_bins[bin_idx]
+        # Find index with highest mean
+        best_idx = max(indices, key=lambda idx: mean_vals[idx])
+        coarsened_sd.append(sd_vals[best_idx])
+        coarsened_mean.append(mean_vals[best_idx])
+        coarsened_weights.append(weight_vecs[best_idx])
+
+    return (
+        np.array(coarsened_sd),
+        np.array(coarsened_mean),
+        np.array(coarsened_weights)
+    )
 
 
 # ===============================
@@ -624,11 +824,48 @@ if __name__ == "__main__":
                 stats["sim_metadata"] = sim_metadata
                 print(f"[game] Simulation complete: mean={sim_metadata['mean']:.2f}×, std={sim_metadata['std']:.2f}×")
                 print(f"[game] Computed percentiles from {len(sim_returns)} simulation points")
+
+                # ---- Load Mean-Variance Frontier Data ----
+                print(f"[game] Loading frontier data for {mode} signal type...")
+                try:
+                    frontier_all_alphas = load_all_alpha_frontiers(signal_type=mode)
+                    stats["frontier_all_alphas"] = frontier_all_alphas
+                    print(f"[game] Loaded {len(frontier_all_alphas)} alpha configurations for frontier")
+                except Exception as e:
+                    print(f"[game] Failed to load frontier data: {e}")
+                    stats["frontier_all_alphas"] = {}
+
+                # ---- Calculate Player Position on Frontier ----
+                # Player's position is defined by:
+                # - Mean gross return from simulation
+                # - Standard deviation from simulation (convert to %)
+                # - Number of signals purchased
+                # - Alpha (stage allocation)
+                player_mean_gross = float(np.mean(sim_returns))
+                player_sd_pct = float(np.std(sim_returns) * 100.0)  # Convert to percentage
+
+                stats["player_position"] = {
+                    "mean_gross": player_mean_gross,
+                    "sd_pct": player_sd_pct,
+                    "n_signals": total_n_signals,
+                    "alpha_pct": int(stage1_alloc * 100),  # Convert to percentage (0-100)
+                    "max_gross": float(np.max(sim_returns)),
+                    "sharpe": float((player_mean_gross - 1.0) / (player_sd_pct / 100.0)) if player_sd_pct > 0 else 0.0,
+                    "weights": sim_metadata.get("player_weights", [0]*9),
+                    "ace_hits": sim_metadata.get("ace_hits", 0),
+                    "king_hits": sim_metadata.get("king_hits", 0),
+                    "queen_hits": sim_metadata.get("queen_hits", 0),
+                    "concentration": sim_metadata.get("concentration_index", 0)
+                }
+                print(f"[game] Player position: mean={player_mean_gross:.3f}×, sd={player_sd_pct:.2f}%, n={total_n_signals}, alpha={stage1_alloc:.0%}")
+
             except Exception as e:
                 print(f"[game] Policy simulation failed: {e}")
                 stats["sim_quintiles"] = {}  # Empty quintiles on error
                 stats["sim_metadata"] = {}
                 stats["sim_returns"] = []  # Ensure key exists for JavaScript template
+                stats["frontier_all_alphas"] = {}
+                stats["player_position"] = {}
 
             # ---- Fetch Leaderboard (for this signal type only) ----
             print(f"[game] Fetching leaderboard for {mode} signal games...")

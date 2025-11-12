@@ -228,7 +228,7 @@
         <div class="space-between"><strong>Signals</strong><span id="sigNote"></span></div>
         <div id="sigLines" style="margin-top:6px;"></div>
 
-        <div style="margin:12px 0 6px;"><strong>Invest</strong></div>
+        <div style="margin:12px 0 6px;padding-top:12px;border-top:1px solid var(--b);"><strong>Invest</strong></div>
         <div class="row">
           <input id="amt" type="number" inputmode="decimal" placeholder="Amount">
           <button id="add" class="btn-cta-sm">Invest</button>
@@ -338,20 +338,20 @@ document.addEventListener("DOMContentLoaded", () => {
   // Game mode (set from localStorage by Enter). Default g1 (median)
   let SINGLE_SIGNAL_MODE = true;
   let SIGNAL_MODE = 'median';
-  let SIGNAL_COST = 5;
+  let SIGNAL_COST = 3;
   let SIGNALS = [];
   function initSignalsFromGame(){
     const GAME = (localStorage.getItem('game_type') || 'g1');
     if (GAME === 'g2'){
       SINGLE_SIGNAL_MODE = true;
       SIGNAL_MODE = 'top2';
-      SIGNAL_COST = 5;
+      SIGNAL_COST = 3;
       const SIGNAL_INFO = 'This signal will tell you the sum of the top two ranks in the pile. A pile can have duplicate ranks.';
       SIGNALS = [ { id:1, cost:SIGNAL_COST, name:'Sum of top 2 rank', info: SIGNAL_INFO } ];
     } else {
       SINGLE_SIGNAL_MODE = true;
       SIGNAL_MODE = 'median';
-      SIGNAL_COST = 5;
+      SIGNAL_COST = 3;
       const SIGNAL_INFO = 'This signal will tell you the median of the pile. A pile can have duplicate ranks. E.g. the median of a pile [2,5,7,9,11] is 7 and the median of the pile [3,4,4,4,5] is 4.';
       SIGNALS = [ { id:1, cost:SIGNAL_COST, name:'Median', info: SIGNAL_INFO } ];
     }
@@ -419,7 +419,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Add previous stages from SEED if available
     if (STAGE > 1 && SEED.stage_history) {
       SEED.stage_history.forEach((hist, idx) => {
-        html += `<tr style="border-bottom: 1px solid var(--b);">
+        html += `<tr>
           <td style="padding:8px 4px;">Stage ${idx + 1}</td>
           <td style="text-align:right; padding:8px 4px;">£${Math.round(hist.signals || 0)}</td>
           <td style="text-align:right; padding:8px 4px;">£${Math.round(hist.stakes || 0)}</td>
@@ -428,7 +428,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Add current stage
-    html += `<tr style="border-bottom: 1px solid var(--b);">
+    html += `<tr>
       <td style="padding:8px 4px;">Stage ${STAGE}</td>
       <td style="text-align:right; padding:8px 4px;">£${Math.round(currentSignals)}</td>
       <td style="text-align:right; padding:8px 4px;">£${Math.round(currentStakes)}</td>
@@ -574,7 +574,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (btn) btn.classList.add('selected');
 
     const c=cards[i];
-    pickInfo.textContent=`Card`;
+    pickInfo.textContent=``;
     renderSigLines();
     renderInvList();
     msg.textContent="";

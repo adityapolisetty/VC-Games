@@ -371,8 +371,7 @@ def _results_page(stats: dict) -> str:
     if ace_payoff_total == 0:
         ace_total_str = "-"
     else:
-        ace_mult_total = ace_payoff_total / ace_invested_total if ace_invested_total > 0 else 0
-        ace_total_str = f'£{ace_payoff_total:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{ace_invested_total:.0f} * {ace_mult_total:.2f}x)</span>'
+        ace_total_str = f'£{ace_payoff_total:.0f}'
 
     # KING
     king_payoff_s1 = stats.get('king_payoff_s1', 0)
@@ -396,8 +395,7 @@ def _results_page(stats: dict) -> str:
     if king_payoff_total == 0:
         king_total_str = "-"
     else:
-        king_mult_total = king_payoff_total / king_invested_total if king_invested_total > 0 else 0
-        king_total_str = f'£{king_payoff_total:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{king_invested_total:.0f} * {king_mult_total:.2f}x)</span>'
+        king_total_str = f'£{king_payoff_total:.0f}'
 
     # QUEEN
     queen_payoff_s1 = stats.get('queen_payoff_s1', 0)
@@ -421,8 +419,7 @@ def _results_page(stats: dict) -> str:
     if queen_payoff_total == 0:
         queen_total_str = "-"
     else:
-        queen_mult_total = queen_payoff_total / queen_invested_total if queen_invested_total > 0 else 0
-        queen_total_str = f'£{queen_payoff_total:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{queen_invested_total:.0f} * {queen_mult_total:.2f}x)</span>'
+        queen_total_str = f'£{queen_payoff_total:.0f}'
 
     # Generate leaderboard rows
     leaderboard = stats.get("leaderboard", [])  # All entries with proper ranks
@@ -449,7 +446,7 @@ def _results_page(stats: dict) -> str:
 
             # Black background with white text for current player
             if is_current_player:
-                row_style = 'background:#000000;color:#ffffff;border-left:4px solid #c53030;'
+                row_style = 'background:#000000;color:#ffffff;'
                 text_color = '#ffffff'
                 return_color = '#ffffff'
             else:
@@ -461,8 +458,8 @@ def _results_page(stats: dict) -> str:
             <tr style="{row_style}">
               <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:center;font-weight:700;color:{text_color};">#{entry['rank']}</td>
               <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;color:{text_color};">{entry['team_name']}</td>
-              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:{return_color};">{entry.get('gross_return_mult', 0):.2f}×</td>
-              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;color:{text_color};">£{entry.get('total_signals', 0):.0f}</td>
+              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:center;font-weight:700;color:{return_color};">{entry.get('gross_return_mult', 0):.2f}X</td>
+              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:center;color:{text_color};">£{entry.get('total_signals', 0):.0f}</td>
               <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:center;color:{text_color};">{entry.get('n_invested', 0)}</td>
             </tr>
             """
@@ -470,11 +467,11 @@ def _results_page(stats: dict) -> str:
         # Add current player's stats if not in top 10
         if not current_player_in_top10 and current_player_entry:
             leaderboard_rows += f"""
-            <tr style="background:#000000;color:#ffffff;border-top:2px solid #c53030;border-left:4px solid #c53030;">
+            <tr style="background:#000000;color:#ffffff;border-top:2px solid #6b7280;">
               <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:center;font-weight:700;color:#ffffff;">#{current_player_entry['rank']}</td>
               <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#ffffff;font-weight:700;">{current_player_entry['team_name']} (You)</td>
-              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#ffffff;">{current_player_entry.get('gross_return_mult', 0):.2f}×</td>
-              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;color:#ffffff;">£{current_player_entry.get('total_signals', 0):.0f}</td>
+              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:center;font-weight:700;color:#ffffff;">{current_player_entry.get('gross_return_mult', 0):.2f}X</td>
+              <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:center;color:#ffffff;">£{current_player_entry.get('total_signals', 0):.0f}</td>
               <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:center;color:#ffffff;">{current_player_entry.get('n_invested', 0)}</td>
             </tr>
             """
@@ -489,6 +486,10 @@ def _results_page(stats: dict) -> str:
             </tr>
         """
         leaderboard_empty_msg = ""
+
+    # Serialize frontier data to JSON outside the f-string to avoid escaping issues
+    frontier_data_json = json.dumps(stats.get('frontier_all_alphas', {}))
+    player_position_json = json.dumps(stats.get('player_position', {}))
 
     return f"""<!doctype html>
 <html lang="en">
@@ -518,7 +519,7 @@ def _results_page(stats: dict) -> str:
   .content-panel{{border:1px solid var(--b);border-radius:12px;padding:20px;background:var(--panel)}}
 
   .tab-nav{{display:flex;gap:8px;margin-bottom:20px;border-bottom:2px solid var(--b);padding-bottom:8px}}
-  .tab-btn{{padding:10px 16px;background:transparent;border:none;color:#6b7280;font-weight:600;cursor:pointer;border-radius:6px 6px 0 0;transition:all .15s}}
+  .tab-btn{{padding:10px 16px;background:transparent;border:none;color:#6b7280;font-weight:600;font-size:15px;cursor:pointer;border-radius:6px 6px 0 0;transition:all .15s}}
   .tab-btn:hover{{background:#f3f4f6;color:#111827}}
   .tab-btn.active{{background:#111827;color:#e5e7eb}}
 
@@ -547,6 +548,33 @@ def _results_page(stats: dict) -> str:
 
   #frontierChart{{width:100%;height:600px}}
   .js-plotly-plot .plotly .main-svg{{overflow:visible !important}}
+
+  /* Black slider styling */
+  input[type="range"]{{
+    -webkit-appearance:none;
+    appearance:none;
+    height:4px;
+    background:#000000;
+    border-radius:2px;
+    outline:none;
+  }}
+  input[type="range"]::-webkit-slider-thumb{{
+    -webkit-appearance:none;
+    width:14px;
+    height:14px;
+    background:#ffffff;
+    border:1px solid #000000;
+    border-radius:50%;
+    cursor:pointer;
+  }}
+  input[type="range"]::-moz-range-thumb{{
+    width:14px;
+    height:14px;
+    background:#ffffff;
+    border:1px solid #000000;
+    border-radius:50%;
+    cursor:pointer;
+  }}
 </style>
 </head>
 <body>
@@ -569,7 +597,7 @@ def _results_page(stats: dict) -> str:
     <!-- Tab Navigation -->
     <div class="tab-nav">
       <button class="tab-btn active" data-tab="summary">Summary</button>
-      <button class="tab-btn" data-tab="frontier">Frontier Analysis</button>
+      <button class="tab-btn" data-tab="frontier">Frontier</button>
       <button class="tab-btn" data-tab="leaderboard">Leaderboard</button>
     </div>
 
@@ -616,9 +644,9 @@ def _results_page(stats: dict) -> str:
                 </tr>
                 <tr>
                   <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;">Gross Return</td>
-                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:{'#059669' if g1_val >= 1.0 else '#c53030'};">{g1_formatted}×</td>
-                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:{'#059669' if g2_val >= 1.0 else '#c53030'};">{g2_formatted}×</td>
-                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:{'#059669' if gross_val >= 1.0 else '#c53030'};">{gross_formatted}×</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:{'#059669' if g1_val >= 1.0 else '#c53030'};">{g1_formatted}X</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:{'#059669' if g2_val >= 1.0 else '#c53030'};">{g2_formatted}X</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:{'#059669' if gross_val >= 1.0 else '#c53030'};">{gross_formatted}X</td>
                 </tr>
                 <tr>
                   <td style="padding:12px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#6b7280;font-weight:500;">Payoff from Ace Hits</td>
@@ -647,13 +675,14 @@ def _results_page(stats: dict) -> str:
         <div style="border:1px solid var(--b);border-radius:12px;padding:20px;background:var(--panel);">
           <h4 style="margin:0 0 12px 0;color:#111827;">Distribution of Returns</h4>
           <p style="font-size:13px;color:#6b7280;margin:0 0 16px 0;">
-            Based on 50,000 simulations with your allocation strategy ({stats.get('sim_metadata',{}).get('n_signals',0)} {stats.get('sim_metadata',{}).get('signal_type','')} signals)
+            Based on 50,000 simulations of your allocation and signal acquisition strategy
           </p>
           <div id="histogramChart" style="width:100%;min-height:200px;"></div>
           <div style="margin-top:-8px;padding:12px;background:#f9fafb;border-radius:8px;font-size:13px;color:#6b7280;">
-            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
-              <div><strong>Mean Return:</strong> {stats.get('sim_metadata',{}).get('mean',0):.2f}×</div>
-              <div><strong>Std Dev:</strong> {stats.get('sim_metadata',{}).get('std',0):.2f}×</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+              <div><strong>Mean Return:</strong> {stats.get('sim_metadata',{}).get('mean',0):.2f}X</div>
+              <div><strong>Max Return:</strong> {stats.get('sim_metadata',{}).get('max',0):.2f}X</div>
+              <div><strong>Std Dev:</strong> {stats.get('sim_metadata',{}).get('std',0):.2f}X</div>
             </div>
           </div>
         </div>
@@ -662,7 +691,39 @@ def _results_page(stats: dict) -> str:
 
     <!-- Frontier Tab -->
     <div id="frontier-tab" class="tab-content">
-      <h3 style="margin-top:0;">Mean-Variance Frontier</h3>
+      <!-- Slider controls -->
+      <div style="margin-bottom:24px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;">
+          <!-- Alpha slider -->
+          <div>
+            <label style="display:flex;justify-content:space-between;margin-bottom:8px;font-weight:600;font-size:13px;color:#111827;">
+              <span>Stage 1 allocation</span>
+              <span id="alphaValue" style="color:#000000;">10%</span>
+            </label>
+            <input type="range" id="alphaSlider" min="0" max="100" step="5" value="10"
+                   style="width:100%;">
+            <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:14px;color:#6b7280;">
+              <span>0%</span>
+              <span>100%</span>
+            </div>
+          </div>
+
+          <!-- Signal count slider -->
+          <div>
+            <label style="display:flex;justify-content:space-between;margin-bottom:8px;font-weight:600;font-size:13px;color:#111827;">
+              <span>Number of Signals</span>
+              <span id="signalValue" style="color:#000000;">All</span>
+            </label>
+            <input type="range" id="signalSlider" min="0" max="10" step="1" value="10"
+                   style="width:100%;">
+            <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:14px;color:#6b7280;">
+              <span>0 signals</span>
+              <span>All</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div id="frontierChart"></div>
 
       <!-- Detail panel -->
@@ -699,8 +760,8 @@ def _results_page(stats: dict) -> str:
             <tr>
               <th style="padding:12px 16px;text-align:center;font-size:14px;font-weight:700;color:#111827;white-space:nowrap;">Rank</th>
               <th style="padding:12px 16px;text-align:left;font-size:14px;font-weight:700;color:#111827;white-space:nowrap;">Player</th>
-              <th style="padding:12px 16px;text-align:right;font-size:14px;font-weight:700;color:#111827;white-space:nowrap;">Gross Return</th>
-              <th style="padding:12px 16px;text-align:right;font-size:14px;font-weight:700;color:#111827;white-space:nowrap;">Signal Cost</th>
+              <th style="padding:12px 16px;text-align:center;font-size:14px;font-weight:700;color:#111827;white-space:nowrap;">Gross Return</th>
+              <th style="padding:12px 16px;text-align:center;font-size:14px;font-weight:700;color:#111827;white-space:nowrap;">Signal Cost</th>
               <th style="padding:12px 16px;text-align:center;font-size:14px;font-weight:700;color:#111827;white-space:nowrap;"># of Piles Invested</th>
             </tr>
           </thead>
@@ -773,121 +834,199 @@ document.getElementById('endBtn').onclick = () => {{
 
 // Create Plotly frontier chart (matching vis_f.py formatting)
 function createFrontierChart() {{
-  // Mockup frontier data (n=0 to n=5 signals)
-  const frontierData = [
-    {{ n: 0, sd: [15, 16, 17, 18, 19], mean: [5, 8, 10, 11, 12], weights: [[11,11,11,11,11,11,11,11,12], [11,11,11,11,11,11,11,11,12], [11,11,11,11,11,11,11,11,12], [11,11,11,11,11,11,11,11,12], [11,11,11,11,11,11,11,11,12]], ace: 0, king: 0, queen: 0 }},
-    {{ n: 1, sd: [14, 15, 16, 17], mean: [12, 15, 17, 18], weights: [[20,15,15,10,10,10,10,5,5], [20,15,15,10,10,10,10,5,5], [20,15,15,10,10,10,10,5,5], [20,15,15,10,10,10,10,5,5]], ace: 1, king: 2, queen: 1 }},
-    {{ n: 2, sd: [13, 14, 15], mean: [18, 22, 24], weights: [[25,20,15,12,10,8,5,3,2], [25,20,15,12,10,8,5,3,2], [25,20,15,12,10,8,5,3,2]], ace: 1, king: 3, queen: 2 }},
-    {{ n: 3, sd: [12, 13], mean: [25, 28], weights: [[28,22,18,12,8,6,3,2,1], [28,22,18,12,8,6,3,2,1]], ace: 2, king: 3, queen: 2 }},
-    {{ n: 4, sd: [11, 12], mean: [30, 32], weights: [[30,25,18,12,8,4,2,1,0], [30,25,18,12,8,4,2,1,0]], ace: 2, king: 4, queen: 3 }},
-  ];
-
-  // Player data
-  const playerWeights = {stats.get('player_weights', '[0,0,0,0,0,0,0,0,0]')};
-  const playerAce = {stats.get('ace_hits', 0)};
-  const playerKing = {stats.get('king_hits', 0)};
-  const playerQueen = {stats.get('queen_hits', 0)};
-
-  // Calculate player position (mockup - place near middle)
-  const playerSD = 13.5;
-  const playerMean = 20;
-
-  // Calculate color values (concentration measure)
-  function calcConcentration(weights) {{
-    return weights.reduce((sum, w) => sum + w*w, 0) / 10000; // Normalize to [0,1]
+  // Check if frontier data is available
+  if (!window.FRONTIER_DATA || !window.PLAYER_POSITION) {{
+    document.getElementById('frontierChart').innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">Frontier data not available</div>';
+    return;
   }}
 
-  const traces = [];
-  const ALPHA = 0.7;
+  // Get slider elements
+  const alphaSlider = document.getElementById('alphaSlider');
+  const signalSlider = document.getElementById('signalSlider');
+  const alphaValue = document.getElementById('alphaValue');
+  const signalValue = document.getElementById('signalValue');
 
-  // Add frontier traces
-  frontierData.forEach(series => {{
-    const colors = series.weights.map(w => calcConcentration(w));
+  // Set default alpha to player's alpha
+  const playerAlphaPct = window.PLAYER_POSITION.alpha_pct || 10;
+  alphaSlider.value = playerAlphaPct;
+  alphaValue.textContent = playerAlphaPct + '%';
+
+  // Function to render chart with current slider values
+  function renderChart() {{
+    const selectedAlpha = parseInt(alphaSlider.value);
+    const selectedSignalFilter = parseInt(signalSlider.value); // 10 = All, 0-9 = specific n
+
+    // Update display values
+    alphaValue.textContent = selectedAlpha + '%';
+    signalValue.textContent = selectedSignalFilter === 10 ? 'All' : selectedSignalFilter + ' signals';
+
+    // Get frontier data for selected alpha
+    const frontierData = window.FRONTIER_DATA[selectedAlpha];
+    if (!frontierData) {{
+      document.getElementById('frontierChart').innerHTML = `<div style="padding:40px;text-align:center;color:#6b7280;">No data for alpha=${{selectedAlpha}}%</div>`;
+      return;
+    }}
+
+    const pointsByN = frontierData.points_by_n; // Array of 10 elements (n=0 to n=9)
+
+    // Build Plotly traces
+    const traces = [];
+    const ALPHA = 0.7;
+
+    // Black-to-grey colorscale (darker range: dark grey=low concentration, black=high concentration)
+    const colorscale = [[0, '#606060'], [1, '#000000']];
+
+    for (let n = 0; n < pointsByN.length; n++) {{
+      const points = pointsByN[n];
+
+      // Skip if no points for this n, or if filtered out
+      if (points.length === 0) continue;
+      if (selectedSignalFilter < 10 && n !== selectedSignalFilter) continue;
+
+      // Extract data arrays (use SD of gross returns)
+      const sdVals = points.map(p => p.sd_gross);
+      const meanVals = points.map(p => p.mean_gross);
+      const concentrationVals = points.map(p => p.concentration);
+
+      // Build hover text
+      const hoverTexts = points.map(p => {{
+        // Build weight labels for each pile
+        const weightLabels = p.weights.map((w, i) => `P${{i+1}}: ${{(w*100).toFixed(1)}}%`);
+        // Split into 3 rows: piles 1-3, 4-6, 7-9
+        const weightRows = [
+          weightLabels.slice(0, 3).join(' | '),
+          weightLabels.slice(3, 6).join(' | '),
+          weightLabels.slice(6, 9).join(' | ')
+        ];
+
+        return `<b>Signals: N = ${{n}}</b><br>` +
+               `<b>Simulations:</b> 200,000<br>` +
+               `<b>Mean Return:</b> ${{p.mean_gross.toFixed(3)}}X<br>` +
+               `<b>Std Dev:</b> ${{p.sd_gross.toFixed(3)}}X<br>` +
+               `<b>Sharpe Ratio:</b> ${{p.sharpe.toFixed(3)}}<br>` +
+               `<b>Σw²:</b> ${{p.concentration.toFixed(3)}}<br><br>` +
+               `<b>Portfolio Weights:</b><br>` +
+               weightRows.join('<br>') + '<br><br>' +
+               `Ace hits: ${{(p.ace_hit_rate / 200000000).toFixed(2)}}% | ` +
+               `King hits: ${{(p.king_hit_rate / 200000000).toFixed(2)}}% | ` +
+               `Queen hits: ${{(p.queen_hit_rate / 200000000).toFixed(2)}}%`;
+      }});
+
+      traces.push({{
+        x: sdVals,
+        y: meanVals,
+        mode: 'markers+text',
+        name: `n=${{n}}`,
+        marker: {{
+          size: 16,
+          color: concentrationVals,
+          colorscale: colorscale,
+          showscale: false,
+          line: {{ width: 0 }}
+        }},
+        text: Array(sdVals.length).fill(String(n)),
+        textposition: 'middle center',
+        textfont: {{ size: 11, color: 'white', family: 'monospace' }},
+        hovertext: hoverTexts,
+        hovertemplate: '%{{hovertext}}<extra></extra>',
+        showlegend: false,
+        opacity: ALPHA,
+        customdata: points.map(p => ({{ weights: p.weights, n: n, ace: p.ace_hit_rate, king: p.king_hit_rate, queen: p.queen_hit_rate }}))
+      }});
+    }}
+
+    // Add player marker (red, same style as other markers)
+    const playerSDGross = window.PLAYER_POSITION.sd_pct / 100.0; // Convert to gross SD
+    const playerMean = window.PLAYER_POSITION.mean_gross;
+    const playerN = window.PLAYER_POSITION.n_signals;
+    const playerMaxGross = window.PLAYER_POSITION.max_gross || playerMean;
+    const playerSharpe = window.PLAYER_POSITION.sharpe || 0;
+    const playerWeights = window.PLAYER_POSITION.weights || [0,0,0,0,0,0,0,0,0];
+    const playerAceHits = window.PLAYER_POSITION.ace_hits || 0;
+    const playerKingHits = window.PLAYER_POSITION.king_hits || 0;
+    const playerQueenHits = window.PLAYER_POSITION.queen_hits || 0;
+
+    // Build player hovertext with simulation data
+    const playerWeightLabels = playerWeights.map((w, i) => `P${{i+1}}: ${{(w*100).toFixed(1)}}%`);
+    const playerWeightRows = [
+      playerWeightLabels.slice(0, 3).join(' | '),
+      playerWeightLabels.slice(3, 6).join(' | '),
+      playerWeightLabels.slice(6, 9).join(' | ')
+    ];
+
+    const playerHoverText = `<b>Signals: N = ${{playerN}}</b><br>` +
+                            `<b>Simulations:</b> 50,000<br>` +
+                            `<b>Mean Return:</b> ${{playerMean.toFixed(3)}}X<br>` +
+                            `<b>Max Return:</b> ${{playerMaxGross.toFixed(3)}}X<br>` +
+                            `<b>Std Dev:</b> ${{playerSDGross.toFixed(3)}}X<br>` +
+                            `<b>Sharpe Ratio:</b> ${{playerSharpe.toFixed(3)}}<br>` +
+                            `<b>Σw²:</b> ${{playerConcentration.toFixed(3)}}<br><br>` +
+                            `<b>Portfolio Weights:</b><br>` +
+                            playerWeightRows.join('<br>') + '<br><br>' +
+                            `Ace hits: ${{(playerAceHits / 50000).toFixed(2)}}% | ` +
+                            `King hits: ${{(playerKingHits / 50000).toFixed(2)}}% | ` +
+                            `Queen hits: ${{(playerQueenHits / 50000).toFixed(2)}}%`;
 
     traces.push({{
-      x: series.sd,
-      y: series.mean,
+      x: [playerSDGross],
+      y: [playerMean],
       mode: 'markers+text',
-      name: `n=${{series.n}}`,
+      name: 'You',
       marker: {{
         size: 16,
-        color: colors,
-        colorscale: [[0, '#2b8cbe'], [1, '#08306b']],
-        showscale: false,
+        color: '#FF0000',
         line: {{ width: 0 }}
       }},
-      text: Array(series.sd.length).fill(String(series.n)),
+      text: [String(playerN)],
       textposition: 'middle center',
-      textfont: {{ size: 11, color: 'white' }},
-      hovertemplate: `n=${{series.n}}<br>Mean: %{{y:.2f}}%<br>SD: %{{x:.2f}}%<extra></extra>`,
+      textfont: {{ size: 11, color: 'white', family: 'monospace' }},
+      hovertext: [playerHoverText],
+      hoverinfo: 'text',
+      hoverlabel: {{ bgcolor: '#FF0000', font: {{ color: '#ffffff', family: 'Source Sans Pro', size: 13 }} }},
       showlegend: false,
-      opacity: ALPHA,
-      customdata: series.weights.map((w, i) => ({{ weights: w, n: series.n, ace: series.ace, king: series.king, queen: series.queen }}))
+      opacity: 1.0
     }});
-  }});
 
-  // Add player marker (red)
-  traces.push({{
-    x: [playerSD],
-    y: [playerMean],
-    mode: 'markers+text',
-    name: 'You',
-    marker: {{
-      size: 20,
-      color: '#c53030',
-      line: {{ width: 2, color: '#fff' }}
-    }},
-    text: ['You'],
-    textposition: 'middle center',
-    textfont: {{ size: 11, color: 'white', weight: 700 }},
-    hovertemplate: 'Your Strategy<br>Mean: %{{y:.2f}}%<br>SD: %{{x:.2f}}%<extra></extra>',
-    showlegend: false,
-    opacity: 0.9,
-    customdata: [{{ weights: playerWeights, n: 'Player', ace: playerAce, king: playerKing, queen: playerQueen }}]
-  }});
+    const layout = {{
+      template: 'plotly_white',
+      font: {{ family: 'Source Sans Pro, Arial, sans-serif', size: 14 }},
+      xaxis: {{
+        title: {{ text: 'SD of gross return multiple', font: {{ size: 16 }} }},
+        tickfont: {{ size: 14 }},
+        ticksuffix: 'X',
+        showgrid: true,
+        gridcolor: 'rgba(128,128,128,0.15)'
+      }},
+      yaxis: {{
+        title: {{ text: 'Mean gross return multiple', font: {{ size: 16 }} }},
+        tickfont: {{ size: 14 }},
+        ticksuffix: 'X',
+        showgrid: true,
+        gridcolor: 'rgba(128,128,128,0.15)'
+      }},
+      hoverlabel: {{
+        bgcolor: '#000000',
+        font: {{ color: '#ffffff', family: 'Source Sans Pro', size: 13 }},
+        align: 'left'
+      }},
+      height: 600,
+      hovermode: 'closest',
+      margin: {{ l: 70, r: 20, t: 40, b: 60 }},
+      plot_bgcolor: '#ffffff',
+      paper_bgcolor: '#fafafa'
+    }};
 
-  const layout = {{
-    template: 'plotly_white',
-    font: {{ family: 'Roboto, Arial, sans-serif', size: 15 }},
-    xaxis: {{
-      title: {{ text: 'Standard Deviation (%)', font: {{ size: 13 }} }},
-      tickfont: {{ size: 16 }},
-      showgrid: true,
-      gridcolor: 'rgba(128,128,128,0.1)'
-    }},
-    yaxis: {{
-      title: {{ text: 'Mean Return (%)', font: {{ size: 13 }} }},
-      tickfont: {{ size: 16 }},
-      showgrid: true,
-      gridcolor: 'rgba(128,128,128,0.1)'
-    }},
-    height: 600,
-    hovermode: 'closest',
-    margin: {{ l: 60, r: 10, t: 40, b: 50 }},
-    plot_bgcolor: '#fafafa'
-  }};
+    const config = {{ responsive: true, displayModeBar: false }};
 
-  const config = {{ responsive: true, displayModeBar: false }};
+    Plotly.newPlot('frontierChart', traces, layout, config);
+  }}
 
-  Plotly.newPlot('frontierChart', traces, layout, config);
+  // Initial render
+  renderChart();
 
-  // Add click handler for showing details
-  document.getElementById('frontierChart').on('plotly_click', function(data) {{
-    if (data.points.length > 0) {{
-      const point = data.points[0];
-      const customData = point.customdata;
-
-      if (customData) {{
-        const detailPanel = document.getElementById('detailPanel');
-        document.getElementById('detailSignals').textContent = customData.n === 'Player' ? 'Your Strategy' : customData.n;
-        document.getElementById('detailWeights').innerHTML = customData.weights.map((w, i) => `Pile ${{i+1}}: £${{w.toFixed(2)}}`).join('<br>');
-        document.getElementById('detailAce').textContent = customData.ace;
-        document.getElementById('detailKing').textContent = customData.king;
-        document.getElementById('detailQueen').textContent = customData.queen;
-        detailPanel.style.display = 'block';
-      }}
-    }}
-  }});
+  // Slider event listeners
+  alphaSlider.addEventListener('input', renderChart);
+  signalSlider.addEventListener('input', renderChart);
 }}
 
 // Create 5-bin distribution table with player indicator
@@ -981,7 +1120,7 @@ function createHistogramChart() {{
     const isPlayerBin = index === playerBinIndex;
 
     const rowStyle = isPlayerBin
-      ? 'background: #000000; color: #ffffff; border-left: 4px solid #c53030;'
+      ? 'background: #000000; color: #ffffff;'
       : (index % 2 === 0 ? 'background: #ffffff;' : 'background: #f9fafb;');
 
     const textColor = isPlayerBin ? '#ffffff' : '#111827';
@@ -1017,6 +1156,10 @@ document.querySelector('[data-tab="frontier"]').addEventListener('click', functi
     createFrontierChart();
   }}
 }});
+
+// Inject frontier data and player position from Python backend
+window.FRONTIER_DATA = {frontier_data_json};
+window.PLAYER_POSITION = {player_position_json};
 </script>
 </body>
 </html>"""
@@ -1090,7 +1233,7 @@ def start_persistent_server(port: int = 8765, open_browser: bool = False):
 
 def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None = None,
            port: int = 8765, open_browser: bool = False,
-           signal_mode: str = "median", signal_cost: float = 5.0,
+           signal_mode: str = "median", signal_cost: float = 3.0,
            stage1_invested: list | None = None, stage_history: list | None = None,
            session_id: int | None = None):
     """REFACTORED: Update game state and wait for user submission
