@@ -489,6 +489,7 @@ def _results_page(stats: dict) -> str:
 
     # Serialize frontier data to JSON outside the f-string to avoid escaping issues
     frontier_data_json = json.dumps(stats.get('frontier_all_alphas', {}))
+    frontier_data_v2_json = json.dumps(stats.get('frontier_all_alphas_v2', {}))
     player_position_json = json.dumps(stats.get('player_position', {}))
 
     return f"""<!doctype html>
@@ -721,6 +722,17 @@ def _results_page(stats: dict) -> str:
               <span>All</span>
             </div>
           </div>
+
+          <!-- Frontier version toggle -->
+          <div style="margin-top:16px;">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:#111827;cursor:pointer;">
+              <input type="checkbox" id="useFrontierV2" style="width:18px;height:18px;cursor:pointer;">
+              <span>Use enhanced frontier (v2)</span>
+            </label>
+            <div style="font-size:12px;color:#6b7280;margin-top:4px;margin-left:26px;">
+              V2 explores additional Stage 2 concentration strategies
+            </div>
+          </div>
         </div>
       </div>
 
@@ -834,8 +846,11 @@ document.getElementById('endBtn').onclick = () => {{
 
 // Create Plotly frontier chart (matching vis_f.py formatting)
 function createFrontierChart() {{
+  // Select the appropriate frontier dataset based on toggle
+  const frontierData = window.USE_FRONTIER_V2 ? window.FRONTIER_DATA_V2 : window.FRONTIER_DATA;
+
   // Check if frontier data is available
-  if (!window.FRONTIER_DATA || !window.PLAYER_POSITION) {{
+  if (!frontierData || !window.PLAYER_POSITION) {{
     document.getElementById('frontierChart').innerHTML = '<div style="padding:40px;text-align:center;color:#6b7280;">Frontier data not available</div>';
     return;
   }}
@@ -860,14 +875,15 @@ function createFrontierChart() {{
     alphaValue.textContent = selectedAlpha + '%';
     signalValue.textContent = selectedSignalFilter === 10 ? 'All' : selectedSignalFilter + ' signals';
 
-    // Get frontier data for selected alpha
-    const frontierData = window.FRONTIER_DATA[selectedAlpha];
-    if (!frontierData) {{
+    // Get frontier data for selected alpha (using the appropriate dataset)
+    const activeFrontierData = window.USE_FRONTIER_V2 ? window.FRONTIER_DATA_V2 : window.FRONTIER_DATA;
+    const frontierDataForAlpha = activeFrontierData[selectedAlpha];
+    if (!frontierDataForAlpha) {{
       document.getElementById('frontierChart').innerHTML = `<div style="padding:40px;text-align:center;color:#6b7280;">No data for alpha=${{selectedAlpha}}%</div>`;
       return;
     }}
 
-    const pointsByN = frontierData.points_by_n; // Array of 10 elements (n=0 to n=9)
+    const pointsByN = frontierDataForAlpha.points_by_n; // Array of 10 elements (n=0 to n=9)
 
     // Build Plotly traces
     const traces = [];
@@ -1171,9 +1187,20 @@ document.querySelector('[data-tab="frontier"]').addEventListener('click', functi
   }}
 }});
 
+// Add event listener for v2 toggle
+const v2Toggle = document.getElementById('useFrontierV2');
+if (v2Toggle) {{
+  v2Toggle.addEventListener('change', function() {{
+    window.USE_FRONTIER_V2 = this.checked;
+    createFrontierChart();  // Redraw chart with new dataset
+  }});
+}}
+
 // Inject frontier data and player position from Python backend
 window.FRONTIER_DATA = {frontier_data_json};
+window.FRONTIER_DATA_V2 = {frontier_data_v2_json};
 window.PLAYER_POSITION = {player_position_json};
+window.USE_FRONTIER_V2 = false;  // Default to v1
 </script>
 </body>
 </html>"""

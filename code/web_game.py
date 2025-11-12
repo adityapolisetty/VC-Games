@@ -24,11 +24,12 @@ CARD_VALUES = np.arange(2, 15)  # 2..10, J=11, Q=12, K=13, A=14
 # ===============================
 # Frontier Data Loading
 # ===============================
-def load_all_alpha_frontiers(signal_type: str) -> dict:
+def load_all_alpha_frontiers(signal_type: str, use_v2: bool = False) -> dict:
     """Load all pre-computed frontier NPZ files for all alpha values (stage allocations).
 
     Args:
         signal_type: "median" or "top2"
+        use_v2: If True, load from frontier_output_v2 (enhanced with Stage 2 concentration)
 
     Returns:
         Dictionary mapping alpha_pct (int, 0-100 in increments of 5) to frontier data:
@@ -62,10 +63,11 @@ def load_all_alpha_frontiers(signal_type: str) -> dict:
         }
     """
     # Frontier files are in code directory (for Railway deployment)
-    frontier_dir = os.path.join(os.path.dirname(__file__), 'frontier_output')
+    dir_name = 'frontier_output_v2' if use_v2 else 'frontier_output'
+    frontier_dir = os.path.join(os.path.dirname(__file__), dir_name)
     frontier_dir = os.path.abspath(frontier_dir)  # Resolve to absolute path
 
-    print(f"[frontier] Looking for frontier files in: {frontier_dir}")
+    print(f"[frontier] Looking for frontier files in: {frontier_dir} (v2={use_v2})")
     print(f"[frontier] Directory exists: {os.path.exists(frontier_dir)}")
     if os.path.exists(frontier_dir):
         print(f"[frontier] Files in directory: {len(os.listdir(frontier_dir))}")
@@ -863,12 +865,21 @@ if __name__ == "__main__":
                 # ---- Load Mean-Variance Frontier Data ----
                 print(f"[game] Loading frontier data for {mode} signal type...")
                 try:
-                    frontier_all_alphas = load_all_alpha_frontiers(signal_type=mode)
+                    frontier_all_alphas = load_all_alpha_frontiers(signal_type=mode, use_v2=False)
                     stats["frontier_all_alphas"] = frontier_all_alphas
-                    print(f"[game] Loaded {len(frontier_all_alphas)} alpha configurations for frontier")
+                    print(f"[game] Loaded {len(frontier_all_alphas)} alpha configurations for frontier (v1)")
                 except Exception as e:
-                    print(f"[game] Failed to load frontier data: {e}")
+                    print(f"[game] Failed to load frontier data (v1): {e}")
                     stats["frontier_all_alphas"] = {}
+
+                # Load v2 frontier data as well
+                try:
+                    frontier_all_alphas_v2 = load_all_alpha_frontiers(signal_type=mode, use_v2=True)
+                    stats["frontier_all_alphas_v2"] = frontier_all_alphas_v2
+                    print(f"[game] Loaded {len(frontier_all_alphas_v2)} alpha configurations for frontier (v2)")
+                except Exception as e:
+                    print(f"[game] Failed to load frontier data (v2): {e}")
+                    stats["frontier_all_alphas_v2"] = {}
 
                 # ---- Calculate Player Position on Frontier ----
                 # Player's position is defined by:
