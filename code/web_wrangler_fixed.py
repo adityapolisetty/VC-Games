@@ -764,7 +764,7 @@ def _results_page(stats: dict) -> str:
     <!-- Leaderboard Tab -->
     <div id="leaderboard-tab" class="tab-content">
       <h3 style="margin-top:0;">Top 10 Players</h3>
-      <p style="color:#6b7280;font-size:14px;margin:0 0 20px 0;">Ranked by gross return multiplier • Only {signal_type_label.lower()} signal games</p>
+      <p style="color:#6b7280;font-size:14px;margin:0 0 20px 0;">Ranked by gross return multiplier • Only {signal_type_label.lower()} signal games. Only highest </p>
 
       <div style="max-width:900px;margin:0 auto;border:1px solid var(--b);border-radius:12px;overflow:hidden;background:var(--panel);">
         <table style="width:100%;border-collapse:collapse;">
@@ -1132,7 +1132,7 @@ function createHistogramChart() {{
       <table style="width: 100%; border-collapse: collapse; background: #ffffff; margin-bottom: 0;">
         <thead style="position: sticky; top: 0; background: #f9fafb; z-index: 10;">
           <tr style="border-bottom: 2px solid #e5e7eb;">
-            <th style="padding: 12px 16px; text-align: left; font-size: 14px; font-weight: 700; color: #111827;">Gross Return Range</th>
+            <th style="padding: 12px 16px; text-align: left; font-size: 14px; font-weight: 700; color: #111827;">Gross Return Bins</th>
             <th style="padding: 12px 16px; text-align: right; font-size: 14px; font-weight: 700; color: #111827;">Frequency</th>
             <th style="padding: 12px 16px; text-align: right; font-size: 14px; font-weight: 700; color: #111827;">Probability</th>
           </tr>
@@ -1158,7 +1158,7 @@ function createHistogramChart() {{
 
     tableHTML += `
       <tr style="${{rowStyle}}">
-        <td style="padding: 10px 16px; font-size: 14px; border-bottom: 1px solid #e5e7eb; color: ${{textColor}}; font-weight: ${{isPlayerBin ? '700' : '400'}}">${{bin.label}}${{isPlayerBin ? ' ← Your return' : ''}}</td>
+        <td style="padding: 10px 16px; font-size: 14px; border-bottom: 1px solid #e5e7eb; color: ${{textColor}}; font-weight: ${{isPlayerBin ? '700' : '400'}}">${{bin.label}}${{isPlayerBin ? '   ← You are in this bin' : ''}}</td>
         <td style="padding: 10px 16px; font-size: 14px; text-align: right; border-bottom: 1px solid #e5e7eb; color: ${{cellColor}};">${{bin.count.toLocaleString()}}</td>
         <td style="padding: 10px 16px; font-size: 14px; text-align: right; border-bottom: 1px solid #e5e7eb; color: ${{cellColor}};">${{probability}}%</td>
       </tr>
