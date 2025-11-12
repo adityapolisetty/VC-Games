@@ -54,7 +54,6 @@ SD_STEP = 0.01  # percentage points
 # -----------------------
 # Functions imported from sim_res: round_seed, _deal_cards_global_deck, _second_highest_rank
 
-
 def _load_posteriors(npz_path: str):
     """
     Load all posteriors from unified NPZ file (both marginal and joint).
