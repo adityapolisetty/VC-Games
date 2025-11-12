@@ -61,8 +61,8 @@ def load_all_alpha_frontiers(signal_type: str) -> dict:
             "meta": {...}  # Metadata from NPZ file
         }
     """
-    # Frontier files are in parent directory
-    frontier_dir = os.path.join(os.path.dirname(__file__), '..', 'frontier_output')
+    # Frontier files are in code directory (for Railway deployment)
+    frontier_dir = os.path.join(os.path.dirname(__file__), 'frontier_output')
     frontier_dir = os.path.abspath(frontier_dir)  # Resolve to absolute path
 
     print(f"[frontier] Looking for frontier files in: {frontier_dir}")
