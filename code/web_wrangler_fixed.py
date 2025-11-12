@@ -546,7 +546,7 @@ def _results_page(stats: dict) -> str:
   .overlay{{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:50}}
   .overlay .msg{{background:var(--panel);border:1px solid var(--b);border-radius:14px;padding:24px 28px;font-weight:800}}
 
-  #frontierChart{{width:100%;height:600px}}
+  #frontierChart{{width:100%;max-width:900px;height:600px;margin:0 auto}}
   .js-plotly-plot .plotly .main-svg{{overflow:visible !important}}
 
   /* Black slider styling */
