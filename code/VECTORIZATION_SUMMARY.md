@@ -1,45 +1,61 @@
 # Frontier Vectorization Summary
 
 ## Problem
-`frontier_v2.py` was taking **~20-30 hours** to complete (vs 1.5 hours for `frontier.py`)
+`frontier_v2.py` was taking much longer than `frontier.py` due to unvectorized Python loops
 
 ## Root Cause
-- **97,240 Python loop iterations** per round (lines 270-301)
-- Each iteration: array indexing, conditionals, masking, dot products
-- Total: 97,240 × 400,000 rounds = **38.9 billion iterations**
+- **48,620 Python loop iterations** per round (lines 277-307, before optimization)
+- Each iteration: array indexing, conditionals, masking, operations
+- Total: 48,620 × 200,000 rounds = **9.7 billion iterations** per file
+- With 6-7 files per PBS job: **58-68 billion iterations per job**
 
-## Solution: Vectorization
+## Solution: Full Vectorization
 
 ### Changes Made
 
-**File: `frontier_v2.py` (lines 268-314)**
+**File: `frontier_v2.py` (lines 265-292)**
 
-**Before (Python loop):**
+**Before (Python loops):**
 ```python
-for strat_idx, (i1, m2) in enumerate(strategy_map):  # 97,240 iterations
-    w1 = Wm1[i1]
-    support_mask = (w1 > 0)
-    # ... complex logic with conditionals
-    g2_all[strat_idx] = np.dot(w2, p_m_stage2)
+# Build 'keep' weight matrix - 24,310 iterations
+W_keep = np.zeros((Ns1, NUM_PILES), float)
+for i in range(Ns1):
+    mask = (Wm1[i] > 0)
+    support_idx = np.where(mask)[0]
+    s2_local = s2_m[support_idx]
+    perm_local = np.argsort(-s2_local)
+    W_keep[i, support_idx[perm_local]] = Wm1[i, support_idx]
+
+# Build m2=1 weight matrix - another 24,310 iterations
+W_m2 = np.zeros((Ns1, NUM_PILES), float)
+for i in range(Ns1):
+    mask = (Wm1[i] > 0)
+    support_idx = np.where(mask)[0]
+    s2_local = s2_m[support_idx]
+    top_idx = support_idx[np.argmax(s2_local)]
+    W_m2[i, top_idx] = 1.0
 ```
 
-**After (Vectorized):**
+**After (Fully Vectorized, same approach as frontier.py):**
 ```python
-# Build weight matrices for all strategies at once
-W_keep = build_keep_weights(Wm1, s2_m)  # Batch operation
-g2_all[0:Ns1] = W_keep @ p_m_stage2      # Single matrix multiply
+# 'keep' variant: identical to frontier.py line 241
+perm2 = np.argsort(-s2_m)
+g2_all[0:Ns1] = Wm1[:, perm2] @ p_m_stage2[perm2]
 
-# Repeat for m2=1,2,3
-for m2 in [1, 2, 3]:
-    W_m2 = build_equal_weights(Wm1, s2_m, m2)
-    g2_all[...] = W_m2 @ p_m_stage2
+# m2=1 variant: vectorized with broadcasting
+s2_masked = np.where(Wm1 > 0, s2_m, -np.inf)  # Mask support
+top_piles = np.argmax(s2_masked, axis=1)  # Find top per strategy
+W_m2 = np.zeros((Ns1, NUM_PILES), float)
+W_m2[np.arange(Ns1), top_piles] = 1.0
+g2_all[Ns1:2*Ns1] = W_m2 @ p_m_stage2
 ```
 
 ### Key Optimizations
-1. **Batch dot products**: 4 matrix multiplies instead of 97,240 individual dots
-2. **BLAS acceleration**: NumPy matrix ops use optimized BLAS libraries
-3. **Better memory access**: Sequential vs scattered reads
-4. **Eliminated conditionals**: Replaced `if/else` with array operations
+1. **Eliminated Python loops**: Zero loop iterations per round (down from 48,620)
+2. **Used NumPy broadcasting**: Vectorized operations across all strategies at once
+3. **Matched frontier.py approach**: Simple column permutation for 'keep' variant
+4. **BLAS acceleration**: NumPy matrix ops use optimized libraries
+5. **Better memory access**: Sequential vs scattered reads
 
 ## Files Modified
 
@@ -52,15 +68,16 @@ for m2 in [1, 2, 3]:
 
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
-| Strategies per round | 97,240 | 97,240 | - |
-| Computation method | Python loop | Vectorized | - |
-| Expected runtime | 18-30 hours | **2-4 hours** | **5-10x faster** |
-| Per-task time (40 tasks) | 4 hours | **15-20 min** | **12-16x faster** |
+| Python loops per round | 48,620 | **0** | **Infinite** |
+| Computation method | Python loops | Pure NumPy | Fully vectorized |
+| Expected runtime (200k rounds) | 6-12 hours | **~1 hour** | **6-12x faster** |
+| Per PBS job (6-7 files, 200k rounds) | 36-84 hours | **6-7 hours** | **6-12x faster** |
 
-### Conservative Estimate
-- **Speedup: 5-10x**
-- **Runtime: 2-4 hours** per full sweep
-- Fits comfortably within 4-hour PBS walltime
+### Performance Analysis (with 40 PBS jobs, 200k rounds)
+- **Before**: 6-12 hours per file × 6-7 files = 36-84 hours per job
+- **After**: ~1 hour per file × 6-7 files = **6-7 hours per job**
+- **Speedup**: Now matches frontier.py efficiency (same vectorized approach)
+- **Total wall time**: 6-7 hours for all 252 files (with 40 parallel jobs)
 
 ## Validation
 
