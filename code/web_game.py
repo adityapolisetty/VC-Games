@@ -670,6 +670,16 @@ if __name__ == "__main__":
             stage1_resources = investable_stage1 + total_signals_spend
             g1 = stage1_payoff / stage1_resources if stage1_resources > 0 else 0.0
 
+            # DEBUG: Print Stage 1 gross return calculation
+            print(f"[DEBUG] Stage 1 Gross Return:")
+            print(f"  stage1_payoff = {stage1_payoff}")
+            print(f"  investable_stage1 = {investable_stage1}")
+            print(f"  total_signals_spend = {total_signals_spend}")
+            print(f"  total_signal_cost_stage1 = {total_signal_cost_stage1}")
+            print(f"  total_signal_cost_stage2 = {total_signal_cost_stage2}")
+            print(f"  stage1_resources = {stage1_resources}")
+            print(f"  g1 = {g1}")
+
             # Stage 2: payoff / invested
             g2 = stage2_payoff / investable_stage2 if investable_stage2 > 0 else 0.0
 

@@ -633,15 +633,15 @@ def _results_page(stats: dict) -> str:
               <tbody>
                 <tr>
                   <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;">Invested</td>
-                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('investable_stage1',0):.0f}</td>
-                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('investable_stage2',0):.0f}</td>
-                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('invested',0):.0f}</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('investable_stage1',0):.2f}</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('investable_stage2',0):.2f}</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('invested',0):.2f}</td>
                 </tr>
                 <tr>
                   <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;">Payoff</td>
-                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('stage1_payoff',0):.0f}</td>
-                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('stage2_payoff',0):.0f}</td>
-                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{(stats.get('stage1_payoff',0) + stats.get('stage2_payoff',0)):.0f}</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('stage1_payoff',0):.2f}</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{stats.get('stage2_payoff',0):.2f}</td>
+                  <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;text-align:right;font-weight:700;color:#111827;">£{(stats.get('stage1_payoff',0) + stats.get('stage2_payoff',0)):.2f}</td>
                 </tr>
                 <tr>
                   <td style="padding:10px 16px;border-bottom:1px solid var(--b);font-size:14px;color:#111827;">Gross return (payoff/budget)</td>
@@ -764,7 +764,7 @@ def _results_page(stats: dict) -> str:
     <!-- Leaderboard Tab -->
     <div id="leaderboard-tab" class="tab-content">
       <h3 style="margin-top:0;">Top 10 Players</h3>
-      <p style="color:#6b7280;font-size:14px;margin:0 0 20px 0;">Ranked by gross return multiplier • Only {signal_type_label.lower()} signal games. Only highest </p>
+      <p style="color:#6b7280;font-size:14px;margin:0 0 20px 0;">Ranked by gross return multiplier • Only {signal_type_label.lower()} signal games. </p>
 
       <div style="max-width:900px;margin:0 auto;border:1px solid var(--b);border-radius:12px;overflow:hidden;background:var(--panel);">
         <table style="width:100%;border-collapse:collapse;">
