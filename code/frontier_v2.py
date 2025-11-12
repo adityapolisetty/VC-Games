@@ -10,8 +10,8 @@ Scope (fixed params per request)
 - signal_type ∈ {median, top2}
 - scale_pay ∈ {0, 1}; when 1, scale_param=0.25; signal_cost=3; ace_payout=20
 - stage1_alloc α ∈ {0.0, 0.1, …, 1.0}
-- within‑stage weights use support size m ∈ {1, 2, 3, 4, 5} over top‑m piles by Stage‑1
-  expected value; weights on those m piles split in 0.05 increments (20 units).
+- within‑stage weights by Stage‑1 expected value; weights on those m piles split 
+  in 0.05 increments (20 units).
   Stage‑2 reassigns Stage‑1 weights within support according to updated Stage‑2
   expected values (a permutation within support).
 
@@ -262,49 +262,31 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         # Compute Stage 1 returns for all Stage 1 strategies (vectorized)
         g1_all = Wm1 @ p_m  # Shape: (Ns1,)
 
-        # FULLY VECTORIZED Stage 2 computation
+        # FULLY VECTORIZED Stage 2 computation (same approach as frontier.py)
         g2_all = np.zeros(Ns_total, float)
 
-        # Pre-compute Stage 2 ranking (same for all strategies this round)
-        s2_rank_order = np.argsort(-s2_m)  # Global Stage 2 ranking
+        # Pre-compute Stage 2 ranking for reordering (same for all strategies this round)
+        perm2 = np.argsort(-s2_m)  # Permutation to sort by Stage 2 ranking
 
-        # Process all m2 levels at once using advanced indexing
-        # Strategy: Build all weight matrices, then batch compute dot products
+        # For 'keep' variant: maintain Stage 1 weights, reorder by Stage 2 ranking
+        # This is identical to frontier.py line 241: Wm[:, perm2] @ p_m_stage2[perm2]
+        # Permuting columns reorders which piles get which weights based on Stage 2 info
+        g2_all[0:Ns1] = Wm1[:, perm2] @ p_m_stage2[perm2]
 
-        # For 'keep' variant: use Stage 1 weights with Stage 2 reordering
-        # Create permuted weight matrix for all strategies
-        W_keep = np.zeros((Ns1, NUM_PILES), float)
-        for i in range(Ns1):
-            # Find support (non-zero Stage 1 weights)
-            mask = (Wm1[i] > 0)
-            if not np.any(mask):
-                continue
-            # Get local ranking within support
-            support_idx = np.where(mask)[0]
-            s2_local = s2_m[support_idx]
-            perm_local = np.argsort(-s2_local)
-            # Permute Stage 1 weights by Stage 2 ranking
-            W_keep[i, support_idx[perm_local]] = Wm1[i, support_idx]
-
-        # Vectorized dot product for all 'keep' strategies
-        g2_all[0:Ns1] = W_keep @ p_m_stage2
-
-        # For m2=1 only: 100% in top pile within support
-        m2 = 1
-        start_idx = Ns1  # After 'keep' strategies
+        # For m2=1: concentrate 100% in top Stage 2 pile within each strategy's support
+        # Vectorized: mask out zero-weight positions, then find argmax for each strategy
+        start_idx = Ns1
         end_idx = 2 * Ns1
 
+        # Create masked Stage 2 values: -inf where Stage 1 weight is zero
+        s2_masked = np.where(Wm1 > 0, s2_m, -np.inf)  # Shape: (Ns1, NUM_PILES)
+
+        # Find top pile (by Stage 2) within each strategy's support
+        top_piles = np.argmax(s2_masked, axis=1)  # Shape: (Ns1,)
+
+        # Build weight matrix: 1.0 at top pile, 0 elsewhere
         W_m2 = np.zeros((Ns1, NUM_PILES), float)
-        for i in range(Ns1):
-            mask = (Wm1[i] > 0)
-            if not np.any(mask):
-                continue
-            support_idx = np.where(mask)[0]
-            # Top pile by Stage 2 ranking
-            s2_local = s2_m[support_idx]
-            top_idx = support_idx[np.argmax(s2_local)]
-            # 100% weight in top pile
-            W_m2[i, top_idx] = 1.0
+        W_m2[np.arange(Ns1), top_piles] = 1.0
 
         # Vectorized dot product
         g2_all[start_idx:end_idx] = W_m2 @ p_m_stage2
