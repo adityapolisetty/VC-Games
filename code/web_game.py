@@ -152,8 +152,8 @@ def load_all_alpha_frontiers(signal_type: str, use_v2: bool = False) -> dict:
                         # Calculate concentration (sum of squared weights)
                         concentration = float(np.sum(w_vec ** 2))
 
-                        # Sharpe ratio: (mean - 1.0) / (sd / 100)
-                        sharpe = (mean_net_pct / sd_pct) if sd_pct > 0 else 0.0
+                        # Sharpe ratio: (mean_gross - 1) / sd_gross = net return / sd
+                        sharpe = ((mean_gross - 1.0) / sd_gross) if sd_gross > 0 else 0.0
 
                         # Hit rates (now from coarsened arrays)
                         ace_rate = float(ace_hits[i]) if len(ace_hits) > 0 and i < len(ace_hits) else 0.0
@@ -661,13 +661,23 @@ if __name__ == "__main__":
             c2 = investable_stage2 / WALLET0 if WALLET0 > 0 else 0.0
             signal_cost_fraction = total_signals_spend / WALLET0 if WALLET0 > 0 else 0.0
 
-            # Gross return multipliers (payoff / budget)
-            g1 = stage1_payoff / WALLET0 if WALLET0 > 0 else 0.0
-            g2 = stage2_payoff / WALLET0 if WALLET0 > 0 else 0.0
+            # Gross return multipliers for formula (payoff / budget - kept for net_return_pct)
+            g1_formula = stage1_payoff / WALLET0 if WALLET0 > 0 else 0.0
+            g2_formula = stage2_payoff / WALLET0 if WALLET0 > 0 else 0.0
+
+            # Gross return multipliers for display (stage-specific denominators)
+            # Stage 1: payoff / (invested + signal_cost)
+            stage1_resources = investable_stage1 + total_signals_spend
+            g1 = stage1_payoff / stage1_resources if stage1_resources > 0 else 0.0
+
+            # Stage 2: payoff / invested
+            g2 = stage2_payoff / investable_stage2 if investable_stage2 > 0 else 0.0
+
+            # Total: payoff / budget (unchanged)
             gross_return_mult = total_payoff / WALLET0 if WALLET0 > 0 else 0.0
 
-            # Net return using frontier formula
-            net_return_pct = 100.0 * (c1 * (g1 - 1.0) + c2 * (g2 - 1.0) - signal_cost_fraction)
+            # Net return using frontier formula (uses g1_formula/g2_formula, not display values)
+            net_return_pct = 100.0 * (c1 * (g1_formula - 1.0) + c2 * (g2_formula - 1.0) - signal_cost_fraction)
             net_return_abs = total_payoff - total_invest
 
             # Stage 1 fraction (for strategic analysis)
