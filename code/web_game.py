@@ -63,6 +63,12 @@ def load_all_alpha_frontiers(signal_type: str) -> dict:
     """
     # Frontier files are in parent directory
     frontier_dir = os.path.join(os.path.dirname(__file__), '..', 'frontier_output')
+    frontier_dir = os.path.abspath(frontier_dir)  # Resolve to absolute path
+
+    print(f"[frontier] Looking for frontier files in: {frontier_dir}")
+    print(f"[frontier] Directory exists: {os.path.exists(frontier_dir)}")
+    if os.path.exists(frontier_dir):
+        print(f"[frontier] Files in directory: {len(os.listdir(frontier_dir))}")
 
     # Alpha values: 0, 5, 10, ..., 95, 100 (21 files)
     alpha_values = list(range(0, 105, 5))
