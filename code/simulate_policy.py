@@ -210,6 +210,14 @@ def run_policy_simulation(
 
     returns = np.zeros(rounds, float)
 
+    # Initialize hit counters
+    ace_hits_total = 0
+    king_hits_total = 0
+    queen_hits_total = 0
+
+    # Will capture Round 0 EV-sorted weight pattern
+    round0_weight_pattern = None
+
     # Determine investment pattern based on concentration index
     # Higher concentration = fewer piles with unequal weights
     # We'll approximate by investing in top k piles with concentration-weighted distribution
@@ -227,6 +235,10 @@ def run_policy_simulation(
             rng = default_rng(round_seed(base_seed, r))
 
         has_ace, hands, medians, top2sum, max_rank, min_rank = _deal_cards_global_deck(rng)
+
+        # Track premium cards (for hit rate calculation)
+        has_king = np.array([13 in h for h in hands], dtype=bool)
+        has_queen = np.array([12 in h for h in hands], dtype=bool)
 
         # Determine which piles have signals
         if r == 0 and actual_signaled_piles is not None:
@@ -250,6 +262,14 @@ def run_policy_simulation(
         if r == 0 and actual_weights_stage1 is not None:
             # Round 0: Use actual Stage 1 investments
             inv1_amounts = np.asarray(actual_weights_stage1, float)
+
+            # Extract normalized EV-ranked weight pattern from Round 0
+            # This pattern will be reused for all subsequent rounds
+            order1_round0 = np.argsort(-s1)  # EV ranking from Round 0
+            total_inv1 = inv1_amounts.sum()
+            if total_inv1 > 0:
+                # Create normalized pattern: what fraction goes to 1st-best, 2nd-best, etc.
+                round0_weight_pattern = np.array([inv1_amounts[order1_round0[i]] / total_inv1 for i in range(NUM_PILES)])
         else:
             # Rounds 1+: Apply player's weight pattern to EV-sorted piles
             # Sort piles by EV (descending) to get ranking
@@ -315,6 +335,15 @@ def run_policy_simulation(
         gross_return_multiplier = total_payoff / BUDGET if BUDGET > 0 else 0.0
         returns[r] = gross_return_multiplier
 
+        # Track hits: count if player invested in premium piles
+        total_inv = inv1_amounts + (inv2_amounts if 'inv2_amounts' in locals() else np.zeros(NUM_PILES, float))
+        if np.any(has_ace & (total_inv > 0)):
+            ace_hits_total += 1
+        if np.any(has_king & (total_inv > 0)):
+            king_hits_total += 1
+        if np.any(has_queen & (total_inv > 0)):
+            queen_hits_total += 1
+
     # Compute statistics
     metadata = {
         "mean": float(np.mean(returns)),
@@ -327,7 +356,11 @@ def run_policy_simulation(
         "rounds": int(rounds),
         "n_signals": int(n_signals),
         "signal_type": str(signal_type),
-        "concentration": float(player_concentration),
+        "concentration_index": float(player_concentration),  # Fixed key name
+        "player_weights": round0_weight_pattern.tolist() if round0_weight_pattern is not None else [0.0]*9,
+        "ace_hits": int(ace_hits_total),
+        "king_hits": int(king_hits_total),
+        "queen_hits": int(queen_hits_total),
     }
 
     return returns, metadata

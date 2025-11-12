@@ -265,40 +265,53 @@ def _worker_chunk_il(base_seed, round_start, rounds_chunk, signal_type, n_sig, s
         # Compute Stage 1 returns for all Stage 1 strategies (vectorized)
         g1_all = Wm1 @ p_m  # Shape: (Ns1,)
 
-        # Compute Stage 2 returns for each concentration variant
+        # FULLY VECTORIZED Stage 2 computation
         g2_all = np.zeros(Ns_total, float)
-        for strat_idx, (i1, m2) in enumerate(strategy_map):
-            w1 = Wm1[i1]  # Stage 1 weights for this strategy
-            support_mask = (w1 > 0)  # Piles where Stage 1 invested
-            support_size = int(np.sum(support_mask))
 
-            if support_size == 0:
-                # No Stage 1 investment → no Stage 2 return
-                g2_all[strat_idx] = 0.0
-            elif m2 == 'keep':
-                # Maintain Stage 1 weights, reordered by Stage 2 ranking
-                # Only permute within support (zero weights stay zero)
-                w2 = np.zeros(NUM_PILES, float)
-                support_indices = np.where(support_mask)[0]
-                # Get Stage 2 rankings for support piles only
-                s2_support = s2_m[support_indices]
-                perm2_support = np.argsort(-s2_support)
-                # Assign Stage 1 weights in Stage 2 ranking order
-                w1_support = w1[support_indices]
-                w2[support_indices[perm2_support]] = w1_support
-                g2_all[strat_idx] = float(np.dot(w2, p_m_stage2))
-            else:
-                # Equal weights in top m2 piles (capped at support_size)
-                m2_actual = min(int(m2), support_size)
-                # Get top m2_actual piles by Stage 2 ranking within support
-                support_indices = np.where(support_mask)[0]
-                s2_support = s2_m[support_indices]
-                top_m2_local = np.argsort(-s2_support)[:m2_actual]
-                top_m2_global = support_indices[top_m2_local]
+        # Pre-compute Stage 2 ranking (same for all strategies this round)
+        s2_rank_order = np.argsort(-s2_m)  # Global Stage 2 ranking
+
+        # Process all m2 levels at once using advanced indexing
+        # Strategy: Build all weight matrices, then batch compute dot products
+
+        # For 'keep' variant: use Stage 1 weights with Stage 2 reordering
+        # Create permuted weight matrix for all strategies
+        W_keep = np.zeros((Ns1, NUM_PILES), float)
+        for i in range(Ns1):
+            # Find support (non-zero Stage 1 weights)
+            mask = (Wm1[i] > 0)
+            if not np.any(mask):
+                continue
+            # Get local ranking within support
+            support_idx = np.where(mask)[0]
+            s2_local = s2_m[support_idx]
+            perm_local = np.argsort(-s2_local)
+            # Permute Stage 1 weights by Stage 2 ranking
+            W_keep[i, support_idx[perm_local]] = Wm1[i, support_idx]
+
+        # Vectorized dot product for all 'keep' strategies
+        g2_all[0:Ns1] = W_keep @ p_m_stage2
+
+        # For m2=1,2,3: equal weights in top m2 piles within support
+        for m2_idx, m2 in enumerate([1, 2, 3]):
+            start_idx = (m2_idx + 1) * Ns1  # Offset by 1 because 'keep' is first
+            end_idx = (m2_idx + 2) * Ns1
+
+            W_m2 = np.zeros((Ns1, NUM_PILES), float)
+            for i in range(Ns1):
+                mask = (Wm1[i] > 0)
+                if not np.any(mask):
+                    continue
+                support_idx = np.where(mask)[0]
+                # Top m2 piles by Stage 2 ranking (capped at support size)
+                m2_actual = min(m2, len(support_idx))
+                s2_local = s2_m[support_idx]
+                top_local = np.argsort(-s2_local)[:m2_actual]
                 # Equal weights
-                w2 = np.zeros(NUM_PILES, float)
-                w2[top_m2_global] = 1.0 / m2_actual
-                g2_all[strat_idx] = float(np.dot(w2, p_m_stage2))
+                W_m2[i, support_idx[top_local]] = 1.0 / m2_actual
+
+            # Vectorized dot product
+            g2_all[start_idx:end_idx] = W_m2 @ p_m_stage2
 
         # Replicate g1 for each Stage 2 variant
         g1_expanded = np.repeat(g1_all, len(M2_LEVELS))

@@ -26,17 +26,17 @@ ID="${PBS_ARRAY_INDEX:-0}"
 
 # Parameterization (keep a constant base seed across array tasks like dynamic)
 SEED=${SEED:-12345}
-ROUNDS=${ROUNDS:-400000}
+ROUNDS=${ROUNDS:-200000}
 MAX_SIGNALS=${MAX_SIGNALS:-9}
 
 STRIDE=${STRIDE:-40}  # Total number of tasks
 
-python3 -u frontier.py \
+python3 -u frontier_v2.py \
   --seed "$SEED" \
   --rounds "$ROUNDS" \
   --max_signals "$MAX_SIGNALS" \
   --procs 12 \
   --sweep \
-  --sweep_out ../frontier_output \
+  --sweep_out ../frontier_output_v2 \
   --sweep_index "$ID" \
   --sweep_stride "$STRIDE"

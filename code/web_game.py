@@ -73,8 +73,9 @@ def load_all_alpha_frontiers(signal_type: str) -> dict:
         # Convert alpha percentage to 3-digit string (e.g., 10 -> "010")
         alpha_str = f"a{alpha_pct:03d}"
 
-        # File pattern: sc3p0000_sp0_s0_ap20p0000_{signal_type}_a{alpha}.npz
-        filename = f"sc3p0000_sp0_s0_ap20p0000_{signal_type}_{alpha_str}.npz"
+        # File pattern: sc3p0000_sp1_s0p2500_ap20p0000_{signal_type}_a{alpha}.npz
+        # sp1 = scale_pay=1 (graduated payoffs), s0p2500 = scale_param=0.25
+        filename = f"sc3p0000_sp1_s0p2500_ap20p0000_{signal_type}_{alpha_str}.npz"
         filepath = os.path.join(frontier_dir, filename)
 
         if not os.path.exists(filepath):
@@ -96,6 +97,10 @@ def load_all_alpha_frontiers(signal_type: str) -> dict:
                 # Metadata
                 meta = json.loads(str(z['meta']))
 
+                # Extract metadata values (matching vis_sim_res.py)
+                total_rounds = meta.get("total_rounds", 200000)  # Default to 200k
+                scale_pay = meta.get("params", {}).get("scale_pay", 0)
+
                 # Parse frontier points for each n
                 points_by_n = []
 
@@ -109,9 +114,14 @@ def load_all_alpha_frontiers(signal_type: str) -> dict:
                         points_by_n.append([])
                         continue
 
+                    # Get hit rates for this n (before coarsening)
+                    ace_hits = ace_hits_by_n[n] if ace_hits_by_n is not None and n < len(ace_hits_by_n) else np.array([])
+                    king_hits = king_hits_by_n[n] if king_hits_by_n is not None and n < len(king_hits_by_n) else np.array([])
+                    queen_hits = queen_hits_by_n[n] if queen_hits_by_n is not None and n < len(queen_hits_by_n) else np.array([])
+
                     # Coarsen frontier: bin by SD (5pp steps) and keep highest mean in each bin
-                    sd_vals, mean_vals, weight_vecs = _coarsen_frontier(
-                        sd_vals, mean_vals, weight_vecs, sd_step=5.0
+                    sd_vals, mean_vals, weight_vecs, ace_hits, king_hits, queen_hits = _coarsen_frontier(
+                        sd_vals, mean_vals, weight_vecs, ace_hits, king_hits, queen_hits, sd_step=5.0
                     )
 
                     # Build frontier points for this n
@@ -137,10 +147,10 @@ def load_all_alpha_frontiers(signal_type: str) -> dict:
                         # Sharpe ratio: (mean - 1.0) / (sd / 100)
                         sharpe = (mean_net_pct / sd_pct) if sd_pct > 0 else 0.0
 
-                        # Hit rates (if available)
-                        ace_rate = float(ace_hits_by_n[n][i]) if ace_hits_by_n is not None and len(ace_hits_by_n[n]) > 0 else 0.0
-                        king_rate = float(king_hits_by_n[n][i]) if king_hits_by_n is not None and len(king_hits_by_n[n]) > 0 else 0.0
-                        queen_rate = float(queen_hits_by_n[n][i]) if queen_hits_by_n is not None and len(queen_hits_by_n[n]) > 0 else 0.0
+                        # Hit rates (now from coarsened arrays)
+                        ace_rate = float(ace_hits[i]) if len(ace_hits) > 0 and i < len(ace_hits) else 0.0
+                        king_rate = float(king_hits[i]) if len(king_hits) > 0 and i < len(king_hits) else 0.0
+                        queen_rate = float(queen_hits[i]) if len(queen_hits) > 0 and i < len(queen_hits) else 0.0
 
                         # Note: max_gross is not in NPZ, so we'll compute it on frontend from individual simulations
                         # For now, use mean_gross as placeholder
@@ -156,7 +166,9 @@ def load_all_alpha_frontiers(signal_type: str) -> dict:
                             "concentration": concentration,
                             "ace_hit_rate": ace_rate,
                             "king_hit_rate": king_rate,
-                            "queen_hit_rate": queen_rate
+                            "queen_hit_rate": queen_rate,
+                            "total_rounds": total_rounds,  # For hit rate calculation
+                            "scale_pay": scale_pay,        # For conditional king/queen display
                         }
                         n_points.append(point)
 
@@ -176,20 +188,23 @@ def load_all_alpha_frontiers(signal_type: str) -> dict:
     return result
 
 
-def _coarsen_frontier(sd_vals, mean_vals, weight_vecs, sd_step=5.0):
+def _coarsen_frontier(sd_vals, mean_vals, weight_vecs, ace_hits, king_hits, queen_hits, sd_step=5.0):
     """Coarsen frontier by binning SD values (5pp steps) and keeping highest mean in each bin.
 
     Args:
         sd_vals: 1D array of SD values (percentage)
         mean_vals: 1D array of mean values
         weight_vecs: 2D array of weight vectors
+        ace_hits: 1D array of ace hit counts
+        king_hits: 1D array of king hit counts
+        queen_hits: 1D array of queen hit counts
         sd_step: Binning granularity in percentage points (default 5.0 for 5pp)
 
     Returns:
-        Tuple of (coarsened_sd, coarsened_mean, coarsened_weights)
+        Tuple of (coarsened_sd, coarsened_mean, coarsened_weights, coarsened_ace, coarsened_king, coarsened_queen)
     """
     if len(sd_vals) == 0:
-        return sd_vals, mean_vals, weight_vecs
+        return sd_vals, mean_vals, weight_vecs, ace_hits, king_hits, queen_hits
 
     # Bin by SD with 5pp steps (0-5%, 5-10%, 10-15%, etc.)
     sd_bins = {}
@@ -203,6 +218,9 @@ def _coarsen_frontier(sd_vals, mean_vals, weight_vecs, sd_step=5.0):
     coarsened_sd = []
     coarsened_mean = []
     coarsened_weights = []
+    coarsened_ace = []
+    coarsened_king = []
+    coarsened_queen = []
 
     for bin_idx in sorted(sd_bins.keys()):
         indices = sd_bins[bin_idx]
@@ -212,10 +230,21 @@ def _coarsen_frontier(sd_vals, mean_vals, weight_vecs, sd_step=5.0):
         coarsened_mean.append(mean_vals[best_idx])
         coarsened_weights.append(weight_vecs[best_idx])
 
+        # Coarsen hit rates too
+        if len(ace_hits) > 0:
+            coarsened_ace.append(ace_hits[best_idx])
+        if len(king_hits) > 0:
+            coarsened_king.append(king_hits[best_idx])
+        if len(queen_hits) > 0:
+            coarsened_queen.append(queen_hits[best_idx])
+
     return (
         np.array(coarsened_sd),
         np.array(coarsened_mean),
-        np.array(coarsened_weights)
+        np.array(coarsened_weights),
+        np.array(coarsened_ace) if len(coarsened_ace) > 0 else np.array([]),
+        np.array(coarsened_king) if len(coarsened_king) > 0 else np.array([]),
+        np.array(coarsened_queen) if len(coarsened_queen) > 0 else np.array([])
     )
 
 
@@ -794,8 +823,8 @@ if __name__ == "__main__":
                     signal_cost=cost,
                     stage1_alloc=stage1_alloc,  # Calculated from actual budget split
                     ace_payout=ACE_PAYOUT,
-                    scale_pay=0,  # Hardcoded for now (ace-only payoff)
-                    scale_param=0.0,
+                    scale_pay=1,  # Graduated payoffs (matches frontier NPZ files)
+                    scale_param=0.25,  # Scale parameter (matches sp1_s0p2500 files)
                     player_concentration=concentration_index,
                     rounds=50000,
                     actual_board_seed=game_seed,                    # Exact board replication

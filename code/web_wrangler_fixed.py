@@ -899,17 +899,30 @@ function createFrontierChart() {{
           weightLabels.slice(6, 9).join(' | ')
         ];
 
+        // Use total_rounds from NPZ metadata (default to 200k if not present)
+        const totalRounds = p.total_rounds || 200000;
+        const scalePay = p.scale_pay || 0;
+
+        // Calculate hit percentages
+        const aceHitPct = (p.ace_hit_rate / totalRounds * 100).toFixed(2);
+        const kingHitPct = (p.king_hit_rate / totalRounds * 100).toFixed(2);
+        const queenHitPct = (p.queen_hit_rate / totalRounds * 100).toFixed(2);
+
+        // Build hit rate string (show king/queen only if scale_pay == 1)
+        let hitRateStr = `Ace hits: ${{aceHitPct}}%`;
+        if (scalePay === 1) {{
+          hitRateStr += ` | King hits: ${{kingHitPct}}% | Queen hits: ${{queenHitPct}}%`;
+        }}
+
         return `<b>Signals: N = ${{n}}</b><br>` +
-               `<b>Simulations:</b> 200,000<br>` +
+               `<b>Simulations:</b> ${{totalRounds.toLocaleString()}}<br>` +
                `<b>Mean Return:</b> ${{p.mean_gross.toFixed(3)}}X<br>` +
                `<b>Std Dev:</b> ${{p.sd_gross.toFixed(3)}}X<br>` +
                `<b>Sharpe Ratio:</b> ${{p.sharpe.toFixed(3)}}<br>` +
                `<b>Σw²:</b> ${{p.concentration.toFixed(3)}}<br><br>` +
                `<b>Portfolio Weights:</b><br>` +
                weightRows.join('<br>') + '<br><br>' +
-               `Ace hits: ${{(p.ace_hit_rate / 200000000).toFixed(2)}}% | ` +
-               `King hits: ${{(p.king_hit_rate / 200000000).toFixed(2)}}% | ` +
-               `Queen hits: ${{(p.queen_hit_rate / 200000000).toFixed(2)}}%`;
+               hitRateStr;
       }});
 
       traces.push({{
@@ -942,6 +955,7 @@ function createFrontierChart() {{
     const playerMaxGross = window.PLAYER_POSITION.max_gross || playerMean;
     const playerSharpe = window.PLAYER_POSITION.sharpe || 0;
     const playerWeights = window.PLAYER_POSITION.weights || [0,0,0,0,0,0,0,0,0];
+    const playerConcentration = window.PLAYER_POSITION.concentration || 0;
     const playerAceHits = window.PLAYER_POSITION.ace_hits || 0;
     const playerKingHits = window.PLAYER_POSITION.king_hits || 0;
     const playerQueenHits = window.PLAYER_POSITION.queen_hits || 0;
@@ -963,9 +977,9 @@ function createFrontierChart() {{
                             `<b>Σw²:</b> ${{playerConcentration.toFixed(3)}}<br><br>` +
                             `<b>Portfolio Weights:</b><br>` +
                             playerWeightRows.join('<br>') + '<br><br>' +
-                            `Ace hits: ${{(playerAceHits / 50000).toFixed(2)}}% | ` +
-                            `King hits: ${{(playerKingHits / 50000).toFixed(2)}}% | ` +
-                            `Queen hits: ${{(playerQueenHits / 50000).toFixed(2)}}%`;
+                            `Ace hits: ${{(playerAceHits / 50000 * 100).toFixed(2)}}% | ` +
+                            `King hits: ${{(playerKingHits / 50000 * 100).toFixed(2)}}% | ` +
+                            `Queen hits: ${{(playerQueenHits / 50000 * 100).toFixed(2)}}%`;
 
     traces.push({{
       x: [playerSDGross],
