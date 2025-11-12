@@ -215,8 +215,9 @@ def run_policy_simulation(
     king_hits_total = 0
     queen_hits_total = 0
 
-    # Will capture Round 0 EV-sorted weight pattern
-    round0_weight_pattern = None
+    # Will capture Round 0 EV-sorted weight patterns for Stage 1 and Stage 2
+    s1_ev_pattern = None
+    s2_ev_pattern = None
 
     # Determine investment pattern based on concentration index
     # Higher concentration = fewer piles with unequal weights
@@ -269,14 +270,14 @@ def run_policy_simulation(
             total_inv1 = inv1_amounts.sum()
             if total_inv1 > 0:
                 # Create normalized pattern: what fraction goes to 1st-best, 2nd-best, etc.
-                round0_weight_pattern = np.array([inv1_amounts[order1_round0[i]] / total_inv1 for i in range(NUM_PILES)])
+                s1_ev_pattern = np.array([inv1_amounts[order1_round0[i]] / total_inv1 for i in range(NUM_PILES)])
         else:
-            # Rounds 1+: Apply player's weight pattern to EV-sorted piles
+            # Rounds 1+: Apply EV-ranked pattern extracted from Round 0
             # Sort piles by EV (descending) to get ranking
             order1 = np.argsort(-s1)
-            # Apply weight pattern: pattern[i] goes to pile at position i in EV ranking
+            # Apply EV-ranked pattern: pattern[i] goes to pile at position i in EV ranking
             inv1_amounts = np.zeros(NUM_PILES, float)
-            pattern = np.asarray(weight_pattern_stage1, float)
+            pattern = s1_ev_pattern if s1_ev_pattern is not None else np.ones(NUM_PILES) / NUM_PILES
             for pos, pile_idx in enumerate(order1):
                 if pos < len(pattern):
                     inv1_amounts[pile_idx] = pattern[pos] * investable1
@@ -310,16 +311,30 @@ def run_policy_simulation(
             if r == 0 and actual_weights_stage2 is not None:
                 # Round 0: Use actual Stage 2 investments
                 inv2_amounts = np.asarray(actual_weights_stage2, float)
+
+                # Extract EV-ranked Stage 2 pattern from Round 0
+                # Sort Stage 1 support by Stage 2 EV to get ranking
+                support_s2_r0 = [(s2[k], k) for k in stage1_support]
+                support_s2_r0.sort(reverse=True)  # Highest EV first
+                sorted_support_r0 = [k for _, k in support_s2_r0]
+
+                # Extract pattern by EV rank
+                total_inv2 = inv2_amounts.sum()
+                if total_inv2 > 0:
+                    # Pattern[i] = fraction going to i-th best pile by Stage 2 EV
+                    s2_ev_pattern = np.array([
+                        inv2_amounts[sorted_support_r0[i]] / total_inv2 if i < len(sorted_support_r0) else 0.0
+                        for i in range(NUM_PILES)
+                    ])
             else:
-                # Rounds 1+: Apply weight pattern to EV-sorted piles within support
+                # Rounds 1+: Apply EV-ranked pattern extracted from Round 0
                 support_s2 = [(s2[k], k) for k in stage1_support]
                 support_s2.sort(reverse=True)  # Highest EV first
                 sorted_support_piles = [k for _, k in support_s2]
 
-                # Apply weight pattern directly (no renormalization)
-                # Pattern already sums to 1.0 from Stage 1 extraction
+                # Apply EV-ranked pattern to new EV ranking
                 inv2_amounts = np.zeros(NUM_PILES, float)
-                pattern = np.asarray(weight_pattern_stage2, float)
+                pattern = s2_ev_pattern if s2_ev_pattern is not None else np.ones(NUM_PILES) / NUM_PILES
                 for pos, pile_idx in enumerate(sorted_support_piles):
                     if pos < len(pattern):
                         inv2_amounts[pile_idx] = pattern[pos] * budget2
@@ -357,7 +372,7 @@ def run_policy_simulation(
         "n_signals": int(n_signals),
         "signal_type": str(signal_type),
         "concentration_index": float(player_concentration),  # Fixed key name
-        "player_weights": round0_weight_pattern.tolist() if round0_weight_pattern is not None else [0.0]*9,
+        "player_weights": s1_ev_pattern.tolist() if s1_ev_pattern is not None else [0.0]*9,
         "ace_hits": int(ace_hits_total),
         "king_hits": int(king_hits_total),
         "queen_hits": int(queen_hits_total),

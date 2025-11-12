@@ -16,8 +16,7 @@ import pandas as pd
 from pathlib import Path
 
 # Import game modules
-from web_game import GameState, compute_payoffs_at_stage2, ACE_RANK, ACE_PAYOUT
-from simulate_policy import simulate_policy
+from web_game import compute_payoffs_at_stage2, ACE_RANK, ACE_PAYOUT, WALLET0
 
 print("="*70)
 print("GAME SIMULATION VALIDATION TEST SUITE")
