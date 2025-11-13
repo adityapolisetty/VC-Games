@@ -1,0 +1,1143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>The VC Card Game</title>
+<style>
+  @font-face{font-family:'Source Sans Pro'; font-style:normal; font-weight:400; font-display:swap; src: local('Source Sans Pro Regular'), local('SourceSansPro-Regular'), url('/assets/SourceSansPro-Regular.woff2') format('woff2'), url('/assets/SourceSansPro-Regular.ttf.woff2') format('woff2');}
+  @font-face{font-family:'Source Sans Pro'; font-style:normal; font-weight:600; font-display:swap; src: local('Source Sans Pro Semibold'), local('SourceSansPro-Semibold'), url('/assets/SourceSansPro-Semibold.woff2') format('woff2'), url('/assets/SourceSansPro-Semibold.ttf.woff2') format('woff2');}
+  :root { --green:#059669; --bg:#ffffff; --panel:#ffffff; --cta:#f59e0b; --ctatxt:#111827; --b:#e5e7eb; --infoW:72px; }
+  *{box-sizing:border-box}
+  /* Prefer Source Sans Pro to match Streamlit page */
+  body{margin:0;font-family:"Source Sans Pro", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif; background:var(--bg); color:#111827; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale}
+
+  .brandbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 20px;border-bottom:1px solid var(--b);background:var(--panel);position:sticky;top:0;z-index:20;font-size:22px}
+  .brand-left{display:none}
+  .brand-center{font-weight:900;flex:1;text-align:center}
+
+  header.nav{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--b);background:var(--panel);position:sticky;top:40px;z-index:10}
+  .nav-left{display:flex;gap:14px}
+  .nav-left a{color:#111827;text-decoration:none;font-weight:600}
+  .nav-left a:hover{color:#6b7280}
+  .nav .title{font-weight:700;font-size:14px;color:#111827}
+  .right{display:flex;gap:16px}
+  .budget{font-weight:700;font-size:14px}
+  /* Ensure stage indicator matches budget styling exactly - override parent .title */
+  .nav .title, .nav .title #stageIndicator{font-weight:700;font-size:14px !important;color:#111827}
+
+  /* Decision board width = 420 - invest(170) + 0.5*info button width */
+  .wrap{display:grid;grid-template-columns:1fr calc(420px - 170px + (var(--infoW)/2));gap:20px;padding:40px 20px 20px;margin-left:72px}
+  /* Card sizing variables */
+  :root{ --cardW:140px; --cardH:192px; --cardBorder:11px; --cardRadius:15px; --pileLift:14px; }
+  .grid{display:grid;grid-template-columns:repeat(5,var(--cardW));gap:48px 72px;align-content:start;overflow:visible}
+  .pile{position:relative;width:var(--cardW);height:var(--cardH);overflow:visible;transition:transform .15s ease, box-shadow .15s ease}
+  .pile.raised{ transform: translateY(calc(-1 * var(--pileLift))); }
+  .pile.raised::after{ content:""; position:absolute; left:calc(var(--cardW)/2 - 7px); bottom:-10px; width:14px; height:14px; background:#000; border-radius:50%; }
+  /* Raised pile adds a stronger drop shadow like button hover (no colour overlays) */
+  .pile.raised .card.top{ box-shadow:0 12px 28px rgba(0,0,0,.28), 0 0 0 1.5px #fff; }
+  .section-title{margin:6px 0 12px 0}
+
+  .card{width:var(--cardW);height:var(--cardH);border:var(--cardBorder) solid #000;border-radius:var(--cardRadius);cursor:pointer;position:relative;transition:border-color .15s, box-shadow .15s, filter .15s;box-shadow:0 0 0 1.5px #fff;background:#ffffff}
+  /* Keep white edge on signalled/invested states */
+  .card.signaled{ box-shadow:0 0 0 1.5px #fff }
+  /* Also raise the selected top card itself as an extra safeguard */
+  .card.top.selected{ transform: translateY(calc(-1 * var(--pileLift))); box-shadow:0 12px 28px rgba(0,0,0,.28), 0 0 0 1.5px #fff }
+  .card.invested{ box-shadow:0 0 0 1.5px #fff }
+  .med-reveal{ font-weight:500; color:#6b7280 }
+  .card.dead{filter:grayscale(40%);opacity:.6;cursor:default}
+  /* Overlay text on top card; padded down to avoid pile tag */
+  .label{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:flex-start;text-align:left;color:#111827;font-weight:600;font-size:12px;line-height:1.4;white-space:pre-line;pointer-events:none;padding:28px 12px 10px}
+  /* Full under-cards (non-interactive), positioned to the left */
+  .underCard{position:absolute;left:0;top:0;width:var(--cardW);height:var(--cardH);background:#ffffff;
+    border:var(--cardBorder) solid #000;border-radius:var(--cardRadius);box-shadow:0 0 0 1.5px #fff; pointer-events:none; z-index:0}
+  .pile-tag{position:absolute;left:8px;top:8px;font-size:12px;color:#111827;background:transparent;font-weight:700;pointer-events:none;z-index:2}
+  .card.top{position:absolute;left:0;top:0;z-index:1}
+
+  aside{position:sticky;top:104px;height:fit-content;border:1px solid var(--b);border-radius:12px;padding:16px;background:var(--panel)}
+  .row{display:flex;gap:10px;align-items:center}
+  .space-between{display:flex;justify-content:space-between;align-items:center}
+  .muted{color:#4b5563}
+
+  .btn, .btn-cta, .btn-cta-sm, .btn-ghost { cursor:pointer; }
+  .btn{padding:10px 14px;border-radius:10px;border:1px solid var(--b);background:#111827;color:#e5e7eb;transition:transform .15s, filter .15s, box-shadow .15s;font-weight:700}
+  .btn[disabled]{opacity:.5;cursor:not-allowed}
+  /* Make all buttons match Enter button styling and be narrower */
+  .btn-cta, .btn-cta-sm, .btn-ghost{ padding:10px 14px; border-radius:10px; border:1px solid var(--b); background:#111827; color:#e5e7eb; width:auto; font-weight:700 }
+  .btn-ghost{ min-width:50px; text-align:center; background:#ffffff; color:#111827; margin-left:16px }
+  .btn:hover, .btn-cta:hover, .btn-cta-sm:hover, .btn-ghost:hover { transform:translateY(-1px); filter:brightness(1.1) saturate(1.1); box-shadow:0 6px 16px rgba(0,0,0,.18); }
+  .btn:active, .btn-cta:active, .btn-cta-sm:active, .btn-ghost:active { transform:none; filter:none; box-shadow:none; }
+
+  input,button{font-family:inherit}
+  input[type="number"]{width:170px;padding:12px;border-radius:10px;border:1px solid #cbd5e1;background:#ffffff;color:#111827;font-size:16px}
+  input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+  /* Radio buttons - black accent color */
+  input[type="radio"]{accent-color:#111827;cursor:pointer;width:18px;height:18px}
+
+  .sig-line{display:flex;align-items:center;gap:10px;border:0;background:transparent;border-radius:0;padding:0;margin:8px 0}
+  .sig-left{display:flex;align-items:center;gap:12px}
+  .sig-name{font-weight:800}
+  .sig-name .price { margin-left:14px; }
+  .reveal{font-weight:700;color:#e5e7eb;background:#0b1a2f;border:1px solid var(--b);padding:6px 10px;border-radius:10px}
+
+/* login */
+.hero-wrap{
+  max-width:1100px;
+  margin:12vh auto 0;
+  display:grid;
+  grid-template-columns:minmax(420px,1.2fr) minmax(380px,1fr);
+  gap:68px;
+  align-items:center;
+  min-height:calc(80vh - 250px);
+  padding:50px 24px;
+}
+  .hero-title{ margin:0; line-height:1.12; font-weight:900; color:#111827; }
+  .hero-welcome{ display:block; font-size:clamp(40px,6vw,64px); letter-spacing:.2px; }
+  .hero-rest{
+  display:block;
+  font-size:clamp(16px,2vw,22px);
+  margin-top:9px;
+  margin-left:clamp(8px,1vw,16px);
+  font-weight:400; /* regular, not bold */
+}
+.login{ margin:0; padding:28px; border:1px solid var(--b); border-radius:16px; background:var(--panel); }
+.label-lg{ font-size:16px; }
+.small-lg{ font-size:15px; }
+.login input[type="text"]{
+  width:100%; padding:14px 12px; border-radius:10px;
+  border:1px solid #374151; background:#111827; color:#e5e7eb; font-size:16px;
+}
+.login input[type="text"]::placeholder{ color:#9ca3af; }
+  .login .slider{ width:100%; -webkit-appearance:none; height:4px; background:#111827; border-radius:2px; outline:none }
+  .login .slider::-webkit-slider-runnable-track{ height:4px; background:#111827; border-radius:2px }
+  .login .slider::-webkit-slider-thumb{ -webkit-appearance:none; width:16px; height:16px; background:#111827; border:2px solid #111827; border-radius:50%; margin-top:-6px }
+  .login .slider::-moz-range-track{ height:4px; background:#111827; border-radius:2px }
+  .login .slider::-moz-range-thumb{ width:16px; height:16px; background:#111827; border:2px solid #111827; border-radius:50% }
+.btn.btn-lg{ font-size:16px; font-weight:700; padding:12px 16px; }
+
+
+  /* modals */
+  .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5);z-index:20}
+  .modal .box{background:var(--panel);border:1px solid var(--b);border-radius:12px;padding:16px;max-width:90vw;max-height:80vh;overflow:auto}
+  .close{float:right;cursor:pointer;color:#94a3b8}
+  .close:hover{color:#fff}
+
+  /* overlay between stages */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:50}
+  .overlay .msg{background:var(--panel);border:1px solid var(--b);border-radius:14px;padding:24px 28px;font-weight:800}
+
+  .card.sig-owned { border-color:#000; }
+  /* Selection: keep black border and white edge */
+  .card.selected  { border-color:#000; box-shadow:0 0 0 1.5px #fff; }
+  /* Stage 2: uninvested piles are black with white text overlay */
+  .pile.uninvested-stage2 { position: relative; }
+  .pile.uninvested-stage2 .card { background: #000 !important; cursor: not-allowed; }
+  .pile.uninvested-stage2 .underCard { background: #000 !important; }
+  .pile.uninvested-stage2::after {
+    content: "Too late to invest";
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    color: #ffffff;
+    pointer-events: none;
+    z-index: 10;
+    text-align: center;
+    padding: 8px;
+    white-space: normal;
+    word-wrap: break-word;
+  }
+
+  /* DEAD CODE REMOVED: #pickInfo element doesn't exist in DOM */
+  @media (max-width:900px){.hero-wrap{grid-template-columns:1fr;gap:24px;margin-top:8vh}.hero-title{font-size:44px}}
+</style>
+<!-- Python injects window.SEED -->
+</head>
+<body>
+<script>
+// DEAD CODE REMOVED: Failsafe Enter handler not needed (proper listener at line ~955)
+</script>
+<div id="brandbar" class="brandbar">
+  <div class="brand-left">VC Card Game</div>
+  <div class="brand-center">
+    <span id="dashCenter"></span>
+  </div>
+  <button id="restartBtnBrand" class="btn-cta-sm" style="display:none;">Restart Game</button>
+</div>
+
+<!-- LOGIN -->
+<div id="loginSection" class="hero-wrap" style="display:none;">
+  <div class="hero">
+    <h1 class="hero-title">
+      <span class="hero-welcome">Welcome</span>
+      <span class="hero-rest"></span>
+    </h1>
+  </div>
+
+  <div id="loginView" class="login">
+    <label for="nameInput" class="label-lg" style="display:block;margin:0 0 14px;color:#111827;">Team Name</label>
+    <input id="nameInput" type="text" placeholder="Team Alpha"
+           style="width:100%;padding:14px 12px;border-radius:10px;border:1px solid #cbd5e1;background:#ffffff;color:#111827;font-size:16px;margin:0 0 22px;" />
+
+    <div class="label-lg" style="color:#111827;margin:18px 0 6px;">Game type</div>
+    <div class="row" style="gap:16px; margin-bottom:10px;">
+      <label><input type="radio" name="gameType" value="g1" checked style="margin-right:6px;">Game 1</label>
+      <label><input type="radio" name="gameType" value="g2" style="margin-right:6px;">Game 2</label>
+    </div>
+
+    <button id="enterBtn" class="btn btn-lg" style="width:auto;min-width:160px;margin-top:16px;">Enter</button>
+    <div id="enterStatus" style="display:none;margin-top:12px;padding:12px;background:#f9fafb;border-radius:8px;color:#6b7280;font-size:14px;text-align:center;">
+      Preparing your game...
+    </div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appView" style="display:none;">
+  <header class="nav">
+    <!-- COMMENTED OUT: Rules and Simulations links
+    <div class="nav-left">
+      <a href="#" id="rulesLink">Rules</a>
+      <a href="https://ib-vc-simulation-dynamic.streamlit.app/#b" target="_blank" id="wonkLink">Simulation</a>
+    </div>
+    -->
+    <div class="title"><span id="stageIndicator"></span></div>
+    <div class="right">
+      <div id="budget" class="budget">Budget £—</div>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <section>
+      <div id="grid" class="grid"></div>
+    </section>
+
+    <aside>
+      <div class="space-between">
+        <h3 style="margin:0;">Decision board</h3>
+        <div id="pickInfo" class="muted"></div>
+      </div>
+
+      <div id="idle" style="margin-top:8px;">
+        <div class="muted">Click a card.</div>
+      </div>
+
+      <div id="panel" style="display:none;margin-top:8px;">
+        <div class="space-between"><strong>Signals</strong><span id="sigNote"></span></div>
+        <div id="sigLines" style="margin-top:6px;"></div>
+
+        <div style="margin:12px 0 6px;padding-top:12px;border-top:1px solid var(--b);"><strong>Invest</strong></div>
+        <div class="row">
+          <input id="amt" type="number" inputmode="decimal" placeholder="Amount">
+          <button id="add" class="btn-cta-sm">Invest</button>
+        </div>
+        <div id="invList" class="muted" style="margin-top:6px;">Invested: 0</div>
+        <div id="msg" class="muted" style="margin-top:10px;"></div>
+      </div>
+
+      <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--b);">
+        <h3 style="margin:0 0 12px 0;">Summary</h3>
+        <div id="summaryContent">
+          <table style="width:100%; border-collapse: collapse; font-size: 14px;">
+            <thead>
+              <tr style="border-bottom: 1px solid var(--b);">
+                <th style="text-align:left; padding:8px 4px;">Stage</th>
+                <th style="text-align:right; padding:8px 4px;">Signals</th>
+                <th style="text-align:right; padding:8px 4px;">Stakes</th>
+              </tr>
+            </thead>
+            <tbody id="summaryBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="margin-top:24px; padding-top:16px; border-top:1px solid var(--b);">
+        <div style="font-size:14px; color:#6b7280; margin-bottom:12px;">
+          If you are happy with your investments or don't want to invest in this stage, go ahead and click the button below
+        </div>
+        <button id="finishStage" class="btn-cta-sm" style="width:100%;">Finish Stage 1</button>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- Overlays and Modals -->
+<div id="stageOverlay" class="overlay"><div class="msg" id="overlayMsg">Your investments are hard at work…</div></div>
+
+<div id="rulesModal" class="modal"><div class="box"><span class="close" data-x="rulesModal">✕</span><h3>Rules</h3><p class="muted">Buy signals and invest per card. Wallet £100 total.</p></div></div>
+<!-- DEAD CODE REMOVED: tipsModal and wonkModal - no links trigger these modals -->
+
+<div id="sigModal" class="modal"><div class="box"><span class="close" data-x="sigModal">✕</span><h3 id="sigTitle">Signal</h3><p id="sigDesc" class="muted"></p></div></div>
+<div id="budgetAlertModal" class="modal"><div class="box"><span class="close" data-x="budgetAlertModal">✕</span><h3>Budget Alert</h3><p id="budgetAlertMsg" class="muted"></p><button class="btn" onclick="document.getElementById('budgetAlertModal').style.display='none'">OK</button></div></div>
+
+<div id="performanceModal" class="modal"><div class="box"><span class="close" data-x="performanceModal">✕</span><h3>Game Complete!</h3><p class="muted" style="margin:16px 0;">Your investments are complete. Click below to view your performance and results.</p><button id="showPerformanceBtn" class="btn" style="width:auto; min-width:180px; margin:0 auto; display:block;">Show performance</button></div></div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const SEED = window.SEED || {};
+    let STAGE  = Number(SEED.stage) || 1;
+    let BUDGET = Number(SEED.budgetRemaining) || 0;
+    const STAGE1_INVESTED = new Set(SEED.stage1_invested || []);  // card_ids invested in Stage 1
+
+    // Check if we're loading Stage 2 after Stage 1 submit - keep overlay visible
+    const loadingStage2 = sessionStorage.getItem('loading_stage2') === 'true';
+    if (loadingStage2) {
+      // If we successfully loaded Stage 2, clear flag and continue
+      if (STAGE === 2) {
+        // Success! Clear the flag and hide overlay
+        sessionStorage.removeItem('loading_stage2');
+        setTimeout(() => {
+          document.getElementById("stageOverlay").style.display = 'none';
+        }, 200);
+      } else {
+        // Still transitioning - DO NOT clear flag yet, keep polling
+        // This means the polling function will continue checking
+        // Don't show error - just keep overlay visible with original message
+        document.getElementById("stageOverlay").style.display = 'flex';
+        document.getElementById("overlayMsg").textContent = 'Your investments are hard at work…';
+      }
+    }
+
+  // Refs
+  const brandbar=document.getElementById("brandbar");
+  const loginSection=document.getElementById("loginSection");
+  const appView=document.getElementById("appView");
+  const nameInput=document.getElementById("nameInput");
+  const enterBtn=document.getElementById("enterBtn");
+  const dashCenter=document.getElementById("dashCenter");
+  const budgetEl=document.getElementById("budget");
+  const grid=document.getElementById("grid");
+  // Wreckage removed for streamlined UI
+  const idle=document.getElementById("idle");
+  const panel=document.getElementById("panel");
+  const pickInfo=document.getElementById("pickInfo");
+  const invList=document.getElementById("invList");
+  const msg=document.getElementById("msg");
+  const finishStageBtn=document.getElementById("finishStage");
+  const sigLines=document.getElementById("sigLines");
+  const rulesModal=document.getElementById("rulesModal");
+  // DEAD CODE REMOVED: tipsModal and wonkModal variables
+  const sigModal=document.getElementById("sigModal");
+  const sigTitle=document.getElementById("sigTitle");
+  const sigDesc=document.getElementById("sigDesc");
+  const budgetAlertModal=document.getElementById("budgetAlertModal");
+  const budgetAlertMsg=document.getElementById("budgetAlertMsg");
+  const overlay=document.getElementById("stageOverlay");
+  const overlayMsg=document.getElementById("overlayMsg");
+
+  function showBudgetAlert(message) {
+    budgetAlertMsg.textContent = message;
+    budgetAlertModal.style.display = "flex";
+  }
+
+  // Risk slider removed - no longer needed
+
+  // Game mode (set from localStorage by Enter). Default g1 (median)
+  let SINGLE_SIGNAL_MODE = true;
+  let SIGNAL_MODE = 'median';
+  let SIGNAL_COST = 3;
+  let SIGNALS = [];
+  function initSignalsFromGame(){
+    const GAME = (localStorage.getItem('game_type') || 'g1');
+    if (GAME === 'g2'){
+      SINGLE_SIGNAL_MODE = true;
+      SIGNAL_MODE = 'top2';
+      SIGNAL_COST = 3;
+      const SIGNAL_INFO = 'This signal will tell you the sum of the top two ranks in the pile. A pile can have duplicate ranks.';
+      SIGNALS = [ { id:1, cost:SIGNAL_COST, name:'Sum of top 2 rank', info: SIGNAL_INFO } ];
+    } else {
+      SINGLE_SIGNAL_MODE = true;
+      SIGNAL_MODE = 'median';
+      SIGNAL_COST = 3;
+      const SIGNAL_INFO = 'This signal will tell you the median of the pile. A pile can have duplicate ranks. E.g. the median of a pile [2,5,7,9,11] is 7 and the median of the pile [3,4,4,4,5] is 4.';
+      SIGNALS = [ { id:1, cost:SIGNAL_COST, name:'Median', info: SIGNAL_INFO } ];
+    }
+  }
+  initSignalsFromGame();
+
+  function revealText(N, _sid){
+    // Single-signal games only: return simple category for speed
+    if (SIGNAL_MODE==='top2'){
+      if (N>=12) return 'High';
+      if (N>=8) return 'Mid';
+      return 'Low';
+    }
+    // median-like split
+    return (N>=8) ? 'High median' : 'Low median';
+  }
+  const bestReveal = (sids, val) => (!val || !sids?.length) ? null : String(val);
+
+  /* state */
+  let budget=BUDGET, cards=[], currentIdx=null;
+
+  function applyHeaderName(){
+    const nm=(localStorage.getItem("player_name")||"").trim();
+    dashCenter.textContent = nm ? `${nm}'s dashboard` : "Team dashboard";
+  }
+  function setBudget(){
+    budgetEl.textContent = `Budget £${Math.round(budget)} remaining`;
+    const addBtn=document.getElementById("add");
+    if (addBtn) addBtn.disabled = (budget<=0);
+    sigLines.querySelectorAll(".buy-sig").forEach(b=>{
+      const lock = b.dataset.locked==="1";
+      b.disabled = lock || (budget<=0);
+    });
+  }
+  function requireFunds(x){
+    if(budget<=0){
+      showBudgetAlert("Budget exhausted. You have no remaining funds.");
+      return false;
+    }
+    if(budget<x){
+      showBudgetAlert(`Cannot afford this. You need £${x} but only have £${Math.round(budget)} remaining.`);
+      return false;
+    }
+    return true;
+  }
+
+  function updateSummary(){
+    const summaryBody = document.getElementById('summaryBody');
+    if (!summaryBody) return;
+
+    // Calculate current stage totals
+    let currentSignals = 0, currentStakes = 0;
+    cards.forEach(c => {
+      const newSids = [...c.owned_sids].filter(sid => !c.prev_owned.has(sid));
+      newSids.forEach(sid => {
+        const s = SIGNALS.find(x => x.id === sid);
+        if (s) currentSignals += s.cost;
+      });
+      currentStakes += c.stage_invests.reduce((a,b) => a+b, 0);
+    });
+
+    // Build summary rows showing all completed stages + current stage
+    let html = '';
+
+    // Add previous stages from SEED if available
+    if (STAGE > 1 && SEED.stage_history) {
+      SEED.stage_history.forEach((hist, idx) => {
+        html += `<tr>
+          <td style="padding:8px 4px;">Stage ${idx + 1}</td>
+          <td style="text-align:right; padding:8px 4px;">£${Math.round(hist.signals || 0)}</td>
+          <td style="text-align:right; padding:8px 4px;">£${Math.round(hist.stakes || 0)}</td>
+        </tr>`;
+      });
+    }
+
+    // Add current stage
+    html += `<tr>
+      <td style="padding:8px 4px;">Stage ${STAGE}</td>
+      <td style="text-align:right; padding:8px 4px;">£${Math.round(currentSignals)}</td>
+      <td style="text-align:right; padding:8px 4px;">£${Math.round(currentStakes)}</td>
+    </tr>`;
+
+    summaryBody.innerHTML = html;
+  }
+
+  function refreshLabels(){
+    const nodes = grid.querySelectorAll(".card.top");
+    cards.forEach((c,i)=>{
+      const el=nodes[i];
+      const hasSig = !!c.current_reveal;
+      const invested = c.invest_total > 0;
+      const wasSelected = el.classList.contains('selected');
+      el.className = `card top`
+        + (hasSig ? " signaled" : "")
+        + (invested ? " invested" : "")
+        + (c.current_sid != null ? " sig-owned" : "")
+        + (wasSelected ? " selected" : "");
+      const lines = [];
+
+      // Add smaller space after pile number
+      lines.push('');
+
+      // Add signal value with spacing
+      if (c.current_reveal){
+        if (typeof SINGLE_SIGNAL_MODE !== 'undefined' && SINGLE_SIGNAL_MODE){
+          const lab = (typeof SIGNAL_MODE!== 'undefined' && SIGNAL_MODE==='top2') ? 'Sum of top 2' : 'Median';
+          lines.push(`${lab} = ${c.current_reveal}`);
+        } else {
+          lines.push(String(c.current_reveal));
+        }
+        lines.push(''); // Add blank line after signal
+      }
+
+      // In Stage 2, show second rank AFTER median signal for piles invested in Stage 1
+      if (STAGE === 2 && c.invested_stage1 && c.second_rank > 0) {
+        lines.push(`2nd rank: ${c.second_rank}`);
+        lines.push(''); // Add blank line for spacing
+      }
+
+      // Show stage-by-stage stakes
+      const prevInvestment = Number(SEED.prevInvest?.[c.card_id] || 0);
+      const currentStageInvestment = c.stage_invests.reduce((a,b)=>a+b, 0);
+
+      // Show previous stages' total stake (if any)
+      if (prevInvestment > 0 && STAGE > 1) {
+        const prevStages = STAGE === 2 ? 'Stage 1' : `Stages 1-${STAGE-1}`;
+        lines.push(`${prevStages} stake £${prevInvestment}`);
+      }
+
+      // Show current stage stake (if any)
+      if (currentStageInvestment > 0) {
+        lines.push(`Stage ${STAGE} stake £${currentStageInvestment}`);
+      }
+
+      el.querySelector(".label").textContent = lines.join("\n");
+    });
+  }
+
+  // DEAD CODE REMOVED: loadActivity(), saveActivity(), and updateActivityWithCurrentStage()
+  // Activity data was saved but never read or used anywhere in the app
+
+  // DEAD CODE REMOVED: Wreckage rendering
+
+  function buildGrid(){
+    grid.innerHTML=""; cards=[];
+
+    const list=Array.isArray(SEED.cards)?SEED.cards.slice(0,9):[];
+    const prevS=SEED.prevSignals || {};
+    const prevI=SEED.prevInvest || {};
+    if(!list.length){ grid.innerHTML='<div class="muted">No cards this stage.</div>'; return; }
+
+    console.log("Stage:", STAGE);
+    console.log("STAGE1_INVESTED:", Array.from(STAGE1_INVESTED));
+    console.log("prevInvest:", prevI);
+
+    function renderOne(i){
+      if (i>=list.length){ refreshLabels(); return; }
+      const c=list[i];
+      const owned = (prevS[c.card_id]||[]).slice();
+      const invest0 = Number(prevI[c.card_id]||0);
+      // Use server-provided med/sum2 if present; fallback to N
+      const Nmed = (c.med!=null) ? Number(c.med) : Number(c.N);
+      const Nsum = (c.sum2!=null)? Number(c.sum2): Number(c.N);
+      const obj={
+        card_id:Number(c.card_id), N: Number(c.N),
+        prev_owned:new Set(owned), owned_sids:new Set(owned),
+        current_sid: owned.length ? Math.max(...owned) : null,
+        med_val: Nmed, sum2_val: Nsum,
+        current_reveal: owned.length ? ((SIGNAL_MODE==='top2')? String(Nsum) : String(Nmed)) : null,
+        invest_total: invest0, stage_invests: [],
+        second_rank: Number(c.second_rank || 0),  // R2 for Stage 2 reveal
+        invested_stage1: STAGE1_INVESTED.has(Number(c.card_id)) || invest0 > 0  // was invested in Stage 1
+      };
+      console.log(`Card ${c.card_id}: invested_stage1=${obj.invested_stage1}, in STAGE1_INVESTED=${STAGE1_INVESTED.has(Number(c.card_id))}, invest0=${invest0}`);
+      cards.push(obj);
+
+      const pile=document.createElement("div");
+      pile.className="pile";
+
+      // In Stage 2, mark uninvested piles
+      if(STAGE === 2 && !cards[i].invested_stage1) {
+        pile.classList.add("uninvested-stage2");
+      }
+      const offsets=[48,36,24,12];
+      offsets.forEach(off=>{
+        const u=document.createElement("div");
+        u.className="underCard";
+        u.style.left = (-off)+"px";
+        pile.appendChild(u);
+      });
+      const b=document.createElement("button");
+      b.type="button"; b.className=`card top`; b.dataset.idx=i;
+      b.innerHTML=`<span class=\"pile-tag\">Pile ${i+1}</span><span class=\"label\"></span>`;
+      b.addEventListener("click",()=>{
+        if(STAGE===3) return;  // Results stage - no selection
+        // Stage 2: only allow selecting piles invested in Stage 1
+        if(STAGE === 2 && !cards[i].invested_stage1) return;
+        selectCard(i);
+      });
+      pile.appendChild(b);
+      grid.appendChild(pile);
+
+      requestAnimationFrame(()=>renderOne(i+1));
+    }
+
+    requestAnimationFrame(()=>renderOne(0));
+  }
+
+  function selectCard(i){
+    currentIdx=i;
+    idle.style.display="none";
+    panel.style.display="block";
+
+    // Visual emphasis: raise selected pile and mark below
+    grid.querySelectorAll('.pile.raised').forEach(el=>el.classList.remove('raised'));
+    const pileEl = grid.querySelector(`.pile[data-idx="${i}"]`);
+    if (pileEl) pileEl.classList.add('raised');
+    grid.querySelectorAll('.card.top.selected').forEach(el=>el.classList.remove('selected'));
+    const btn = grid.querySelector(`.card.top[data-idx="${i}"]`);
+    if (btn) btn.classList.add('selected');
+
+    const c=cards[i];
+    pickInfo.textContent=``;
+    renderSigLines();
+    renderInvList();
+    msg.textContent="";
+  }
+
+  function lockUpTo(currentSid){
+    sigLines.querySelectorAll(".buy-sig").forEach(b=>{
+      const sid = Number(b.dataset.sid);
+      if (sid <= currentSid) { b.disabled = true; b.dataset.locked = "1"; }
+    });
+  }
+
+  function renderSigLines(){
+    const c = cards[currentIdx];
+    sigLines.innerHTML="";
+    SIGNALS.forEach(s=>{
+      const owned = c.owned_sids.has(s.id);
+      const locked = owned || (c.current_sid!=null && s.id <= c.current_sid);
+      const line=document.createElement("div");
+      line.className="sig-line";
+      if (owned) {
+        const val = c.current_reveal || '';
+        const lab = (SIGNAL_MODE==='top2') ? 'Sum of top 2' : 'Median';
+        line.innerHTML = `<span class="med-reveal">${lab} = ${val}</span>`;
+      } else if (STAGE === 2) {
+        // Stage 2: Don't allow signal purchases, show message instead
+        line.innerHTML = `<span class="muted" style="font-style:italic;">Signal purchases only available in Stage 1</span>`;
+      } else {
+        line.innerHTML = `
+          <button type="button" class="btn-cta-sm buy-sig" data-sid="${s.id}" ${locked?'data-locked="1" disabled':''}>Buy signal</button>
+          <span class="muted">£${s.cost}</span>
+          <button type="button" class="btn-ghost sig-info" data-sid="${s.id}">Info</button>`;
+      }
+      sigLines.appendChild(line);
+    });
+    if (c.current_sid!=null) lockUpTo(c.current_sid);
+    setBudget();
+  }
+
+  sigLines.addEventListener("click",(e)=>{
+    const buy=e.target.closest(".buy-sig");
+    if(buy){
+      if(currentIdx==null || buy.disabled) return;
+      const sid=Number(buy.dataset.sid);
+      const c=cards[currentIdx];
+      if (c.owned_sids.has(sid)) return;
+      const s=SIGNALS.find(x=>x.id===sid);
+      if(!requireFunds(s.cost)) return;
+
+      budget -= s.cost;
+      c.owned_sids.add(sid);
+      c.current_sid = sid;
+      // Use actual server-provided value for current mode
+      c.current_reveal = (SIGNAL_MODE==='top2') ? String(c.sum2_val) : String(c.med_val);
+
+      const btnNow = grid.querySelector(`.card[data-idx="${currentIdx}"]`);
+      if (btnNow) { btnNow.classList.add('sig-owned'); btnNow.classList.add('signaled'); }
+
+      lockUpTo(sid);
+      setBudget(); refreshLabels(); renderSigLines(); updateSummary();
+      return;
+    }
+    const info=e.target.closest(".sig-info");
+    if(info){
+      const sid=Number(info.dataset.sid); const s=SIGNALS.find(x=>x.id===sid);
+      sigTitle.textContent=`${s.name} — £${s.cost}`; sigDesc.textContent=s.info; sigModal.style.display="flex";
+    }
+  });
+  sigModal.addEventListener("click",(e)=>{ if(e.target===sigModal) sigModal.style.display="none"; });
+
+  function renderInvList(){
+    const c=cards[currentIdx];
+    const tot = c.stage_invests.reduce((a,b)=>a+b,0);
+    invList.textContent = `Invested: ${tot > 0 ? '£'+tot : '0'}`;
+  }
+  document.getElementById("add").addEventListener("click",()=>{
+    if(currentIdx==null || STAGE===3) return;
+    const v=parseFloat(document.getElementById("amt").value);
+    if(!isFinite(v)||v<=0){ msg.textContent="Enter a positive amount."; return; }
+    const vv=Math.round(v*2)/2; if(!requireFunds(vv)) return;
+    const c=cards[currentIdx];
+    c.stage_invests.push(vv);
+    c.invest_total = (c.invest_total||0) + vv;
+    budget -= vv;
+    document.getElementById("amt").value="";
+    setBudget(); renderInvList(); refreshLabels(); updateSummary();
+  });
+
+  // Finish / Show performance
+  if (finishStageBtn) {
+    finishStageBtn.addEventListener("click",()=>{
+      const purchases={}, invest={}; let ss=0, si=0;
+
+    (function updateActivity(){
+      const act = (function load(){ try{ return JSON.parse(localStorage.getItem("activity_v1")||"{}"); }catch{ return {}; } })();
+      cards.forEach(c=>{
+        const stageSum = c.stage_invests.reduce((a,b)=>a+b,0);
+        const newS = [...c.owned_sids].filter(x=>!c.prev_owned.has(x));
+        if (stageSum>0 || newS.length>0){
+          const prev = act[c.card_id] || {N:c.N, invested:0, signals:[]};
+          prev.N=c.N;
+          prev.invested = Number(prev.invested||0) + stageSum;
+          prev.signals = Array.from(new Set([...(prev.signals||[]), ...newS])).sort((a,b)=>a-b);
+          act[c.card_id] = prev;
+        }
+      });
+      localStorage.setItem("activity_v1", JSON.stringify(act));
+    })();
+
+    cards.forEach(c=>{
+      const prev = c.prev_owned;
+      const newS = [...c.owned_sids].filter(x=>!prev.has(x));
+      // Only collect signal purchases in Stage 1, not Stage 2
+      if(newS.length && STAGE !== 2){ purchases[c.card_id] = newS.sort((a,b)=>a-b); newS.forEach(id=>{ const s=SIGNALS.find(x=>x.id===id); if(s) ss+=s.cost; }); }
+      const stageSum = c.stage_invests.reduce((a,b)=>a+b,0);
+      if(stageSum>0){ invest[c.card_id]=Number(stageSum); si+=stageSum; }
+    });
+
+    const payload={ stage:STAGE, player_name:localStorage.getItem("player_name")||"",
+      risk_percentile:0, purchases, invest,
+      client_spent_signals:ss, client_spent_invest:si, client_budget_remaining:budget };
+
+    // Include session_id in request for multi-user support
+    const session_id = localStorage.getItem("session_id") || "";
+    fetch(`/submit?session_id=${session_id}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
+      .then(()=>{
+        console.log('[submit] POST successful, stage:', STAGE);
+        if (STAGE === 2) {
+          // Stage 2: show performance modal
+          console.log('[submit] Stage 2 complete, showing performance modal');
+          const performanceModal = document.getElementById("performanceModal");
+          if (performanceModal) performanceModal.style.display = "flex";
+        } else {
+          // Stage 1: Show loading overlay, wait for server to restart with Stage 2
+          // DO NOT clear localStorage - keep player_name and game_type for Stage 2
+          console.log('[submit] Stage 1 complete, waiting for Stage 2...');
+          overlayMsg.textContent = "Your investments are hard at work…";
+          overlay.style.display = "flex";
+          // Mark that we're loading Stage 2 to prevent flash of login page
+          sessionStorage.setItem('loading_stage2', 'true');
+
+          // Poll server until Stage 2 is ready instead of fixed timeout
+          pollForStage2Ready();
+        }
+      })
+      .catch(()=>alert("POST failed. Is Python running?"));
+    });
+  }
+
+  // Poll server to check when Stage 2 is ready (instead of fixed timeout)
+  function pollForStage2Ready() {
+    const startTime = Date.now();
+    const maxWait = 15000; // 15 seconds max (should be much faster with persistent server)
+    const pollInterval = 200; // Check every 200ms
+    let serverStage1Confirmed = false; // Track if we've seen Stage 1 to prevent false positives
+
+    function checkServer() {
+      // CRITICAL FIX: Don't exit early on flag clear - only exit on timeout or success
+      // Flag may be cleared by browser events, but we need server confirmation
+      const flagCleared = sessionStorage.getItem('loading_stage2') !== 'true';
+      if (flagCleared && !serverStage1Confirmed) {
+        console.log('[poll] Warning: Flag cleared before server confirmed Stage 1, continuing poll');
+        // Continue polling anyway - server state is source of truth
+      }
+
+      const elapsed = Date.now() - startTime;
+
+      if (elapsed > maxWait) {
+        // Timeout - show error and clear flag
+        document.getElementById("overlayMsg").textContent = "Server timeout. Please contact support.";
+        sessionStorage.removeItem('loading_stage2');
+        console.error('[poll] Timeout after 15 seconds');
+        return;
+      }
+
+      // Try to fetch game page - if server is ready with Stage 2, it will respond
+      const session_id = localStorage.getItem("session_id") || "";
+      fetch(`/game?session_id=${session_id}`, {cache: "no-store"})
+        .then(resp => resp.text())
+        .then(html => {
+          // Check if HTML contains Stage 2 context (SEED.stage === 2)
+          if (html.includes('"stage":2') || html.includes('"stage": 2')) {
+            // Stage 2 is ready! Reload will clear flag and show Stage 2
+            const waitTime = ((Date.now() - startTime) / 1000).toFixed(1);
+            console.log(`[poll] Stage 2 detected after ${waitTime}s, reloading...`);
+            sessionStorage.removeItem('loading_stage2'); // Clean up flag
+            location.href = `/game?session_id=${session_id}`;
+          } else {
+            // Still Stage 1 or transitioning - keep polling
+            serverStage1Confirmed = true; // We've confirmed server is responsive
+            if (elapsed > 2000 && elapsed % 2000 < pollInterval) {
+              console.log(`[poll] Still waiting for Stage 2... (${(elapsed/1000).toFixed(1)}s)`);
+            }
+            setTimeout(checkServer, pollInterval);
+          }
+        })
+        .catch(() => {
+          // Server not responding yet - keep polling (persistent server should always respond)
+          if (elapsed > 2000 && elapsed % 2000 < pollInterval) {
+            console.log(`[poll] Server unavailable, retrying... (${(elapsed/1000).toFixed(1)}s)`);
+          }
+          setTimeout(checkServer, pollInterval);
+        });
+    }
+
+    // Start polling after a small initial delay to let server process submission
+    setTimeout(checkServer, 500);
+  }
+
+  // Skip Stage button handler removed - now using single finishStageBtn
+
+  // Show performance button in modal
+  const showPerformanceBtn = document.getElementById("showPerformanceBtn");
+  if (showPerformanceBtn) {
+    showPerformanceBtn.addEventListener("click", () => {
+      overlay.style.display = "flex";
+      document.getElementById("performanceModal").style.display = "none";
+
+      // Progressive loading messages
+      const loadingMessages = [
+        "Noting your allocation strategy...",
+        "Noting your signal extraction strategy...",
+        "Simulating your strategy 50,000 times for various decks of cards..."
+      ];
+      let messageIndex = 0;
+      overlayMsg.textContent = loadingMessages[0];
+
+      // Rotate messages every 2.5 seconds
+      const messageInterval = setInterval(() => {
+        messageIndex = (messageIndex + 1) % loadingMessages.length;
+        overlayMsg.textContent = loadingMessages[messageIndex];
+      }, 2500);
+
+      // Poll for /results page readiness (handles simulation delay)
+      function pollForResults(attempts = 0) {
+        const session_id = localStorage.getItem("session_id") || "";
+
+        if (attempts > 30) {
+          clearInterval(messageInterval);
+          overlayMsg.textContent = "Results taking longer than expected...";
+          setTimeout(() => { location.href = `/results?session_id=${session_id}`; }, 1000);
+          return;
+        }
+
+        fetch(`/results?session_id=${session_id}`, { method: "HEAD" })
+          .then(response => {
+            if (response.ok) {
+              clearInterval(messageInterval);
+              location.href = `/results?session_id=${session_id}`;
+            } else {
+              setTimeout(() => pollForResults(attempts + 1), 500);
+            }
+          })
+          .catch(() => {
+            setTimeout(() => pollForResults(attempts + 1), 500);
+          });
+      }
+
+      setTimeout(() => pollForResults(), 600);
+    });
+  }
+
+  // modals
+  document.querySelectorAll(".close").forEach(x=>x.onclick=()=>{ document.getElementById(x.dataset.x).style.display="none"; });
+  // Rules link is commented out in HTML, so check if it exists before setting handler
+  const rulesLink = document.getElementById("rulesLink");
+  if (rulesLink) {
+    rulesLink.onclick=(e)=>{e.preventDefault();rulesModal.style.display="flex";};
+  }
+  // DEAD CODE REMOVED: tipsModal and wonkModal from modal click handlers
+  [rulesModal,budgetAlertModal,performanceModal].forEach(m=>m.addEventListener("click",(e)=>{ if(e.target===m) m.style.display="none"; }));
+
+  // Restart button handler (in brandbar)
+  const restartBtnBrand = document.getElementById("restartBtnBrand");
+  if (restartBtnBrand) {
+    restartBtnBrand.onclick = () => {
+      if (confirm("Are you sure you want to restart? All progress will be lost.")) {
+        // Disable button to prevent double-clicks during navigation
+        restartBtnBrand.disabled = true;
+        restartBtnBrand.textContent = "Restarting...";
+
+        // Get session_id before clearing storage
+        const session_id = localStorage.getItem("session_id") || "";
+
+        // Clear ALL storage - localStorage AND sessionStorage
+        localStorage.clear();
+        sessionStorage.clear();
+
+        // Reset server state and wait for confirmation before navigating
+        fetch(`/reset?session_id=${session_id}`, {method: "POST"})
+          .then(() => {
+            // Server confirmed reset - now navigate to landing page
+            setTimeout(() => {
+              location.href = "/";
+            }, 200);
+          })
+          .catch(() => {
+            // Even if fetch fails, navigate anyway
+            setTimeout(() => {
+              location.href = "/";
+            }, 200);
+          });
+      }
+    };
+  }
+
+  // view toggles
+  function showLogin(){
+    brandbar.style.display="none";
+    loginSection.style.display="grid";
+    appView.style.display="none";
+    dashCenter.textContent="";
+    const restartBtnBrand = document.getElementById("restartBtnBrand");
+    if (restartBtnBrand) restartBtnBrand.style.display = "none";
+  }
+  function showApp(){
+  brandbar.style.display = "flex";
+  loginSection.style.display = "none";
+  appView.style.display = "block";
+  applyHeaderName();
+
+  // Show restart button in brandbar
+  const restartBtnBrand = document.getElementById("restartBtnBrand");
+  if (restartBtnBrand) restartBtnBrand.style.display = "block";
+
+  const stageIndicator = document.getElementById("stageIndicator");
+  if (STAGE === 2){
+    // Stage 2: Show performance button text
+    if (stageIndicator) stageIndicator.textContent = `Stage ${STAGE}`;
+    finishStageBtn.textContent = "Finish Stage 2";
+  } else {
+    // Stage 1
+    if (stageIndicator) stageIndicator.textContent = `Stage ${STAGE}`;
+    finishStageBtn.textContent = "Finish Stage 1";
+  }
+
+  buildGrid();
+  budget = BUDGET;
+  setBudget();
+  updateSummary();
+}
+
+  // Initialize view based on stage
+  // IMPORTANT: Check loading flag FIRST to prevent login page flash during Stage 1→2 transition
+  if (loadingStage2 && STAGE !== 2) {
+    // Keep overlay visible while waiting for Stage 2, don't show any other views
+    // User may have refreshed during transition - restart polling
+    console.log('[init] Page refreshed during Stage 2 transition, restarting poll...');
+    pollForStage2Ready();
+  } else if (loadingStage2 && STAGE === 2) {
+    // Successfully loaded Stage 2 - show app with Stage 2 content
+    showApp();
+  } else if (STAGE === 0){
+    // Stage 0 (no active game): Show login screen
+    console.log('[init] Stage 0 - showing login');
+    // Clear any stale state
+    localStorage.removeItem("activity_v1");
+    sessionStorage.removeItem("loading_stage2");
+    window.gameStartTime = Date.now();
+    showLogin();
+  } else if (STAGE === 1){
+    // Stage 1: Check if player has already entered (page reload after Enter button)
+    const n=localStorage.getItem("player_name");
+    if(n && SEED.cards && SEED.cards.length > 0) {
+      // Player entered and server has cards ready - show game
+      console.log('[init] Stage 1 with player name and cards - showing app');
+      showApp();
+    } else if (n && (!SEED.cards || SEED.cards.length === 0)) {
+      // Player entered but server hasn't prepared cards yet - keep login visible and poll
+      console.log('[init] Stage 1 with player name but no cards - polling for cards');
+      showLogin();
+      // Poll for cards to be ready (server might be preparing them)
+      let pollAttempts = 0;
+      const pollForCards = () => {
+        if (pollAttempts++ > 20) {
+          console.error('[init] Timeout waiting for cards - server may be stuck');
+          // Clear state and show login
+          localStorage.removeItem("player_name");
+          localStorage.removeItem("game_type");
+          showLogin();
+          return;
+        }
+        const session_id = localStorage.getItem("session_id") || "";
+        fetch(`/game?session_id=${session_id}`, {cache: "no-store"})
+          .then(resp => resp.text())
+          .then(html => {
+            // Check if cards are now available
+            const match = html.match(/"cards":\s*\[([^\]]+)\]/);
+            if (match && match[1].trim().length > 0) {
+              console.log('[init] Cards now available, reloading...');
+              location.href = `/game?session_id=${session_id}`;
+            } else {
+              setTimeout(pollForCards, 300);
+            }
+          })
+          .catch(() => setTimeout(pollForCards, 300));
+      };
+      setTimeout(pollForCards, 300);
+    } else {
+      // No player name - show login screen
+      console.log('[init] Stage 1 without player name - showing login');
+      localStorage.removeItem("player_name");
+      localStorage.removeItem("game_type");
+      localStorage.removeItem("activity_v1");
+      sessionStorage.removeItem("loading_stage2");
+      showLogin();
+    }
+  } else {
+    // Stage 2+: Continue existing game if player_name exists
+    const n=localStorage.getItem("player_name");
+    if(n) {
+      showApp();
+      // Hide loading overlay and clear flag
+      overlay.style.display = 'none';
+      sessionStorage.removeItem('loading_stage2');
+    }
+    else {
+      // No player name but not Stage 1 - clear stale state and show login
+      console.log('[init] Stale state detected (Stage 2+ with no player) - resetting');
+      localStorage.removeItem("player_name");
+      localStorage.removeItem("game_type");
+      localStorage.removeItem("activity_v1");
+      sessionStorage.removeItem("loading_stage2");
+      showLogin();
+    }
+  }
+
+  function doEnter(){
+    if (enterBtn) enterBtn.disabled = true; // guard against double-click
+    const nm=(nameInput.value||"").trim();
+
+    // Validate player name is not empty
+    if (!nm) {
+      alert("Please enter a name");
+      enterBtn.disabled = false;
+      return;
+    }
+
+    const gt = (document.querySelector('input[name="gameType"]:checked')||{value:'g1'}).value;
+
+    // CRITICAL: Generate unique session_id for multi-user support on Railway
+    // Use timestamp + random number to ensure uniqueness across concurrent users
+    const session_id = Date.now().toString(36) + Math.random().toString(36).substring(2);
+
+    console.log('[enter] Opening game in new tab for:', nm, gt, 'session_id:', session_id);
+
+    // Store player info and session_id in localStorage for the new tab to pick up
+    localStorage.setItem("player_name", nm);
+    localStorage.setItem("game_type", gt);
+    localStorage.setItem("session_id", session_id);
+
+    // POST to /start_game to spawn a new game thread for this player
+    const payload = {
+      player_name: nm,
+      game_type: gt,
+      session_id: session_id
+    };
+
+    console.log('[enter] Starting game thread on server...');
+    fetch('/start_game', {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    })
+      .then(resp => {
+        if (resp.status === 409) {
+          // Game already in progress for this session
+          return resp.json().then(data => {
+            alert(data.message || "Game already in progress");
+            enterBtn.disabled = false;
+          });
+        }
+        if (resp.status === 400) {
+          // Validation error (e.g., missing session_id)
+          return resp.json().then(data => {
+            alert(data.message || "Invalid request");
+            enterBtn.disabled = false;
+          });
+        }
+        if (!resp.ok) {
+          throw new Error(`Server error: ${resp.status}`);
+        }
+        console.log('[enter] Game thread started, opening game tab...');
+        // Open game in new tab with session_id - game thread is now running
+        window.open(`/game?session_id=${session_id}`, "_blank");
+
+        // Re-enable enter button so user can start another game after this one ends
+        setTimeout(() => {
+          enterBtn.disabled = false;
+        }, 1000);
+      })
+      .catch((err) => {
+        console.error('[enter] Failed to start game:', err);
+        alert("Failed to start game. Server may not be ready. Try again in a moment.");
+        enterBtn.disabled = false;
+      });
+  }
+
+  // Poll server until Stage 1 with cards is ready
+  function pollForStage1Ready() {
+    const startTime = Date.now();
+    const maxWait = 10000; // 10 seconds max
+    const pollInterval = 200; // Check every 200ms
+    const statusDiv = document.getElementById('enterStatus');
+
+    function checkServer() {
+      const elapsed = Date.now() - startTime;
+
+      if (elapsed > maxWait) {
+        // Timeout - show error
+        enterBtn.textContent = 'Timeout - please refresh';
+        enterBtn.disabled = false;
+        if (statusDiv) {
+          statusDiv.style.background = '#fee';
+          statusDiv.style.color = '#c53030';
+          statusDiv.textContent = 'Server timeout. Please refresh the page and try again.';
+        }
+        console.error('[enter] Timeout waiting for Stage 1');
+        return;
+      }
+
+      // Update status message with progress
+      if (statusDiv && elapsed > 1000) {
+        const seconds = Math.floor(elapsed / 1000);
+        statusDiv.textContent = `Preparing your game... (${seconds}s)`;
+      }
+
+      // Fetch root and check if Stage 1 with cards is ready
+      fetch("/", {cache: "no-store"})
+        .then(resp => resp.text())
+        .then(html => {
+          // Check if HTML contains Stage 1 context with non-empty cards array
+          const stageMatch = html.match(/"stage"\s*:\s*1/);
+          const cardsMatch = html.match(/"cards"\s*:\s*\[([^\]]+)\]/);
+
+          if (stageMatch && cardsMatch && cardsMatch[1].trim().length > 0) {
+            // Stage 1 is ready with cards! Safe to reload
+            const waitTime = ((Date.now() - startTime) / 1000).toFixed(1);
+            console.log(`[enter] Stage 1 ready after ${waitTime}s, loading game...`);
+            if (statusDiv) statusDiv.textContent = 'Game ready! Loading...';
+            location.href = "/";
+          } else {
+            // Still waiting - keep polling
+            if (elapsed > 1000 && elapsed % 1000 < pollInterval) {
+              console.log(`[enter] Still waiting for Stage 1... (${(elapsed/1000).toFixed(1)}s)`);
+            }
+            setTimeout(checkServer, pollInterval);
+          }
+        })
+        .catch(() => {
+          // Server not responding - keep polling
+          setTimeout(checkServer, pollInterval);
+        });
+    }
+
+    // Start polling after small delay to let server start processing
+    setTimeout(checkServer, 300);
+  }
+  // No inline onclick; rely on single listener
+  if (enterBtn) enterBtn.addEventListener("click", doEnter);
+});
+</script>
+</body>
+</html>

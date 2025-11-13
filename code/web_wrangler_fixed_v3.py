@@ -13,10 +13,15 @@ import pandas as pd
 HTTPServer.allow_reuse_address = True
 _BROWSER_OPENED = False  # guard to open browser only once per process
 
-# REFACTORED: Single server instance with dynamic routing based on game state
+# REFACTORED: Single server instance with per-session state isolation
 _SERVER_INSTANCE = None  # Singleton server
 _SERVER_LOCK = threading.Lock()  # Thread-safe server access
 _SESSION_LOCK = threading.Lock()  # CRITICAL FIX: Thread-safe session data access
+
+# Multi-session support: Each session_id maps to its own isolated game state
+_GAME_SESSIONS = {}  # {session_id: {'stage': int, 'ctx': dict, 'ready': Event, 'event': Event, 'data': dict|None}}
+
+# DEPRECATED: Legacy single-session globals (kept for backwards compatibility with local mode)
 _GAME_STATE = {
     'stage': 0,  # Current game stage (0=not started, 1=stage1, 2=stage2, 3=results)
     'ctx': {},   # Current context data
@@ -25,7 +30,7 @@ _GAME_STATE = {
 _SESSION_EVENT = threading.Event()  # Signals when user submits data
 _SESSION_DATA = None  # Stores submitted data
 
-_HTML = pathlib.Path(__file__).with_name("stage_actions.html")
+_HTML = pathlib.Path(__file__).with_name("stage_actions_v3.html")
 _ASSETS_DIR = pathlib.Path(__file__).with_name("assets")
 _FONT = pathlib.Path(__file__).with_name("imperial.woff2")
 _SSP_REG = pathlib.Path(__file__).with_name("SourceSansPro-Regular.woff2")
@@ -56,6 +61,50 @@ def _prev_invest_map(df: pd.DataFrame) -> dict[int, float]:
     return out
 
 
+def _get_or_create_session(session_id: str) -> dict:
+    """Get or create isolated session state for a given session_id
+
+    Returns: Session state dict with keys: stage, ctx, ready (Event), event (Event), data
+    """
+    global _GAME_SESSIONS
+    with _SESSION_LOCK:
+        if session_id not in _GAME_SESSIONS:
+            _GAME_SESSIONS[session_id] = {
+                'stage': 0,
+                'ctx': {},
+                'ready': threading.Event(),
+                'event': threading.Event(),
+                'data': None,
+            }
+        return _GAME_SESSIONS[session_id]
+
+
+def _extract_session_id(path: str, headers) -> str | None:
+    """Extract session_id from request path (?session_id=...) or cookies
+
+    Returns: session_id string or None if not found
+    """
+    # Try query parameter first
+    if "?" in path:
+        query = path.split("?", 1)[1]
+        for param in query.split("&"):
+            if "=" in param:
+                key, val = param.split("=", 1)
+                if key == "session_id":
+                    return val
+
+    # Try cookie header
+    cookie_header = headers.get("Cookie", "")
+    for cookie in cookie_header.split(";"):
+        cookie = cookie.strip()
+        if "=" in cookie:
+            key, val = cookie.split("=", 1)
+            if key == "session_id":
+                return val
+
+    return None
+
+
 class _H(BaseHTTPRequestHandler):
     """Request handler with dynamic routing based on game state"""
 
@@ -67,17 +116,34 @@ class _H(BaseHTTPRequestHandler):
         """Handle HEAD requests for client polling"""
         global _GAME_STATE
 
-        if self.path == "/results":
+        if self.path == "/results" or self.path.startswith("/results?"):
+            # Extract session_id from request
+            session_id = _extract_session_id(self.path, self.headers)
+
             # Client is checking if results are ready
-            with _SERVER_LOCK:
-                if _GAME_STATE['stage'] == 3 and _GAME_STATE['ready'].is_set():
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/html")
-                    self.end_headers()
-                else:
-                    # Results not ready yet
-                    self.send_response(503)  # Service Unavailable
-                    self.end_headers()
+            if session_id:
+                # Multi-session mode: check session-specific state
+                session = _get_or_create_session(session_id)
+                with _SESSION_LOCK:
+                    if session['stage'] == 3 and session['ready'].is_set():
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/html")
+                        self.end_headers()
+                    else:
+                        # Results not ready yet
+                        self.send_response(503)  # Service Unavailable
+                        self.end_headers()
+            else:
+                # Legacy single-session mode: check global state
+                with _SERVER_LOCK:
+                    if _GAME_STATE['stage'] == 3 and _GAME_STATE['ready'].is_set():
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/html")
+                        self.end_headers()
+                    else:
+                        # Results not ready yet
+                        self.send_response(503)  # Service Unavailable
+                        self.end_headers()
             return
 
         # Default: method not allowed
@@ -193,9 +259,20 @@ class _H(BaseHTTPRequestHandler):
 
         # Game page - serve active game (Stages 1-2)
         if self.path == "/game" or self.path.startswith("/game?"):
-            with _SERVER_LOCK:
-                ctx = _GAME_STATE['ctx'].copy()
-                stage = _GAME_STATE['stage']
+            # Extract session_id from request
+            session_id = _extract_session_id(self.path, self.headers)
+
+            if session_id:
+                # Multi-session mode: use session-specific state
+                session = _get_or_create_session(session_id)
+                with _SESSION_LOCK:
+                    ctx = session['ctx'].copy()
+                    stage = session['stage']
+            else:
+                # Legacy single-session mode: use global state
+                with _SERVER_LOCK:
+                    ctx = _GAME_STATE['ctx'].copy()
+                    stage = _GAME_STATE['stage']
 
             if stage == 0:
                 # No game active yet - redirect to landing
@@ -229,10 +306,21 @@ class _H(BaseHTTPRequestHandler):
             return
 
         # Results page
-        if self.path == "/results":
-            with _SERVER_LOCK:
-                ctx = _GAME_STATE['ctx'].copy()
-                stage = _GAME_STATE['stage']
+        if self.path == "/results" or self.path.startswith("/results?"):
+            # Extract session_id from request
+            session_id = _extract_session_id(self.path, self.headers)
+
+            if session_id:
+                # Multi-session mode: use session-specific state
+                session = _get_or_create_session(session_id)
+                with _SESSION_LOCK:
+                    ctx = session['ctx'].copy()
+                    stage = session['stage']
+            else:
+                # Legacy single-session mode: use global state
+                with _SERVER_LOCK:
+                    ctx = _GAME_STATE['ctx'].copy()
+                    stage = _GAME_STATE['stage']
 
             if stage != 3:
                 # Results not ready yet
@@ -262,18 +350,106 @@ class _H(BaseHTTPRequestHandler):
     def do_POST(self):
         global _GAME_STATE, _SESSION_DATA, _SESSION_EVENT
 
-        if self.path == "/submit":
+        # New /start_game endpoint: spawn a thread for this player
+        if self.path == "/start_game" or self.path.startswith("/start_game?"):
             n = int(self.headers.get("Content-Length", "0"))
             data = json.loads(self.rfile.read(n).decode("utf-8"))
 
+            # Extract player info
+            team_name = data.get("player_name", "Team Alpha")
+            game_type = data.get("game_type", "g1")
+            http_session_id = data.get("session_id")
+
+            if not http_session_id:
+                # Missing session ID
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                response = {"status": "error", "message": "Missing session_id"}
+                self.wfile.write(json.dumps(response).encode("utf-8"))
+                return
+
+            # Determine signal mode from game type
+            mode = "top2" if game_type == "g2" else "median"
+
+            # Import game parameters and threading function from web_game_v3
+            try:
+                import web_game_v3
+                cost = web_game_v3.SIGNAL_COST
+                ace_pay = web_game_v3.ACE_PAYOUT
+                active_games = web_game_v3.active_games
+                games_lock = web_game_v3.games_lock
+                handle_player_game = web_game_v3.handle_player_game
+            except (ImportError, AttributeError) as e:
+                print(f"[server] ERROR: Failed to import from web_game_v3: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                response = {"status": "error", "message": "Server not configured for multi-player"}
+                self.wfile.write(json.dumps(response).encode("utf-8"))
+                return
+
+            # Check if player already has active game
+            with games_lock:
+                if http_session_id in active_games:
+                    print(f"[server] Player {http_session_id[:8]} already has active game")
+                    self.send_response(409)  # Conflict
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    response = {"status": "error", "message": "Game already in progress"}
+                    self.wfile.write(json.dumps(response).encode("utf-8"))
+                    return
+
+                # Spawn thread for this player's game
+                import threading
+                thread = threading.Thread(
+                    target=handle_player_game,
+                    args=(http_session_id, team_name, game_type, mode, cost, ace_pay),
+                    daemon=True
+                )
+                active_games[http_session_id] = thread
+                thread.start()
+
+            print(f"[server] Started game thread for '{team_name}' (session {http_session_id[:8]}, mode: {mode})")
+
+            # Send success response
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            response = {"status": "success", "message": "Game started"}
+            self.wfile.write(json.dumps(response).encode("utf-8"))
+            return
+
+        if self.path == "/submit" or self.path.startswith("/submit?"):
+            n = int(self.headers.get("Content-Length", "0"))
+            data = json.loads(self.rfile.read(n).decode("utf-8"))
+
+            # Extract session_id from request
+            session_id = _extract_session_id(self.path, self.headers)
+
             # CRITICAL: Validate that server is at the correct stage
             submitted_stage = data.get("stage", -1)
-            with _SERVER_LOCK:
-                current_stage = _GAME_STATE['stage']
+
+            # SPECIAL CASE: Stage 0 always uses global state because run_ui(0) is called
+            # without session_id (client generates it during Stage 0 interaction)
+            if submitted_stage == 0:
+                # Force global state for Stage 0, ignore session_id
+                session_id = None
+
+            if session_id:
+                # Multi-session mode: use session-specific state
+                session = _get_or_create_session(session_id)
+                with _SESSION_LOCK:
+                    current_stage = session['stage']
+            else:
+                # Legacy single-session mode or Stage 0: use global state
+                with _SERVER_LOCK:
+                    current_stage = _GAME_STATE['stage']
 
             # If submission doesn't match current stage, reject it
-            if submitted_stage != current_stage:
-                print(f"[server] WARNING: Rejected submission for stage {submitted_stage} (server at stage {current_stage})")
+            # EXCEPTION: Allow Stage 0 submissions anytime (multiple concurrent players starting games)
+            if submitted_stage != current_stage and submitted_stage != 0:
+                print(f"[server] WARNING: Rejected submission for stage {submitted_stage} (session {session_id or 'global'} at stage {current_stage})")
                 self.send_response(409)  # Conflict
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
@@ -281,18 +457,31 @@ class _H(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps(response).encode("utf-8"))
                 return
 
-            # Store submitted data (CRITICAL FIX: Thread-safe access)
-            with _SESSION_LOCK:
-                _SESSION_DATA = data
-            _SESSION_EVENT.set()
+            # Store submitted data in session-specific or global state
+            if session_id:
+                # Multi-session mode
+                session = _get_or_create_session(session_id)
+                with _SESSION_LOCK:
+                    session['data'] = data
+                session['event'].set()
 
-            # Update player name in results if applicable
-            with _SERVER_LOCK:
-                if isinstance(_GAME_STATE['ctx'].get("results"), dict):
-                    _GAME_STATE['ctx']["results"]["player"] = data.get("player_name") or ""
+                # Update player name in results if applicable
+                with _SESSION_LOCK:
+                    if isinstance(session['ctx'].get("results"), dict):
+                        session['ctx']["results"]["player"] = data.get("player_name") or ""
+            else:
+                # Legacy single-session mode
+                with _SESSION_LOCK:
+                    _SESSION_DATA = data
+                _SESSION_EVENT.set()
+
+                # Update player name in results if applicable
+                with _SERVER_LOCK:
+                    if isinstance(_GAME_STATE['ctx'].get("results"), dict):
+                        _GAME_STATE['ctx']["results"]["player"] = data.get("player_name") or ""
 
             # Send success response
-            print(f"[server] Accepted submission for stage {submitted_stage}")
+            print(f"[server] Accepted submission for stage {submitted_stage} (session {session_id or 'global'})")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -300,11 +489,22 @@ class _H(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(response).encode("utf-8"))
             return
 
-        if self.path == "/end":
-            # Signal end of game (CRITICAL FIX: Thread-safe access)
-            with _SESSION_LOCK:
-                _SESSION_DATA = {"action": "end_game"}
-            _SESSION_EVENT.set()
+        if self.path == "/end" or self.path.startswith("/end?"):
+            # Extract session_id from request
+            session_id = _extract_session_id(self.path, self.headers)
+
+            # Signal end of game
+            if session_id:
+                # Multi-session mode
+                session = _get_or_create_session(session_id)
+                with _SESSION_LOCK:
+                    session['data'] = {"action": "end_game"}
+                session['event'].set()
+            else:
+                # Legacy single-session mode
+                with _SESSION_LOCK:
+                    _SESSION_DATA = {"action": "end_game"}
+                _SESSION_EVENT.set()
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -312,18 +512,30 @@ class _H(BaseHTTPRequestHandler):
             self.wfile.write(b'{"status":"ok"}')
             return
 
-        if self.path == "/reset":
+        if self.path == "/reset" or self.path.startswith("/reset?"):
+            # Extract session_id from request
+            session_id = _extract_session_id(self.path, self.headers)
+
             # Reset game state (used when user clicks restart or game ends)
-            print("[server] Received /reset request - clearing all game state")
+            print(f"[server] Received /reset request for session {session_id or 'global'}")
 
             # CRITICAL FIX: Signal the waiting game loop to exit properly
             # Set end_game marker so run_ui() returns None and game loop restarts
-            with _SESSION_LOCK:
-                _SESSION_DATA = {"action": "end_game"}
-            _SESSION_EVENT.set()  # Wake up the waiting run_ui() call
-
-            # Now reset game state for the new game
-            reset_game_state()  # Use the proper reset function
+            if session_id:
+                # Multi-session mode
+                session = _get_or_create_session(session_id)
+                with _SESSION_LOCK:
+                    session['data'] = {"action": "end_game"}
+                session['event'].set()
+                # Reset session state for the new game
+                reset_game_state(session_id)
+            else:
+                # Legacy single-session mode
+                with _SESSION_LOCK:
+                    _SESSION_DATA = {"action": "end_game"}
+                _SESSION_EVENT.set()
+                # Reset global state for the new game
+                reset_game_state()
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -356,7 +568,7 @@ def _results_page(stats: dict) -> str:
         ace_s1_str = "-"
     else:
         ace_mult_s1 = ace_payoff_s1 / ace_invested_s1 if ace_invested_s1 > 0 else 0
-        ace_s1_str = f'£{ace_payoff_s1:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{ace_invested_s1:.0f} * {ace_mult_s1:.2f}x)</span>'
+        ace_s1_str = f'£{ace_payoff_s1:.2f}<br><span style="font-size:11px;color:#6b7280;">(£{ace_invested_s1:.0f} * {ace_mult_s1:.2f}x)</span>'
 
     ace_payoff_s2 = stats.get('ace_payoff_s2', 0)
     ace_invested_s2 = stats.get('ace_invested_s2', 0)
@@ -364,14 +576,14 @@ def _results_page(stats: dict) -> str:
         ace_s2_str = "-"
     else:
         ace_mult_s2 = ace_payoff_s2 / ace_invested_s2 if ace_invested_s2 > 0 else 0
-        ace_s2_str = f'£{ace_payoff_s2:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{ace_invested_s2:.0f} * {ace_mult_s2:.2f}x)</span>'
+        ace_s2_str = f'£{ace_payoff_s2:.2f}<br><span style="font-size:11px;color:#6b7280;">(£{ace_invested_s2:.0f} * {ace_mult_s2:.2f}x)</span>'
 
     ace_payoff_total = stats.get('ace_payoff', 0)
     ace_invested_total = stats.get('ace_invested', 0)
     if ace_payoff_total == 0:
         ace_total_str = "-"
     else:
-        ace_total_str = f'£{ace_payoff_total:.0f}'
+        ace_total_str = f'£{ace_payoff_total:.2f}'
 
     # KING
     king_payoff_s1 = stats.get('king_payoff_s1', 0)
@@ -380,7 +592,7 @@ def _results_page(stats: dict) -> str:
         king_s1_str = "-"
     else:
         king_mult_s1 = king_payoff_s1 / king_invested_s1 if king_invested_s1 > 0 else 0
-        king_s1_str = f'£{king_payoff_s1:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{king_invested_s1:.0f} * {king_mult_s1:.2f}x)</span>'
+        king_s1_str = f'£{king_payoff_s1:.2f}<br><span style="font-size:11px;color:#6b7280;">(£{king_invested_s1:.0f} * {king_mult_s1:.2f}x)</span>'
 
     king_payoff_s2 = stats.get('king_payoff_s2', 0)
     king_invested_s2 = stats.get('king_invested_s2', 0)
@@ -388,14 +600,14 @@ def _results_page(stats: dict) -> str:
         king_s2_str = "-"
     else:
         king_mult_s2 = king_payoff_s2 / king_invested_s2 if king_invested_s2 > 0 else 0
-        king_s2_str = f'£{king_payoff_s2:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{king_invested_s2:.0f} * {king_mult_s2:.2f}x)</span>'
+        king_s2_str = f'£{king_payoff_s2:.2f}<br><span style="font-size:11px;color:#6b7280;">(£{king_invested_s2:.0f} * {king_mult_s2:.2f}x)</span>'
 
     king_payoff_total = stats.get('king_payoff', 0)
     king_invested_total = stats.get('king_invested', 0)
     if king_payoff_total == 0:
         king_total_str = "-"
     else:
-        king_total_str = f'£{king_payoff_total:.0f}'
+        king_total_str = f'£{king_payoff_total:.2f}'
 
     # QUEEN
     queen_payoff_s1 = stats.get('queen_payoff_s1', 0)
@@ -404,7 +616,7 @@ def _results_page(stats: dict) -> str:
         queen_s1_str = "-"
     else:
         queen_mult_s1 = queen_payoff_s1 / queen_invested_s1 if queen_invested_s1 > 0 else 0
-        queen_s1_str = f'£{queen_payoff_s1:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{queen_invested_s1:.0f} * {queen_mult_s1:.2f}x)</span>'
+        queen_s1_str = f'£{queen_payoff_s1:.2f}<br><span style="font-size:11px;color:#6b7280;">(£{queen_invested_s1:.0f} * {queen_mult_s1:.2f}x)</span>'
 
     queen_payoff_s2 = stats.get('queen_payoff_s2', 0)
     queen_invested_s2 = stats.get('queen_invested_s2', 0)
@@ -412,14 +624,14 @@ def _results_page(stats: dict) -> str:
         queen_s2_str = "-"
     else:
         queen_mult_s2 = queen_payoff_s2 / queen_invested_s2 if queen_invested_s2 > 0 else 0
-        queen_s2_str = f'£{queen_payoff_s2:.0f}<br><span style="font-size:11px;color:#6b7280;">(£{queen_invested_s2:.0f} * {queen_mult_s2:.2f}x)</span>'
+        queen_s2_str = f'£{queen_payoff_s2:.2f}<br><span style="font-size:11px;color:#6b7280;">(£{queen_invested_s2:.0f} * {queen_mult_s2:.2f}x)</span>'
 
     queen_payoff_total = stats.get('queen_payoff', 0)
     queen_invested_total = stats.get('queen_invested', 0)
     if queen_payoff_total == 0:
         queen_total_str = "-"
     else:
-        queen_total_str = f'£{queen_payoff_total:.0f}'
+        queen_total_str = f'£{queen_payoff_total:.2f}'
 
     # Generate leaderboard rows
     leaderboard = stats.get("leaderboard", [])  # All entries with proper ranks
@@ -488,8 +700,9 @@ def _results_page(stats: dict) -> str:
         leaderboard_empty_msg = ""
 
     # Serialize frontier data to JSON outside the f-string to avoid escaping issues
+    # Use frontier_all_alphas (v2 NPZ files with 21 alpha values)
     frontier_data_json = json.dumps(stats.get('frontier_all_alphas', {}))
-    frontier_data_v2_json = json.dumps(stats.get('frontier_all_alphas_v2', {}))
+    frontier_expanded_json = json.dumps(stats.get('frontier_expanded', {}))
     player_position_json = json.dumps(stats.get('player_position', {}))
 
     return f"""<!doctype html>
@@ -554,10 +767,12 @@ def _results_page(stats: dict) -> str:
   input[type="range"]{{
     -webkit-appearance:none;
     appearance:none;
+    width:100%;
     height:4px;
     background:#000000;
     border-radius:2px;
     outline:none;
+    margin:5px 0;
   }}
   input[type="range"]::-webkit-slider-thumb{{
     -webkit-appearance:none;
@@ -567,6 +782,7 @@ def _results_page(stats: dict) -> str:
     border:1px solid #000000;
     border-radius:50%;
     cursor:pointer;
+    margin-top:0;
   }}
   input[type="range"]::-moz-range-thumb{{
     width:14px;
@@ -575,6 +791,12 @@ def _results_page(stats: dict) -> str:
     border:1px solid #000000;
     border-radius:50%;
     cursor:pointer;
+    border:none;
+  }}
+  input[type="range"]::-moz-range-track{{
+    height:4px;
+    background:#000000;
+    border-radius:2px;
   }}
 </style>
 </head>
@@ -599,6 +821,7 @@ def _results_page(stats: dict) -> str:
     <div class="tab-nav">
       <button class="tab-btn active" data-tab="summary">Summary</button>
       <button class="tab-btn" data-tab="frontier">Frontier</button>
+      <!-- <button class="tab-btn" data-tab="expanded">Expanded Frontier</button> -->
       <button class="tab-btn" data-tab="leaderboard">Leaderboard</button>
     </div>
 
@@ -676,10 +899,10 @@ def _results_page(stats: dict) -> str:
         <div style="border:1px solid var(--b);border-radius:12px;padding:20px;background:var(--panel);">
           <h4 style="margin:0 0 12px 0;color:#111827;">Distribution of Returns</h4>
           <p style="font-size:13px;color:#6b7280;margin:0 0 16px 0;">
-            Based on 50,000 simulations of your allocation and signal acquisition strategy
+            Based on 1,000 simulations of your allocation and signal acquisition strategy
           </p>
           <div id="histogramChart" style="width:100%;min-height:200px;"></div>
-          <div style="margin-top:-8px;padding:12px;background:#f9fafb;border-radius:8px;font-size:13px;color:#6b7280;">
+          <div style="margin-top:24px;padding:12px;background:#f9fafb;border-radius:8px;font-size:13px;color:#6b7280;">
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
               <div><strong>Mean Return:</strong> {stats.get('sim_metadata',{}).get('mean',0):.2f}X</div>
               <div><strong>Max Return:</strong> {stats.get('sim_metadata',{}).get('max',0):.2f}X</div>
@@ -701,10 +924,10 @@ def _results_page(stats: dict) -> str:
               <span>Stage 1 allocation</span>
               <span id="alphaValue" style="color:#000000;">10%</span>
             </label>
-            <input type="range" id="alphaSlider" min="0" max="100" step="5" value="10"
-                   style="width:100%;">
+            <input type="range" id="alphaSlider" min="0" max="19" step="1" value="1" style="width:100%;">
             <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:14px;color:#6b7280;">
-              <span>0%</span>
+              <span>5%</span>
+              <span>50%</span>
               <span>100%</span>
             </div>
           </div>
@@ -713,26 +936,16 @@ def _results_page(stats: dict) -> str:
           <div>
             <label style="display:flex;justify-content:space-between;margin-bottom:8px;font-weight:600;font-size:13px;color:#111827;">
               <span>Number of Signals</span>
-              <span id="signalValue" style="color:#000000;">All</span>
+              <span id="signalValue" style="color:#000000;">0 signals</span>
             </label>
-            <input type="range" id="signalSlider" min="0" max="10" step="1" value="10"
+            <input type="range" id="signalSlider" min="0" max="9" step="1" value="0"
                    style="width:100%;">
             <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:14px;color:#6b7280;">
               <span>0 signals</span>
-              <span>All</span>
+              <span>9 signals</span>
             </div>
           </div>
 
-          <!-- Frontier version toggle -->
-          <div style="margin-top:16px;">
-            <label style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:#111827;cursor:pointer;">
-              <input type="checkbox" id="useFrontierV2" style="width:18px;height:18px;cursor:pointer;">
-              <span>Use enhanced frontier (v2)</span>
-            </label>
-            <div style="font-size:12px;color:#6b7280;margin-top:4px;margin-left:26px;">
-              V2 explores additional Stage 2 concentration strategies
-            </div>
-          </div>
         </div>
       </div>
 
@@ -783,6 +996,37 @@ def _results_page(stats: dict) -> str:
         </table>
       </div>
     </div>
+
+    <!-- Expanded Frontier Tab - COMMENTED OUT FOR NOW -->
+    <div id="expanded-tab" class="tab-content" style="display:none !important;">
+      <h3 style="margin-top:0;">Expanded Frontier via Linear Combinations</h3>
+      <p style="color:#6b7280;font-size:14px;margin:0 0 20px 0;">
+        Comparison of original frontier (enumerated strategies) vs. expanded frontier (linear combinations with zero covariance assumption).
+      </p>
+
+      <!-- Slider controls -->
+      <div style="margin-bottom:24px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;">
+          <div>
+            <label for="expandedAlphaSlider" style="display:block;font-weight:600;margin-bottom:8px;color:#111827;">
+              Stage 1 Allocation: <span id="expandedAlphaValue">50</span>%
+            </label>
+            <input type="range" id="expandedAlphaSlider" min="0" max="100" step="5" value="50"
+                   style="width:100%;height:8px;border-radius:4px;background:#e5e7eb;outline:none;-webkit-appearance:none;">
+          </div>
+          <div>
+            <label for="expandedNsigSlider" style="display:block;font-weight:600;margin-bottom:8px;color:#111827;">
+              Number of Signals: <span id="expandedNsigValue">0</span>
+            </label>
+            <input type="range" id="expandedNsigSlider" min="0" max="9" step="1" value="0"
+                   style="width:100%;height:8px;border-radius:4px;background:#e5e7eb;outline:none;-webkit-appearance:none;">
+          </div>
+        </div>
+      </div>
+
+      <!-- Frontier comparison plot -->
+      <div id="expandedFrontierChart" style="width:100%;height:600px;"></div>
+    </div>
   </section>
 
   <aside>
@@ -809,7 +1053,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {{
   }});
 }});
 
-// Quit game button - close tab and return to landing
+// Quit game button - return to fresh landing page
 document.getElementById('endBtn').onclick = () => {{
   const btn = document.getElementById('endBtn');
   const overlay = document.getElementById('ov');
@@ -819,35 +1063,34 @@ document.getElementById('endBtn').onclick = () => {{
   overlay.style.display = 'flex';
   overlayMsg.textContent = 'Ending game...';
 
+  // Get session_id before clearing storage
+  const session_id = localStorage.getItem("session_id") || "";
+
   // CRITICAL: Clear localStorage so landing page doesn't auto-redirect
   localStorage.clear();
   sessionStorage.clear();
 
-  // Send end signal to server
-  fetch('/end', {{method:'POST'}})
+  // Reset server state and navigate to landing page
+  fetch(`/reset?session_id=${{session_id}}`, {{method:'POST'}})
     .then(() => {{
-      overlayMsg.textContent = 'Closing tab...';
-
-      // Try to close the tab (works since it was opened by window.open)
+      overlayMsg.textContent = 'Returning to landing page...';
       setTimeout(() => {{
-        window.close();
-
-        // If window didn't close (shouldn't happen for tabs opened by JS), show message
-        setTimeout(() => {{
-          overlayMsg.innerHTML = 'Game ended!<br><span style="font-size:14px;font-weight:400;margin-top:8px;display:block;">You can close this tab now</span>';
-        }}, 500);
-      }}, 500);
+        location.href = '/';
+      }}, 200);
     }})
     .catch((err) => {{
-      console.error('[quit] Error ending game:', err);
-      overlayMsg.textContent = 'Error ending game. You can close this tab.';
+      console.error('[quit] Error resetting game:', err);
+      // Even if fetch fails, navigate to landing page anyway
+      setTimeout(() => {{
+        location.href = '/';
+      }}, 200);
     }});
 }};
 
 // Create Plotly frontier chart (matching vis_f.py formatting)
 function createFrontierChart() {{
   // Select the appropriate frontier dataset based on toggle
-  const frontierData = window.USE_FRONTIER_V2 ? window.FRONTIER_DATA_V2 : window.FRONTIER_DATA;
+  const frontierData = window.FRONTIER_DATA;
 
   // Check if frontier data is available
   if (!frontierData || !window.PLAYER_POSITION) {{
@@ -861,22 +1104,27 @@ function createFrontierChart() {{
   const alphaValue = document.getElementById('alphaValue');
   const signalValue = document.getElementById('signalValue');
 
-  // Set default alpha to player's alpha
+  // Map slider index to alpha percentage values (5, 10, 15, ..., 100)
+  const alphaValues = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100];
+
+  // Set default alpha to player's alpha (map to closest slider index)
   const playerAlphaPct = window.PLAYER_POSITION.alpha_pct || 10;
-  alphaSlider.value = playerAlphaPct;
-  alphaValue.textContent = playerAlphaPct + '%';
+  const alphaIndex = alphaValues.indexOf(playerAlphaPct);
+  alphaSlider.value = alphaIndex >= 0 ? alphaIndex : 1;  // Default to index 1 (10%)
+  alphaValue.textContent = alphaValues[alphaSlider.value] + '%';
 
   // Function to render chart with current slider values
   function renderChart() {{
-    const selectedAlpha = parseInt(alphaSlider.value);
-    const selectedSignalFilter = parseInt(signalSlider.value); // 10 = All, 0-9 = specific n
+    const alphaIndex = parseInt(alphaSlider.value);
+    const selectedAlpha = alphaValues[alphaIndex];
+    const selectedSignalFilter = parseInt(signalSlider.value); // 0-9 specific n
 
     // Update display values
     alphaValue.textContent = selectedAlpha + '%';
-    signalValue.textContent = selectedSignalFilter === 10 ? 'All' : selectedSignalFilter + ' signals';
+    signalValue.textContent = selectedSignalFilter + ' signals';
 
     // Get frontier data for selected alpha (using the appropriate dataset)
-    const activeFrontierData = window.USE_FRONTIER_V2 ? window.FRONTIER_DATA_V2 : window.FRONTIER_DATA;
+    const activeFrontierData = window.FRONTIER_DATA;
     const frontierDataForAlpha = activeFrontierData[selectedAlpha];
     if (!frontierDataForAlpha) {{
       document.getElementById('frontierChart').innerHTML = `<div style="padding:40px;text-align:center;color:#6b7280;">No data for alpha=${{selectedAlpha}}%</div>`;
@@ -895,26 +1143,17 @@ function createFrontierChart() {{
     for (let n = 0; n < pointsByN.length; n++) {{
       const points = pointsByN[n];
 
-      // Skip if no points for this n, or if filtered out
+      // Only show points for the selected signal count
+      if (n !== selectedSignalFilter) continue;
       if (points.length === 0) continue;
-      if (selectedSignalFilter < 10 && n !== selectedSignalFilter) continue;
 
       // Extract data arrays (use SD of gross returns)
       const sdVals = points.map(p => p.sd_gross);
       const meanVals = points.map(p => p.mean_gross);
       const concentrationVals = points.map(p => p.concentration);
 
-      // Build hover text
+      // Build hover text (no pilewise weights for frontier markers, only for red player marker)
       const hoverTexts = points.map(p => {{
-        // Build weight labels for each pile
-        const weightLabels = p.weights.map((w, i) => `P${{i+1}}: ${{(w*100).toFixed(1)}}%`);
-        // Split into 3 rows: piles 1-3, 4-6, 7-9
-        const weightRows = [
-          weightLabels.slice(0, 3).join(' | '),
-          weightLabels.slice(3, 6).join(' | '),
-          weightLabels.slice(6, 9).join(' | ')
-        ];
-
         // Use total_rounds from NPZ metadata (default to 200k if not present)
         const totalRounds = p.total_rounds || 200000;
         const scalePay = p.scale_pay || 0;
@@ -930,14 +1169,16 @@ function createFrontierChart() {{
           hitRateStr += ` | King hits: ${{kingHitPct}}% | Queen hits: ${{queenHitPct}}%`;
         }}
 
+        // Get concentration values for both stages
+        const concS1 = p.concentration_s1 || p.concentration || 0;
+        const concS2 = p.concentration_s2 || 0;
+
         return `<b>Signals: N = ${{n}}</b><br>` +
                `<b>Simulations:</b> ${{totalRounds.toLocaleString()}}<br>` +
                `<b>Mean Return:</b> ${{p.mean_gross.toFixed(3)}}X<br>` +
                `<b>Std Dev:</b> ${{p.sd_gross.toFixed(3)}}X<br>` +
                `<b>Sharpe Ratio:</b> ${{p.sharpe.toFixed(3)}}<br>` +
-               `<b>Σw²:</b> ${{p.concentration.toFixed(3)}}<br><br>` +
-               `<b>Portfolio Weights:</b><br>` +
-               weightRows.join('<br>') + '<br><br>' +
+               `<b>Σw² (S1):</b> ${{concS1.toFixed(3)}} | <b>Σw² (S2):</b> ${{concS2.toFixed(3)}}<br><br>` +
                hitRateStr;
       }});
 
@@ -970,32 +1211,20 @@ function createFrontierChart() {{
     const playerN = window.PLAYER_POSITION.n_signals;
     const playerMaxGross = window.PLAYER_POSITION.max_gross || playerMean;
     const playerSharpe = window.PLAYER_POSITION.sharpe || 0;
-    const playerWeights = window.PLAYER_POSITION.weights || [0,0,0,0,0,0,0,0,0];
-    const playerConcentration = window.PLAYER_POSITION.concentration || 0;
     const playerAceHits = window.PLAYER_POSITION.ace_hits || 0;
     const playerKingHits = window.PLAYER_POSITION.king_hits || 0;
     const playerQueenHits = window.PLAYER_POSITION.queen_hits || 0;
 
     // Build player hovertext with simulation data
-    const playerWeightLabels = playerWeights.map((w, i) => `P${{i+1}}: ${{(w*100).toFixed(1)}}%`);
-    const playerWeightRows = [
-      playerWeightLabels.slice(0, 3).join(' | '),
-      playerWeightLabels.slice(3, 6).join(' | '),
-      playerWeightLabels.slice(6, 9).join(' | ')
-    ];
-
     const playerHoverText = `<b>Signals: N = ${{playerN}}</b><br>` +
-                            `<b>Simulations:</b> 50,000<br>` +
+                            `<b>Simulations:</b> 1,000<br>` +
                             `<b>Mean Return:</b> ${{playerMean.toFixed(3)}}X<br>` +
                             `<b>Max Return:</b> ${{playerMaxGross.toFixed(3)}}X<br>` +
                             `<b>Std Dev:</b> ${{playerSDGross.toFixed(3)}}X<br>` +
-                            `<b>Sharpe Ratio:</b> ${{playerSharpe.toFixed(3)}}<br>` +
-                            `<b>Σw²:</b> ${{playerConcentration.toFixed(3)}}<br><br>` +
-                            `<b>Portfolio Weights:</b><br>` +
-                            playerWeightRows.join('<br>') + '<br><br>' +
-                            `Ace hits: ${{(playerAceHits / 50000 * 100).toFixed(2)}}% | ` +
-                            `King hits: ${{(playerKingHits / 50000 * 100).toFixed(2)}}% | ` +
-                            `Queen hits: ${{(playerQueenHits / 50000 * 100).toFixed(2)}}%`;
+                            `<b>Sharpe Ratio:</b> ${{playerSharpe.toFixed(3)}}<br><br>` +
+                            `Ace hits: ${{(playerAceHits / 1000 * 100).toFixed(2)}}% | ` +
+                            `King hits: ${{(playerKingHits / 1000 * 100).toFixed(2)}}% | ` +
+                            `Queen hits: ${{(playerQueenHits / 1000 * 100).toFixed(2)}}%`;
 
     traces.push({{
       x: [playerSDGross],
@@ -1187,49 +1416,182 @@ document.querySelector('[data-tab="frontier"]').addEventListener('click', functi
   }}
 }});
 
-// Add event listener for v2 toggle
-const v2Toggle = document.getElementById('useFrontierV2');
-if (v2Toggle) {{
-  v2Toggle.addEventListener('change', function() {{
-    window.USE_FRONTIER_V2 = this.checked;
-    createFrontierChart();  // Redraw chart with new dataset
-  }});
-}}
-
 // Inject frontier data and player position from Python backend
 window.FRONTIER_DATA = {frontier_data_json};
-window.FRONTIER_DATA_V2 = {frontier_data_v2_json};
+window.FRONTIER_EXPANDED = {frontier_expanded_json};
 window.PLAYER_POSITION = {player_position_json};
-window.USE_FRONTIER_V2 = false;  // Default to v1
+
+// Expanded frontier plot (matches original frontier tab formatting)
+/* COMMENTED OUT FOR NOW
+function createExpandedFrontierChart(alpha, nsig) {{
+  const expandedData = window.FRONTIER_EXPANDED;
+
+  if (!expandedData) {{
+    document.getElementById('expandedFrontierChart').innerHTML =
+      '<div style="padding:40px;text-align:center;color:#6b7280;">Expanded frontier data not available</div>';
+    return;
+  }}
+
+  // Get data for selected alpha
+  const alphaKey = alpha.toString();
+  const frontierData = expandedData[alphaKey];
+
+  if (!frontierData) {{
+    document.getElementById('expandedFrontierChart').innerHTML =
+      '<div style="padding:40px;text-align:center;color:#6b7280;">No data for selected alpha</div>';
+    return;
+  }}
+
+  const pointsByN = frontierData.points_by_n;
+
+  // Build Plotly traces (matching original frontier tab)
+  const traces = [];
+  const ALPHA = 0.7;
+  const colorscale = [[0, '#606060'], [1, '#000000']];
+
+  for (let n = 0; n < pointsByN.length; n++) {{
+    const points = pointsByN[n];
+
+    // Skip if no points for this n, or if filtered out
+    if (points.length === 0) continue;
+    if (nsig < 10 && n !== nsig) continue;
+
+    // Extract data arrays (convert to gross for x-axis, keep as net % for y-axis)
+    const sdVals = points.map(p => p.sd_gross);
+    const meanVals = points.map(p => p.mean_gross);
+
+    // Use SD as proxy for concentration (higher SD = more concentrated)
+    const concentrationVals = points.map(p => p.sd);
+
+    traces.push({{
+      x: sdVals,
+      y: meanVals,
+      mode: 'markers+text',
+      name: `n=${{n}}`,
+      marker: {{
+        size: 16,
+        color: concentrationVals,
+        colorscale: colorscale,
+        showscale: false,
+        line: {{ width: 0 }}
+      }},
+      text: Array(sdVals.length).fill(String(n)),
+      textposition: 'middle center',
+      textfont: {{ size: 11, color: 'white', family: 'monospace' }},
+      hoverinfo: 'none',
+      showlegend: false,
+      opacity: ALPHA
+    }});
+  }}
+
+  // Layout (matching original frontier tab)
+  const layout = {{
+    xaxis: {{
+      title: 'Standard Deviation (gross return multiplier)',
+      titlefont: {{ size: 14, color: '#111827' }},
+      tickfont: {{ size: 12, color: '#111827' }},
+      gridcolor: '#e5e7eb',
+      zeroline: false
+    }},
+    yaxis: {{
+      title: 'Mean Return (gross return multiplier)',
+      titlefont: {{ size: 14, color: '#111827' }},
+      tickfont: {{ size: 12, color: '#111827' }},
+      gridcolor: '#e5e7eb',
+      zeroline: true,
+      zerolinecolor: '#d1d5db',
+      zerolinewidth: 1
+    }},
+    hovermode: 'closest',
+    plot_bgcolor: '#ffffff',
+    paper_bgcolor: '#ffffff',
+    font: {{ family: 'Source Sans Pro, sans-serif', color: '#111827' }},
+    margin: {{ l: 70, r: 40, t: 40, b: 60 }},
+    showlegend: false
+  }};
+
+  Plotly.newPlot('expandedFrontierChart', traces, layout, {{ responsive: true }});
+}}
+
+// Event listeners for expanded frontier sliders
+document.getElementById('expandedAlphaSlider')?.addEventListener('input', (e) => {{
+  const value = e.target.value;
+  document.getElementById('expandedAlphaValue').textContent = value;
+  const nsig = parseInt(document.getElementById('expandedNsigSlider').value);
+  createExpandedFrontierChart(parseInt(value), nsig);
+}});
+
+document.getElementById('expandedNsigSlider')?.addEventListener('input', (e) => {{
+  const value = e.target.value;
+  document.getElementById('expandedNsigValue').textContent = value;
+  const alpha = parseInt(document.getElementById('expandedAlphaSlider').value);
+  createExpandedFrontierChart(alpha, parseInt(value));
+}});
+
+// Initialize expanded frontier chart with default values
+if (document.getElementById('expandedFrontierChart')) {{
+  createExpandedFrontierChart(50, 0);
+}}
+END COMMENTED OUT */
 </script>
 </body>
 </html>"""
 
 
-def reset_game_state():
-    """Reset game state to fresh defaults (called when starting new game)"""
-    global _GAME_STATE, _SESSION_DATA, _SESSION_EVENT
-    with _SERVER_LOCK:
-        _GAME_STATE['stage'] = 0
-        _GAME_STATE['ctx'] = {}
-        _GAME_STATE['ready'].clear()
-    # CRITICAL FIX: Thread-safe session data reset
-    with _SESSION_LOCK:
-        _SESSION_DATA = None
-    # IMPORTANT: Don't clear the event here - let run_ui() handle it
-    # Clearing it here can cause race conditions where the game loop
-    # is still waiting on the event when /reset is called
-    print("[server] Game state reset to defaults (stage=0, ctx cleared)")
+def reset_game_state(session_id: str | None = None):
+    """Reset game state to fresh defaults (called when starting new game)
+
+    Args:
+        session_id: If provided, resets only that session. If None, resets legacy global state.
+    """
+    global _GAME_STATE, _SESSION_DATA, _SESSION_EVENT, _GAME_SESSIONS
+
+    if session_id:
+        # Multi-session mode: reset specific session
+        session = _get_or_create_session(session_id)
+        with _SESSION_LOCK:
+            session['stage'] = 0
+            session['ctx'] = {}
+            session['ready'].clear()
+            session['data'] = None
+            # Don't clear event - let run_ui() handle it to avoid race conditions
+        print(f"[server] Session {session_id} reset to defaults (stage=0)")
+    else:
+        # Legacy single-session mode: reset global state
+        with _SERVER_LOCK:
+            _GAME_STATE['stage'] = 0
+            _GAME_STATE['ctx'] = {}
+            _GAME_STATE['ready'].clear()
+        with _SESSION_LOCK:
+            _SESSION_DATA = None
+        print("[server] Game state reset to defaults (stage=0, ctx cleared)")
 
 
-def update_game_state(stage: int, ctx: dict):
-    """Update game state for the persistent server"""
-    global _GAME_STATE
-    with _SERVER_LOCK:
-        _GAME_STATE['stage'] = stage
-        _GAME_STATE['ctx'] = ctx.copy()
-        _GAME_STATE['ready'].set()  # Signal that state is ready
-    print(f"[server] Game state updated: stage={stage}")
+def update_game_state(stage: int, ctx: dict, session_id: str | None = None):
+    """Update game state for the persistent server
+
+    Args:
+        stage: Game stage number
+        ctx: Context dictionary with game data
+        session_id: If provided, updates only that session. If None, updates legacy global state.
+    """
+    global _GAME_STATE, _GAME_SESSIONS
+
+    if session_id:
+        # Multi-session mode: update specific session
+        session = _get_or_create_session(session_id)
+        with _SESSION_LOCK:
+            session['stage'] = stage
+            session['ctx'] = ctx.copy()
+            session['ready'].set()  # Signal that state is ready
+        print(f"[server] Session {session_id} updated: stage={stage}")
+    else:
+        # Legacy single-session mode: update global state
+        with _SERVER_LOCK:
+            _GAME_STATE['stage'] = stage
+            _GAME_STATE['ctx'] = ctx.copy()
+            _GAME_STATE['ready'].set()
+        print(f"[server] Game state updated: stage={stage}")
 
 
 def start_persistent_server(port: int = 8765, open_browser: bool = False):
@@ -1276,10 +1638,15 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
            port: int = 8765, open_browser: bool = False,
            signal_mode: str = "median", signal_cost: float = 3.0,
            stage1_invested: list | None = None, stage_history: list | None = None,
-           session_id: int | None = None):
+           session_id: str | None = None):
     """REFACTORED: Update game state and wait for user submission
 
     No longer creates/destroys servers - just updates state on persistent server.
+    Supports both multi-session mode (with session_id) and legacy single-session mode.
+
+    Args:
+        session_id: Optional session identifier for multi-user support. If provided,
+                   uses session-specific state. If None, uses legacy global state.
     """
     global _SESSION_DATA, _SESSION_EVENT, _GAME_STATE
 
@@ -1287,10 +1654,22 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
     if _SERVER_INSTANCE is None:
         start_persistent_server(port=port, open_browser=open_browser)
 
-    # Reset session state (CRITICAL FIX: Thread-safe access)
-    with _SESSION_LOCK:
-        _SESSION_DATA = None
-    _SESSION_EVENT.clear()
+    # Convert session_id to string if it's an int
+    if session_id is not None:
+        session_id = str(session_id)
+
+    # Reset session state
+    if session_id:
+        # Multi-session mode: clear session-specific state
+        session = _get_or_create_session(session_id)
+        with _SESSION_LOCK:
+            session['data'] = None
+        session['event'].clear()
+    else:
+        # Legacy single-session mode: clear global state
+        with _SESSION_LOCK:
+            _SESSION_DATA = None
+        _SESSION_EVENT.clear()
 
     # Build context (handle Stage 0 with no cards)
     cards = []
@@ -1319,41 +1698,58 @@ def run_ui(stage: int, df: pd.DataFrame, wallet: float, *, results: dict | None 
         "session_id": session_id,
     }
 
-    # Update game state on persistent server
-    update_game_state(stage, ctx)
-    print(f"[web] Stage {stage} ready, waiting for user action...")
+    # Update game state on persistent server (pass session_id for routing)
+    update_game_state(stage, ctx, session_id=session_id)
+    print(f"[web] Stage {stage} ready (session {session_id or 'global'}), waiting for user action...")
+
+    # Select which event to wait on
+    event_to_wait = session['event'] if session_id else _SESSION_EVENT
 
     # Wait for user submission
     if results and stage >= 3:
         # Results stage: wait for end game click
         print(f"[web] Results stage - waiting for 'End Game' click")
-        if not _SESSION_EVENT.wait(timeout=300):  # 5 minute timeout
-            print(f"[web] Warning: Results stage timed out")
+        if not event_to_wait.wait(timeout=300):  # 5 minute timeout
+            print(f"[web] Warning: Results stage timed out (session {session_id or 'global'})")
             # CRITICAL FIX: Clean up stale state on timeout to prevent memory leak
-            with _SESSION_LOCK:
-                _SESSION_DATA = None
-            _SESSION_EVENT.clear()
+            if session_id:
+                with _SESSION_LOCK:
+                    session['data'] = None
+                session['event'].clear()
+            else:
+                with _SESSION_LOCK:
+                    _SESSION_DATA = None
+                _SESSION_EVENT.clear()
             return None
     else:
         # Game stage: wait for POST submission
-        if not _SESSION_EVENT.wait(timeout=300):
-            print(f"[web] Warning: Stage {stage} timed out waiting for submission")
+        if not event_to_wait.wait(timeout=300):
+            print(f"[web] Warning: Stage {stage} timed out (session {session_id or 'global'})")
             # CRITICAL FIX: Clean up stale state on timeout to prevent memory leak
-            with _SESSION_LOCK:
-                _SESSION_DATA = None
-            _SESSION_EVENT.clear()
+            if session_id:
+                with _SESSION_LOCK:
+                    session['data'] = None
+                session['event'].clear()
+            else:
+                with _SESSION_LOCK:
+                    _SESSION_DATA = None
+                _SESSION_EVENT.clear()
             return None
 
-    # Get submitted data (CRITICAL FIX: Thread-safe access)
-    with _SESSION_LOCK:
-        actions = _SESSION_DATA
+    # Get submitted data
+    if session_id:
+        with _SESSION_LOCK:
+            actions = session['data']
+    else:
+        with _SESSION_LOCK:
+            actions = _SESSION_DATA
 
     # Check if this is an end_game signal (restart/quit)
     if actions and actions.get("action") == "end_game":
-        print(f"[web] Stage {stage} received end_game signal - returning None to restart game loop")
+        print(f"[web] Stage {stage} received end_game signal (session {session_id or 'global'}) - returning None to restart game loop")
         return None
 
-    print(f"[web] Stage {stage} complete, returning actions")
+    print(f"[web] Stage {stage} complete (session {session_id or 'global'}), returning actions")
     return actions
 
 
