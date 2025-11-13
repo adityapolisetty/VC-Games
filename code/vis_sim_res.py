@@ -927,7 +927,8 @@ def _panel_controls(tag: str):
 # ==============================
 
 # View selector: Simulation Results vs MEAN-VARIANCE Frontiers vs Posteriors
-view = st.radio("View", ["Simulation Results", "Mean-Variance Frontier", "Posteriors"], horizontal=True, key="top_view")
+# Posteriors view temporarily disabled
+view = st.radio("View", ["Simulation Results", "Mean-Variance Frontier"], horizontal=True, key="top_view")
 
 # ==============================
 # CONDITIONAL RENDERING: SIMULATION RESULTS vs POSTERIORS

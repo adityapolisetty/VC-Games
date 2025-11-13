@@ -62,36 +62,61 @@ def expand_frontier_for_n_sig(orig_means: np.ndarray, orig_sds: np.ndarray,
     Expand frontier for a single n_sig value using linear combinations.
     Only computes mean and SD.
 
+    Strategy:
+    1. Pre-bin original frontier at 5pp to reduce input size
+    2. Compute linear combinations of binned strategies
+    3. Output is already at 5pp granularity
+
     For large N, samples random combinations instead of enumerating all.
     """
     N = len(orig_means)
     if N == 0:
         return orig_sds, orig_means
 
-    # Check if enumeration is feasible
+    # STEP 1: Pre-bin original frontier at 5pp to reduce input size
+    bin_step = 0.05  # 5 percentage points
+    bins = np.floor(orig_sds / bin_step).astype(int)
+    max_bin = int(np.max(bins))
+
+    binned_sds = []
+    binned_means = []
+
+    for b in range(max_bin + 1):
+        mask = (bins == b)
+        if not np.any(mask):
+            continue
+        best_idx = np.argmax(orig_means[mask])
+        sel_idx = np.flatnonzero(mask)[best_idx]
+        binned_sds.append(float(b) * bin_step)
+        binned_means.append(float(orig_means[sel_idx]))
+
+    binned_sds = np.array(binned_sds)
+    binned_means = np.array(binned_means)
+    N_binned = len(binned_means)
+
+    # STEP 2: Compute linear combinations of binned strategies
     from math import comb
-    n_combinations = comb(units + N - 1, N - 1)
+    n_combinations = comb(units + N_binned - 1, N_binned - 1)
 
     if n_combinations <= max_samples:
         # Small enough: enumerate all combinations
-        mix_weights = _weight_splits(units, N)
+        mix_weights = _weight_splits(units, N_binned)
     else:
         # Too large: sample random combinations using Dirichlet distribution
         rng = np.random.default_rng(42)
-        alpha = np.ones(N)
+        alpha = np.ones(N_binned)
         mix_weights = rng.dirichlet(alpha, size=max_samples)
 
     # Compute combined means and SDs (zero covariance assumption)
-    comb_means = mix_weights @ orig_means
-    variances = orig_sds ** 2
+    comb_means = mix_weights @ binned_means
+    variances = binned_sds ** 2
     comb_sds = np.sqrt((mix_weights**2) @ variances)
 
-    # Combine all points (original + combinations)
-    all_means = np.concatenate([orig_means, comb_means])
-    all_sds = np.concatenate([orig_sds, comb_sds])
+    # STEP 3: Combine and bin again at 5pp
+    all_means = np.concatenate([binned_means, comb_means])
+    all_sds = np.concatenate([binned_sds, comb_sds])
 
-    # Bin by SD and keep best mean in each bin
-    bins = np.floor(all_sds / sd_step).astype(int)
+    bins = np.floor(all_sds / bin_step).astype(int)
     max_bin = int(np.max(bins))
 
     exp_sds = []
@@ -103,7 +128,7 @@ def expand_frontier_for_n_sig(orig_means: np.ndarray, orig_sds: np.ndarray,
             continue
         best_idx = np.argmax(all_means[mask])
         sel_idx = np.flatnonzero(mask)[best_idx]
-        exp_sds.append(float(b) * sd_step)
+        exp_sds.append(float(b) * bin_step)
         exp_means.append(float(all_means[sel_idx]))
 
     return np.array(exp_sds), np.array(exp_means)

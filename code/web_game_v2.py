@@ -1,12 +1,12 @@
-# card_game.py
+# card_game.py - V2: Dead code removed, signal system simplified
 import numpy as np
 import argparse
 import pandas as pd
 import json
 import os
 
-from web_wrangler_fixed import run_ui, start_persistent_server, reset_game_state  # UI server only - using fixed singleton version
-from sim_res import _deal_cards_global_deck  # DEAD CODE REMOVED: round_seed import (unused)
+from web_wrangler_fixed import run_ui, start_persistent_server, reset_game_state
+from sim_res import _deal_cards_global_deck
 from database import init_db, create_session, log_stage_action, log_game_results, close_session, mark_session_completed, delete_session, get_leaderboard_by_signal_type
 from simulate_policy import run_policy_simulation
 
@@ -14,11 +14,9 @@ from simulate_policy import run_policy_simulation
 MIN_INV = {1: 1.0, 2: 5.0}  # Only 2 stages now
 WALLET0 = 100.0
 ACE_PAYOUT = 20.0  # Default ace payout multiplier
-ACE_RANK = 14
 # Flags: restrict to a single signal type and cost
 SIGNAL_MODE = "median"  # or "top2"
 SIGNAL_COST = 3.0
-CARD_VALUES = np.arange(2, 15)  # 2..10, J=11, Q=12, K=13, A=14
 
 
 # ===============================
@@ -72,8 +70,8 @@ def load_all_alpha_frontiers(signal_type: str, use_v2: bool = False) -> dict:
     if os.path.exists(frontier_dir):
         print(f"[frontier] Files in directory: {len(os.listdir(frontier_dir))}")
 
-    # Alpha values: 5, 10, 15, ..., 95, 100 (20 files, excluding 0)
-    alpha_values = list(range(5, 105, 5))
+    # Alpha values: 0, 5, 10, ..., 95, 100 (21 files)
+    alpha_values = list(range(0, 105, 5))
 
     result = {}
 
@@ -127,12 +125,10 @@ def load_all_alpha_frontiers(signal_type: str, use_v2: bool = False) -> dict:
                     king_hits = king_hits_by_n[n] if king_hits_by_n is not None and n < len(king_hits_by_n) else np.array([])
                     queen_hits = queen_hits_by_n[n] if queen_hits_by_n is not None and n < len(queen_hits_by_n) else np.array([])
 
-                    # Coarsen frontier: use larger SD step for alpha=100% to reduce point density
-                    sd_step = 10.0 if alpha_pct == 100 else 5.0
-                    sd_vals, mean_vals, weight_vecs, weight_vecs_s2, ace_hits, king_hits, queen_hits = _coarsen_frontier(
-                        sd_vals, mean_vals, weight_vecs, np.array([]), ace_hits, king_hits, queen_hits, sd_step=sd_step
+                    # Coarsen frontier: bin by SD (5pp steps) and keep highest mean in each bin
+                    sd_vals, mean_vals, weight_vecs, ace_hits, king_hits, queen_hits = _coarsen_frontier(
+                        sd_vals, mean_vals, weight_vecs, ace_hits, king_hits, queen_hits, sd_step=5.0
                     )
-                    # v1/v2 files don't have S2 weights, so weight_vecs_s2 will be empty
 
                     # Build frontier points for this n
                     n_points = []
@@ -162,15 +158,14 @@ def load_all_alpha_frontiers(signal_type: str, use_v2: bool = False) -> dict:
                         king_rate = float(king_hits[i]) if len(king_hits) > 0 and i < len(king_hits) else 0.0
                         queen_rate = float(queen_hits[i]) if len(queen_hits) > 0 and i < len(queen_hits) else 0.0
 
-                        # Note: max_gross is not in NPZ, so we'll compute it on frontend from individual simulations
-                        # For now, use mean_gross as placeholder
-                        max_gross = mean_gross * 1.5  # Rough estimate (actual max could be much higher)
+                        # max_gross will be computed from simulation, not estimated
+                        max_gross = None  # Frontend will calculate from actual simulation
 
                         point = {
                             "sd": sd_pct,                # SD of net returns (%)
                             "sd_gross": sd_gross,        # SD of gross returns (multiplier)
                             "mean_gross": mean_gross,
-                            "max_gross": max_gross,  # Placeholder
+                            "max_gross": max_gross,
                             "sharpe": sharpe,
                             "weights": w_vec.tolist(),
                             "concentration": concentration,
@@ -199,213 +194,110 @@ def load_all_alpha_frontiers(signal_type: str, use_v2: bool = False) -> dict:
 
 
 def load_expanded_frontiers(signal_type: str) -> dict:
-    """Load expanded frontier NPZ files generated via linear combinations or v4_parallel.
-
-    Supports two formats:
-    1. Multi-n format: Single file with sd_levels_by_n, best_means_by_n (original)
-    2. Single-n format: Separate files per n_sig with sd_levels, best_means (v4_parallel)
+    """Load expanded frontier NPZ files generated via linear combinations.
 
     Args:
         signal_type: Either 'median' or 'top2'
 
     Returns:
-        dict: Mapping from alpha_pct to frontier data
+        dict: Mapping from alpha_pct (0, 5, 10, ..., 100) to frontier data
               Each frontier data contains:
                 - points_by_n: List of 10 lists (n=0..9), each containing {sd, mean_gross, sd_gross} dicts
                 - meta: Metadata dict from NPZ file
     """
     frontier_dir = os.path.join(os.path.dirname(__file__), '..', 'frontier_expanded')
 
-    # Alpha values: 25, 50, 75, 100 (v4_parallel uses linspace(0.25, 1.0, 4))
-    # But also support legacy 0, 5, 10, ..., 100
-    alpha_values = list(range(0, 105, 5)) + [25, 75]  # Add v4_parallel alphas
-    alpha_values = sorted(set(alpha_values))  # Remove duplicates
+    # Alpha values: 0, 5, 10, ..., 95, 100 (21 files)
+    alpha_values = list(range(0, 105, 5))
 
     result = {}
 
     for alpha_pct in alpha_values:
         alpha_str = f"a{alpha_pct:03d}"
-
-        # Try multi-n format first (original expanded frontier)
+        # Expanded files have _expanded suffix
         filename = f"sc3p0000_sp1_s0p2500_ap20p0000_{signal_type}_{alpha_str}_expanded.npz"
         filepath = os.path.join(frontier_dir, filename)
 
-        # Try multi-n format first
-        if os.path.exists(filepath):
-            try:
-                with np.load(filepath, allow_pickle=True) as z:
-                    if 'sd_levels_by_n' in z:
-                        # Multi-n format (original)
-                        sd_levels_by_n = z['sd_levels_by_n']
-                        best_means_by_n = z['best_means_by_n']
-                        meta = json.loads(str(z['meta']))
+        if not os.path.exists(filepath):
+            print(f"[expanded_frontier] File not found: {filename}")
+            continue
 
-                        # Handle case where file has fewer than 10 n_sig values
-                        n_available = len(sd_levels_by_n)
+        try:
+            with np.load(filepath, allow_pickle=True) as z:
+                sd_levels_by_n = z['sd_levels_by_n']
+                best_means_by_n = z['best_means_by_n']
 
-                        points_by_n = []
-                        for n in range(10):
-                            # If n is beyond what's available, append empty
-                            if n >= n_available:
-                                points_by_n.append([])
-                                continue
+                # Metadata
+                meta = json.loads(str(z['meta']))
 
-                            sd_vals = sd_levels_by_n[n]
-                            mean_vals = best_means_by_n[n]
+                # Parse frontier points for each n
+                points_by_n = []
 
-                            if len(sd_vals) == 0:
-                                points_by_n.append([])
-                                continue
+                for n in range(10):  # n=0 to n=9 signals
+                    sd_vals = sd_levels_by_n[n]        # 1D array of SD values (percentage)
+                    mean_vals = best_means_by_n[n]    # 1D array of mean net return %
 
-                            n_points = []
-                            for i in range(len(sd_vals)):
-                                sd_pct = float(sd_vals[i])
-                                mean_net_pct = float(mean_vals[i])
-                                mean_gross = (mean_net_pct / 100.0) + 1.0
-                                sd_gross = sd_pct / 100.0
-                                sharpe = ((mean_gross - 1.0) / sd_gross) if sd_gross > 0 else 0.0
-
-                                point = {
-                                    "sd": sd_pct,
-                                    "sd_gross": sd_gross,
-                                    "mean_gross": mean_gross,
-                                    "sharpe": sharpe,
-                                }
-                                n_points.append(point)
-
-                            points_by_n.append(n_points)
-
-                        result[alpha_pct] = {
-                            "points_by_n": points_by_n,
-                            "meta": meta
-                        }
-                        total_points = sum(len(pts) for pts in points_by_n)
-                        print(f"[expanded_frontier] Loaded multi-n {filename}: {total_points} points across {n_available} n_sig value(s)")
-                        continue
-            except Exception as e:
-                print(f"[expanded_frontier] Error loading multi-n {filename}: {e}")
-
-        # Try single-n format (v4_parallel)
-        print(f"[expanded_frontier] Trying single-n format for alpha={alpha_pct}%...")
-        points_by_n = []
-        loaded_any = False
-        meta = None
-
-        for n in range(10):  # n=0 to n=9
-            n_tag = f"n{n:02d}"
-            single_filename = f"sc3p0000_sp1_s0p2500_ap20p0000_{signal_type}_{alpha_str}_{n_tag}.npz"
-            single_filepath = os.path.join(frontier_dir, single_filename)
-
-            if not os.path.exists(single_filepath):
-                print(f"[expanded_frontier] Single-n file not found: {single_filename}")
-                points_by_n.append([])
-                continue
-
-            try:
-                with np.load(single_filepath, allow_pickle=True) as z:
-                    sd_vals = z['sd_levels']
-                    mean_vals = z['best_means']
-                    if meta is None:
-                        meta = json.loads(str(z['meta']))
-
+                    # Handle empty arrays
                     if len(sd_vals) == 0:
                         points_by_n.append([])
                         continue
 
-                    # Get weight vectors and hit rates for coarsening
-                    weight_vecs_s1 = z.get('best_weights_s1', np.array([]))
-                    weight_vecs_s2 = z.get('best_weights_s2', np.array([]))
-                    ace_hits = z.get('best_ace_hits', np.array([]))
-                    king_hits = z.get('best_king_hits', np.array([]))
-                    queen_hits = z.get('best_queen_hits', np.array([]))
-
-                    # Coarsen frontier: use larger SD step for alpha=100% to reduce point density
-                    sd_step = 10.0 if alpha_pct == 100 else 5.0
-                    sd_vals, mean_vals, weight_vecs_s1, weight_vecs_s2, ace_hits, king_hits, queen_hits = _coarsen_frontier(
-                        sd_vals, mean_vals, weight_vecs_s1, weight_vecs_s2, ace_hits, king_hits, queen_hits, sd_step=sd_step
-                    )
-
-                    # Get metadata
-                    total_rounds = meta.get('total_rounds', 1000)
-                    scale_pay = meta.get('params', {}).get('scale_pay', 1)
-
+                    # Build frontier points for this n (simplified - no weights/hits)
                     n_points = []
                     for i in range(len(sd_vals)):
                         sd_pct = float(sd_vals[i])
                         mean_net_pct = float(mean_vals[i])
+
+                        # Convert net return % to gross return multiplier
                         mean_gross = (mean_net_pct / 100.0) + 1.0
+
+                        # Convert SD from net % to gross multiplier
                         sd_gross = sd_pct / 100.0
+
+                        # Sharpe ratio
                         sharpe = ((mean_gross - 1.0) / sd_gross) if sd_gross > 0 else 0.0
-
-                        # Stage 1 and Stage 2 weights for frontier tab hover
-                        weights_s1 = weight_vecs_s1[i].tolist() if i < len(weight_vecs_s1) else [0]*9
-                        weights_s2 = weight_vecs_s2[i].tolist() if i < len(weight_vecs_s2) else [0]*9
-                        concentration_s1 = float(np.sum(np.array(weights_s1)**2))
-                        concentration_s2 = float(np.sum(np.array(weights_s2)**2))
-
-                        # Hit rates (counts, not percentages)
-                        ace_hit_rate = int(ace_hits[i]) if i < len(ace_hits) else 0
-                        king_hit_rate = int(king_hits[i]) if i < len(king_hits) else 0
-                        queen_hit_rate = int(queen_hits[i]) if i < len(queen_hits) else 0
 
                         point = {
                             "sd": sd_pct,
                             "sd_gross": sd_gross,
                             "mean_gross": mean_gross,
                             "sharpe": sharpe,
-                            "weights": weights_s1,  # Keep for backward compatibility
-                            "weights_s1": weights_s1,
-                            "weights_s2": weights_s2,
-                            "concentration": concentration_s1,  # Keep for marker color
-                            "concentration_s1": concentration_s1,
-                            "concentration_s2": concentration_s2,
-                            "ace_hit_rate": ace_hit_rate,
-                            "king_hit_rate": king_hit_rate,
-                            "queen_hit_rate": queen_hit_rate,
-                            "total_rounds": total_rounds,
-                            "scale_pay": scale_pay,
                         }
                         n_points.append(point)
 
                     points_by_n.append(n_points)
-                    loaded_any = True
-                    print(f"[expanded_frontier] Loaded single-n {single_filename}: {len(n_points)} points")
 
-            except Exception as e:
-                print(f"[expanded_frontier] Error loading single-n {single_filename}: {e}")
-                points_by_n.append([])
-                continue
+                result[alpha_pct] = {
+                    "points_by_n": points_by_n,
+                    "meta": meta
+                }
 
-        if loaded_any:
-            result[alpha_pct] = {
-                "points_by_n": points_by_n,
-                "meta": meta or {}
-            }
-            print(f"[expanded_frontier] Completed alpha={alpha_pct}%: {sum(len(pts) for pts in points_by_n)} total points")
-        else:
-            print(f"[expanded_frontier] No files found for alpha={alpha_pct}%")
+                print(f"[expanded_frontier] Loaded {filename}: {sum(len(pts) for pts in points_by_n)} total points across n=0..9")
+
+        except Exception as e:
+            print(f"[expanded_frontier] Error loading {filename}: {e}")
+            continue
 
     return result
 
 
-def _coarsen_frontier(sd_vals, mean_vals, weight_vecs_s1, weight_vecs_s2, ace_hits, king_hits, queen_hits, sd_step=5.0):
+def _coarsen_frontier(sd_vals, mean_vals, weight_vecs, ace_hits, king_hits, queen_hits, sd_step=5.0):
     """Coarsen frontier by binning SD values (5pp steps) and keeping highest mean in each bin.
 
     Args:
         sd_vals: 1D array of SD values (percentage)
         mean_vals: 1D array of mean values
-        weight_vecs_s1: 2D array of Stage 1 weight vectors
-        weight_vecs_s2: 2D array of Stage 2 weight vectors
+        weight_vecs: 2D array of weight vectors
         ace_hits: 1D array of ace hit counts
         king_hits: 1D array of king hit counts
         queen_hits: 1D array of queen hit counts
         sd_step: Binning granularity in percentage points (default 5.0 for 5pp)
 
     Returns:
-        Tuple of (coarsened_sd, coarsened_mean, coarsened_weights_s1, coarsened_weights_s2, coarsened_ace, coarsened_king, coarsened_queen)
+        Tuple of (coarsened_sd, coarsened_mean, coarsened_weights, coarsened_ace, coarsened_king, coarsened_queen)
     """
     if len(sd_vals) == 0:
-        return sd_vals, mean_vals, weight_vecs_s1, weight_vecs_s2, ace_hits, king_hits, queen_hits
+        return sd_vals, mean_vals, weight_vecs, ace_hits, king_hits, queen_hits
 
     # Bin by SD with 5pp steps (0-5%, 5-10%, 10-15%, etc.)
     sd_bins = {}
@@ -418,8 +310,7 @@ def _coarsen_frontier(sd_vals, mean_vals, weight_vecs_s1, weight_vecs_s2, ace_hi
     # Keep point with highest mean in each bin
     coarsened_sd = []
     coarsened_mean = []
-    coarsened_weights_s1 = []
-    coarsened_weights_s2 = []
+    coarsened_weights = []
     coarsened_ace = []
     coarsened_king = []
     coarsened_queen = []
@@ -430,10 +321,7 @@ def _coarsen_frontier(sd_vals, mean_vals, weight_vecs_s1, weight_vecs_s2, ace_hi
         best_idx = max(indices, key=lambda idx: mean_vals[idx])
         coarsened_sd.append(sd_vals[best_idx])
         coarsened_mean.append(mean_vals[best_idx])
-        coarsened_weights_s1.append(weight_vecs_s1[best_idx])
-        # Only append S2 weights if they exist (v1/v2 files don't have S2 weights)
-        if len(weight_vecs_s2) > 0:
-            coarsened_weights_s2.append(weight_vecs_s2[best_idx])
+        coarsened_weights.append(weight_vecs[best_idx])
 
         # Coarsen hit rates too
         if len(ace_hits) > 0:
@@ -446,8 +334,7 @@ def _coarsen_frontier(sd_vals, mean_vals, weight_vecs_s1, weight_vecs_s2, ace_hi
     return (
         np.array(coarsened_sd),
         np.array(coarsened_mean),
-        np.array(coarsened_weights_s1),
-        np.array(coarsened_weights_s2),
+        np.array(coarsened_weights),
         np.array(coarsened_ace) if len(coarsened_ace) > 0 else np.array([]),
         np.array(coarsened_king) if len(coarsened_king) > 0 else np.array([]),
         np.array(coarsened_queen) if len(coarsened_queen) > 0 else np.array([])
@@ -483,6 +370,7 @@ def draw_deck(n_cards: int, seed: int | None = None) -> pd.DataFrame:
             "sum2": int(top2sum[i]),
             "max_rank": int(max_rank[i]),
             "second_rank": second_rank,  # R2 for Stage 2 reveal
+            "signal_count": 0,  # Track number of signals purchased for this pile
         })
     return pd.DataFrame(rows)
 
@@ -543,65 +431,33 @@ def compute_payoffs_at_stage2(df: pd.DataFrame, ace_payout: float = ACE_PAYOUT) 
 
 
 # ===============================
-# Signals
+# Signals - SIMPLIFIED V2
 # ===============================
-def make_signal_catalog_manual() -> pd.DataFrame:
-    data = [
-        (1, 1, "A–7 or 8–K"),
-        (2, 2, "A/2–5/6–9/10–K"),
-        (3, 4, "2–3 / 4–5 / 6–7 / 8–9 / 10–J / Q–K / A"),
-        (4, 8, "Exact number (2–14)"),
-    ]
-    df = pd.DataFrame(data, columns=["signal_id", "cost", "info"])
-    df["signal_name"] = [f"Signal {i}" for i in df["signal_id"]]
-    return df.set_index("signal_id")[["signal_name", "cost", "info"]]
-
-
-def reveal_signal(N: int, signal_id: int) -> str:
-    if signal_id == 1:
-        return "A–7" if (N == 14 or 2 <= N <= 7) else "8–K"
-    if signal_id == 2:
-        if N == 14:
-            return "A"
-        if 2 <= N <= 5:
-            return "2–5"
-        if 6 <= N <= 9:
-            return "6–9"
-        return "10–K"
-    if signal_id == 3:
-        if 2 <= N <= 3:
-            return "2–3"
-        if 4 <= N <= 5:
-            return "4–5"
-        if 6 <= N <= 7:
-            return "6–7"
-        if 8 <= N <= 9:
-            return "8–9"
-        if 10 <= N <= 11:
-            return "10–J"
-        if 12 <= N <= 13:
-            return "Q–K"
-        return "A"
-    if signal_id == 4:
-        return f"{N}"
-    raise ValueError("signal_id must be 1..4")
-
-
 def stage_buy_signals(
     deck: pd.DataFrame,
     purchases: dict[int, list[int]],
     budget: float,
-    catalog: pd.DataFrame | None = None,
-    *,
-    per_signal_cost: float | None = None,
+    signal_cost: float,
 ) -> tuple[pd.DataFrame, float, float]:
-    catalog = make_signal_catalog_manual() if catalog is None else catalog
+    """Record signal purchases and track signal counts per pile.
+
+    Args:
+        deck: Game board DataFrame
+        purchases: Dict mapping card_id -> list of signal IDs (currently always [1] for single signal)
+        budget: Available budget
+        signal_cost: Cost per signal
+
+    Returns:
+        Tuple of (updated_deck, total_spent, remaining_budget)
+
+    Note: In V2, signal values (median/top2) are already in deck from draw_deck().
+          This function just tracks which piles received signals and deducts cost.
+    """
     deck = deck.copy()
-    for col in ("s1", "s2", "s3", "s4"):
-        if col not in deck.columns:
-            deck[col] = pd.Series([None] * len(deck), dtype="object")
-    if "signals_spend" not in deck.columns:
-        deck["signals_spend"] = 0.0
+
+    # Ensure signal_count column exists
+    if "signal_count" not in deck.columns:
+        deck["signal_count"] = 0
 
     spend = 0.0
     for cid, sigs in purchases.items():
@@ -611,17 +467,18 @@ def stage_buy_signals(
         i = idx[0]
         if not bool(deck.at[i, "alive"]):
             continue
-        N = int(deck.at[i, "N"])
-        for s in sigs:
-            if s not in catalog.index:
-                continue
-            # Always use a fixed single-signal price when provided (new game version)
-            c = float(per_signal_cost) if per_signal_cost is not None else float(catalog.loc[s, "cost"])
-            if spend + c > budget:
-                break
-            deck.at[i, f"s{s}"] = str(reveal_signal(N, s))
-            deck.at[i, "signals_spend"] = float(deck.at[i, "signals_spend"]) + c
-            spend += c
+
+        # Count signals purchased for this pile
+        n_signals = len(sigs)
+        total_cost = n_signals * signal_cost
+
+        if spend + total_cost > budget:
+            break
+
+        # Update signal count for this pile
+        deck.at[i, "signal_count"] = int(deck.at[i, "signal_count"]) + n_signals
+        spend += total_cost
+
     return deck, spend, budget - spend
 
 
@@ -690,7 +547,6 @@ if __name__ == "__main__":
             stage_history = []  # Track stage-wise stats
             total_signal_cost_stage1 = 0.0  # Explicit tracker for Stage 1 signals
             total_signal_cost_stage2 = 0.0  # Explicit tracker for Stage 2 signals
-            # session_id already initialized outside try block
 
             # ---- Stage 1 ----
             print(f"[game] Starting Stage 1 with signal_mode={mode}")
@@ -711,9 +567,10 @@ if __name__ == "__main__":
                 continue  # Start fresh game
 
             df, s_spent, _ = stage_buy_signals(
-                df, {int(k): v for k, v in act.get("purchases", {}).items()},
+                df,
+                {int(k): v for k, v in act.get("purchases", {}).items()},
                 budget=wallet,
-                per_signal_cost=cost
+                signal_cost=cost
             )
             total_signal_cost_stage1 = float(s_spent)
             wallet = max(0.0, wallet - float(s_spent))
@@ -772,9 +629,10 @@ if __name__ == "__main__":
             # Handle missing purchases (Stage 2 may not have signal purchases)
             purchases = act.get("purchases", {})
             df, s_spent, _ = stage_buy_signals(
-                df, {int(k): v for k, v in purchases.items()},
+                df,
+                {int(k): v for k, v in purchases.items()},
                 budget=wallet,
-                per_signal_cost=cost
+                signal_cost=cost
             )
             total_signal_cost_stage2 = float(s_spent)
             wallet = max(0.0, wallet - float(s_spent))
@@ -828,20 +686,15 @@ if __name__ == "__main__":
             n_invested = int((inv_sum > 0).sum())
             # signals spent - use explicit trackers as source of truth
             total_signals_spend = float(total_signal_cost_stage1 + total_signal_cost_stage2)
+
             # Verification: check DataFrame accumulation matches
-            df_signals_total = float(df.get("signals_spend", 0).fillna(0).sum())
+            df_signals_total = float(df.get("signal_count", 0).fillna(0).sum()) * cost
             if abs(total_signals_spend - df_signals_total) > 0.01:
                 print(f"[WARNING] Signal cost mismatch: explicit={total_signals_spend}, df={df_signals_total}")
+
             # avg signals per invested card
-            def _row_sig_count(row):
-                cnt = 0
-                for k in (1, 2, 3, 4):
-                    v = row.get(f"s{k}")
-                    if pd.notna(v) and v is not None and str(v) != "None":
-                        cnt += 1
-                return cnt
             if n_invested > 0:
-                avg_signals = float(df.loc[(inv_sum > 0)].apply(_row_sig_count, axis=1).mean())
+                avg_signals = float(df.loc[(inv_sum > 0), "signal_count"].mean())
             else:
                 avg_signals = 0.0
 
@@ -867,16 +720,6 @@ if __name__ == "__main__":
             # Stage 1: payoff / (invested + signal_cost)
             stage1_resources = investable_stage1 + total_signals_spend
             g1 = stage1_payoff / stage1_resources if stage1_resources > 0 else 0.0
-
-            # DEBUG: Print Stage 1 gross return calculation
-            print(f"[DEBUG] Stage 1 Gross Return:")
-            print(f"  stage1_payoff = {stage1_payoff}")
-            print(f"  investable_stage1 = {investable_stage1}")
-            print(f"  total_signals_spend = {total_signals_spend}")
-            print(f"  total_signal_cost_stage1 = {total_signal_cost_stage1}")
-            print(f"  total_signal_cost_stage2 = {total_signal_cost_stage2}")
-            print(f"  stage1_resources = {stage1_resources}")
-            print(f"  g1 = {g1}")
 
             # Stage 2: payoff / invested
             g2 = stage2_payoff / investable_stage2 if investable_stage2 > 0 else 0.0
@@ -1027,8 +870,8 @@ if __name__ == "__main__":
             # This ensures current player appears in their own leaderboard
             mark_session_completed(session_id=session_id)
 
-            # ---- Run Policy Simulation (1k rounds) ----
-            print("[game] Running policy simulation (1k rounds)...")
+            # ---- Run Policy Simulation (50k rounds) ----
+            print("[game] Running policy simulation (50k rounds)...")
             total_n_signals = signal_count_stage1 + signal_count_stage2
             # Calculate stage1_alloc from actual budget allocation
             # stage1_alloc = (stage1_stakes + signal_costs_stage1) / WALLET0
@@ -1040,10 +883,8 @@ if __name__ == "__main__":
             signaled_piles = set()
             for idx, row in df.iterrows():
                 pile_id = int(row["card_id"])
-                for sig_col in ["s1", "s2", "s3", "s4"]:
-                    if sig_col in df.columns and pd.notna(row.get(sig_col)):
-                        signaled_piles.add(pile_id)
-                        break
+                if row["signal_count"] > 0:
+                    signaled_piles.add(pile_id)
 
             # 2. Actual dollar amounts invested per pile (for Round 0)
             actual_weights_stage1 = df["inv1"].values.astype(float)  # Shape: (9,)
@@ -1068,7 +909,7 @@ if __name__ == "__main__":
                     scale_pay=1,  # Graduated payoffs (matches frontier NPZ files)
                     scale_param=0.25,  # Scale parameter (matches sp1_s0p2500 files)
                     player_concentration=concentration_index,
-                    rounds=1000,
+                    rounds=50000,
                     actual_board_seed=game_seed,                    # Exact board replication
                     actual_signaled_piles=signaled_piles,           # Exact signals
                     actual_weights_stage1=actual_weights_stage1,     # Dollar amounts S1
@@ -1099,17 +940,30 @@ if __name__ == "__main__":
                 # ---- Load Mean-Variance Frontier Data ----
                 print(f"[game] Loading frontier data for {mode} signal type...")
                 try:
-                    frontier_all_alphas = load_all_alpha_frontiers(signal_type=mode, use_v2=True)
+                    frontier_all_alphas = load_all_alpha_frontiers(signal_type=mode, use_v2=False)
                     stats["frontier_all_alphas"] = frontier_all_alphas
-                    print(f"[game] Loaded {len(frontier_all_alphas)} alpha configurations for frontier (v2)")
+                    print(f"[game] Loaded {len(frontier_all_alphas)} alpha configurations for frontier (v1)")
                 except Exception as e:
                     print(f"[game] Failed to load frontier data (v1): {e}")
                     stats["frontier_all_alphas"] = {}
 
+                # Load v2 frontier data as well
+                try:
+                    frontier_all_alphas_v2 = load_all_alpha_frontiers(signal_type=mode, use_v2=True)
+                    stats["frontier_all_alphas_v2"] = frontier_all_alphas_v2
+                    print(f"[game] Loaded {len(frontier_all_alphas_v2)} alpha configurations for frontier (v2)")
+                except Exception as e:
+                    print(f"[game] Failed to load frontier data (v2): {e}")
+                    stats["frontier_all_alphas_v2"] = {}
 
-                # Load expanded frontier data (linear combinations) - DISABLED
-                # We're using frontier_all_alphas (v2) instead
-                stats["frontier_expanded"] = {}
+                # Load expanded frontier data (linear combinations)
+                try:
+                    frontier_expanded = load_expanded_frontiers(signal_type=mode)
+                    stats["frontier_expanded"] = frontier_expanded
+                    print(f"[game] Loaded {len(frontier_expanded)} alpha configurations for expanded frontier")
+                except Exception as e:
+                    print(f"[game] Failed to load expanded frontier data: {e}")
+                    stats["frontier_expanded"] = {}
 
                 # ---- Calculate Player Position on Frontier ----
                 # Player's position is defined by:

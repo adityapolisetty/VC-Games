@@ -1,7 +1,7 @@
 #!/bin/bash
-#PBS -l select=1:ncpus=12:mem=5gb
-#PBS -l walltime=04:00:00
-#PBS -J 0-39
+#PBS -l select=1:ncpus=128:mem=5gb
+#PBS -l walltime=01:00:00
+## PBS -J 0-1
 #PBS -N il_frontier_array
 #PBS -o ../logs/il_frontier.out
 #PBS -e ../logs/il_frontier.err
@@ -22,21 +22,22 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 
-ID="${PBS_ARRAY_INDEX:-0}"
+# ID="${PBS_ARRAY_INDEX:-0}"
+ID=0
 
 # Parameterization (keep a constant base seed across array tasks like dynamic)
 SEED=${SEED:-12345}
-ROUNDS=${ROUNDS:-200000}
+ROUNDS=${ROUNDS:-10000}
 MAX_SIGNALS=${MAX_SIGNALS:-9}
 
-STRIDE=${STRIDE:-40}  # Total number of tasks
+STRIDE=${STRIDE:-20}  # Total number of tasks
 
-python3 -u frontier_v2.py \
+python3 -u frontier_v3.py \
   --seed "$SEED" \
   --rounds "$ROUNDS" \
   --max_signals "$MAX_SIGNALS" \
-  --procs 12 \
+  --procs 128 \
   --sweep \
-  --sweep_out ../frontier_output_v2 \
+  --sweep_out ../frontier_output_v3 \
   --sweep_index "$ID" \
   --sweep_stride "$STRIDE"
