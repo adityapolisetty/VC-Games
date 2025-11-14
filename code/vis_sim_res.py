@@ -1160,7 +1160,7 @@ elif view == "Mean-Variance Frontier":
         st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
 
     # Resolve files
-    frontier_dir = Path("frontier_output/").resolve()
+    frontier_dir = Path("frontier_output_v2/").resolve()
     raw_A = dict(signal_cost=float(signal_cost_A), scale_pay=sp_A, scale_param=(0.25 if sp_A == 1 else 0.0), ace_payout=20.0)
     raw_B = dict(signal_cost=float(signal_cost_B), scale_pay=sp_B, scale_param=(0.25 if sp_B == 1 else 0.0), ace_payout=20.0)
     _, key_A = _canonicalize(raw_A)
