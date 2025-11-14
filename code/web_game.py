@@ -72,8 +72,8 @@ def load_all_alpha_frontiers(signal_type: str, use_v2: bool = False) -> dict:
     if os.path.exists(frontier_dir):
         print(f"[frontier] Files in directory: {len(os.listdir(frontier_dir))}")
 
-    # Alpha values: 0, 5, 10, ..., 95, 100 (21 files)
-    alpha_values = list(range(0, 105, 5))
+    # Alpha values: 5, 10, 15, ..., 95, 100 (20 files, excluding 0)
+    alpha_values = list(range(5, 105, 5))
 
     result = {}
 
@@ -127,9 +127,10 @@ def load_all_alpha_frontiers(signal_type: str, use_v2: bool = False) -> dict:
                     king_hits = king_hits_by_n[n] if king_hits_by_n is not None and n < len(king_hits_by_n) else np.array([])
                     queen_hits = queen_hits_by_n[n] if queen_hits_by_n is not None and n < len(queen_hits_by_n) else np.array([])
 
-                    # Coarsen frontier: bin by SD (5pp steps) and keep highest mean in each bin
+                    # Coarsen frontier: use larger SD step for alpha=100% to reduce point density
+                    sd_step = 10.0 if alpha_pct == 100 else 5.0
                     sd_vals, mean_vals, weight_vecs, ace_hits, king_hits, queen_hits = _coarsen_frontier(
-                        sd_vals, mean_vals, weight_vecs, ace_hits, king_hits, queen_hits, sd_step=5.0
+                        sd_vals, mean_vals, weight_vecs, ace_hits, king_hits, queen_hits, sd_step=sd_step
                     )
 
                     # Build frontier points for this n
